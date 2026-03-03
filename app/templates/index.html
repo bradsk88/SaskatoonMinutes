@@ -11,9 +11,7 @@
 <section class="meetings-section">
     <h2>Recent Meetings</h2>
     <div id="meetings-featured" class="meetings-featured"></div>
-    <div id="meetings-list" class="meetings-grid">
-        <div class="loading">Loading meetings...</div>
-    </div>
+    <div id="meetings-list" class="meetings-grid"></div>
     <div id="load-more-container" class="load-more-container" style="display: none;">
         <button id="load-more-btn" class="btn">Load More Meetings</button>
     </div>
@@ -27,6 +25,34 @@
     const PAGE_SIZE = 50;
     const AUTO_SUMMARIZE_COUNT = 3;
 
+    function skeletonCard(withTopics) {
+        const topicLines = withTopics
+            ? `<div class="skeleton-topics">
+                   <div class="skeleton skeleton-line-sm long"></div>
+                   <div class="skeleton skeleton-line-sm medium"></div>
+                   <div class="skeleton skeleton-line-sm long"></div>
+               </div>`
+            : '';
+        return `<div class="skeleton-card">
+            <div class="skeleton skeleton-line short"></div>
+            <div class="skeleton skeleton-line medium"></div>
+            <div style="display:flex;gap:0.5rem;margin-top:0.25rem;">
+                <div class="skeleton skeleton-badge"></div>
+                <div class="skeleton skeleton-badge"></div>
+            </div>
+            ${topicLines}
+        </div>`;
+    }
+
+    function topicsSkeleton() {
+        return `<div class="skeleton-topics">
+            <div class="skeleton skeleton-line-sm long"></div>
+            <div class="skeleton skeleton-line-sm medium"></div>
+            <div class="skeleton skeleton-line-sm long"></div>
+            <div class="skeleton skeleton-line-sm short"></div>
+        </div>`;
+    }
+
     function escapeAttr(str) {
         return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
                   .replace(/'/g, '&#39;').replace(/</g, '&lt;');
@@ -37,7 +63,7 @@
         if (isFeatured) {
             topicsHtml = `
                 <div class="meeting-topics" id="topics-${m.meeting_id}">
-                    <div class="topics-loading"><span class="spinner"></span> Loading key topics...</div>
+                    ${topicsSkeleton()}
                 </div>`;
         } else {
             topicsHtml = `
@@ -63,7 +89,7 @@
     async function loadTopics(meetingId, title) {
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
-        container.innerHTML = '<div class="topics-loading"><span class="spinner"></span> Loading key topics...</div>';
+        container.innerHTML = topicsSkeleton();
 
         try {
             const resp = await fetch(`/api/meeting/${meetingId}/topics?title=${encodeURIComponent(title)}`);
@@ -97,8 +123,8 @@
         const loadMoreContainer = document.getElementById('load-more-container');
 
         if (page === 1) {
-            featured.innerHTML = '';
-            container.innerHTML = '<div class="loading">Loading meetings...</div>';
+            featured.innerHTML = skeletonCard(true) + skeletonCard(true) + skeletonCard(true);
+            container.innerHTML = skeletonCard(false).repeat(6);
         } else {
             loadMoreBtn.textContent = 'Loading...';
             loadMoreBtn.disabled = true;
@@ -109,6 +135,7 @@
             const data = await resp.json();
 
             if (data.error) {
+                featured.innerHTML = '';
                 container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
                 return;
             }
@@ -117,6 +144,7 @@
             const meetings = data.meetings;
 
             if (page === 1) {
+                featured.innerHTML = '';
                 container.innerHTML = '';
             }
 
@@ -176,6 +204,7 @@
 
             currentPage = page;
         } catch (err) {
+            featured.innerHTML = '';
             container.innerHTML = `<div class="error">Failed to load meetings. Please try again.</div>`;
         }
     }
