@@ -136,6 +136,8 @@ _PLAIN_REPLACEMENTS = [
     (re.compile(r'^Bylaw\s+No\.\s*\d+\s*[-–—]\s*', re.IGNORECASE), ''),
     (re.compile(r'\bBylaw\b,?\s*', re.IGNORECASE), ''),
     (re.compile(r'\(No\.\s*\d+\)', re.IGNORECASE), ''),
+    # Reference codes like [CC2025-0402], [TS2026-0203], [FI2026-0205], [CK 225-4-3]
+    (re.compile(r'\s*\[[\w\s-]+\]\s*$'), ''),
     # "Award of Contract - Foo (Contract No. 25-0456)" → "Foo"
     (re.compile(r'^Award\s+of\s+Contract\s*[-–—]\s*', re.IGNORECASE), ''),
     (re.compile(r'\(Contract\s+No\.\s*[\w-]+\)', re.IGNORECASE), ''),
@@ -146,10 +148,16 @@ _PLAIN_REPLACEMENTS = [
     # "Enquiry - Councillor Name (Date) - Topic" → "Topic"
     (re.compile(r'^Enquiry\s*[-–—]\s*Councillor\s+\S+(?:\s+\S+)?\s*\([^)]*\)\s*[-–—]\s*', re.IGNORECASE), ''),
     (re.compile(r'^Enquiry\s*[-–—]\s*', re.IGNORECASE), ''),
-    # "Councillor X - Notice of Motion - Topic" → "Topic"
+    # "Councillor X. Name - Notice of Motion - Topic" → "Topic"
     (re.compile(r'^Councillor\s+\S+(?:\s+\S+)?\s*[-–—]\s*Notice\s+of\s+Motion\s*[-–—]\s*', re.IGNORECASE), ''),
+    # "Councillor B. Dubois - Topic" → "Topic"
+    (re.compile(r'^Councillor\s+\S+\.?\s+\S+\s*[-–—]\s*', re.IGNORECASE), ''),
     # "Report of the City Clerk - Foo" → "Foo"
     (re.compile(r'^Report\s+of\s+the\s+\w[\w\s]{0,30}?[-–—]\s*', re.IGNORECASE), ''),
+    # "Appointments - Foo" / "Appointments – Foo"
+    (re.compile(r'^Appointments?\s*[-–—]\s*', re.IGNORECASE), ''),
+    # "Standing Policy Committee on Foo" → strip
+    (re.compile(r'^Standing\s+Policy\s+Committee\s+(?:on\s+)?', re.IGNORECASE), ''),
     # Strip leading "The " after other cleanup
     (re.compile(r'^The\s+', re.IGNORECASE), ''),
     # Strip year suffixes like ", 2025" or standalone " 2025" at end
