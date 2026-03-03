@@ -145,12 +145,18 @@
         const overlay = document.getElementById('video-loading');
         if (videoUrl) {
             const seekSeconds = Math.floor(timeMs / 1000);
+            // Hide the iframe so the player's loading state is invisible,
+            // and show the overlay in its place.
+            iframe.style.visibility = 'hidden';
             overlay.style.display = 'flex';
             iframe.src = videoUrl + `&initial_seek=${seekSeconds}&auto_play=true`;
-            // iframe.onload fires when the page loads, but the video
-            // still needs seconds to buffer. Wait a bit after that.
+            // The iframe page loads fast, but the video player inside
+            // still needs time to seek and render. Wait after onload.
             iframe.onload = function() {
-                setTimeout(function() { overlay.style.display = 'none'; }, 4000);
+                setTimeout(function() {
+                    overlay.style.display = 'none';
+                    iframe.style.visibility = 'visible';
+                }, 4000);
             };
             document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
         }
