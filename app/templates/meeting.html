@@ -14,6 +14,9 @@
         <h2>Meeting Video</h2>
         <div class="video-container">
             <iframe id="video-frame" src="" allowfullscreen></iframe>
+            <div id="video-loading" class="video-loading" style="display: none;">
+                Loading video...
+            </div>
         </div>
     </div>
 
@@ -139,9 +142,12 @@
 
     function seekVideo(timeMs) {
         const iframe = document.getElementById('video-frame');
+        const overlay = document.getElementById('video-loading');
         if (videoUrl) {
             const seekSeconds = Math.floor(timeMs / 1000);
+            overlay.style.display = 'flex';
             iframe.src = videoUrl + `&initial_seek=${seekSeconds}&auto_play=true`;
+            iframe.onload = function() { overlay.style.display = 'none'; };
             document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
         }
     }
