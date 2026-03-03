@@ -38,7 +38,6 @@
     const meetingId = "{{ meeting_id }}";
     let meetingTitle = "";
     let videoUrl = null;
-    let videoPlayerConfig = null;
 
     async function loadMeeting() {
         const headerEl = document.getElementById('meeting-header');
@@ -56,13 +55,11 @@
             }
 
             videoUrl = data.video_url;
-            videoPlayerConfig = data.video_player_config;
 
             // Show video if available
-            if (videoUrl && videoPlayerConfig) {
+            if (videoUrl) {
                 videoSection.style.display = 'block';
-                const playerUrl = `/player?client_id=${encodeURIComponent(videoPlayerConfig.client_id)}&file_name=${encodeURIComponent(videoPlayerConfig.file_name)}`;
-                document.getElementById('video-frame').src = playerUrl;
+                document.getElementById('video-frame').src = videoUrl;
             }
 
             // Render agenda items
@@ -142,9 +139,9 @@
 
     function seekVideo(timeMs) {
         const iframe = document.getElementById('video-frame');
-        if (videoPlayerConfig) {
+        if (videoUrl) {
             const seekSeconds = Math.floor(timeMs / 1000);
-            iframe.src = `/player?client_id=${encodeURIComponent(videoPlayerConfig.client_id)}&file_name=${encodeURIComponent(videoPlayerConfig.file_name)}&seek=${seekSeconds}`;
+            iframe.src = videoUrl + `&initial_seek=${seekSeconds}`;
             document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
         }
     }

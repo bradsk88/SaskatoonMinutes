@@ -9,7 +9,7 @@ import os
 from flask import Flask, render_template, jsonify, request
 from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
-from app.scraper import fetch_past_meetings, fetch_meeting_detail, fetch_video_player_config
+from app.scraper import fetch_past_meetings, fetch_meeting_detail
 from app.summarizer import summarize_agenda_items, get_backend
 
 _CONNECTION_ERROR_MSG = (
@@ -46,17 +46,6 @@ def api_meetings():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/player")
-def player():
-    """Serve the ISI video player with a configurable start time."""
-    return render_template(
-        "player.html",
-        seek=request.args.get("seek", "0"),
-        client_id=request.args.get("client_id", ""),
-        file_name=request.args.get("file_name", ""),
-    )
-
-
 @app.route("/meeting/<meeting_id>")
 def meeting_detail(meeting_id: str):
     """Page showing a specific meeting with summarized agenda items."""
@@ -77,14 +66,9 @@ def api_meeting_detail(meeting_id: str):
             title = request.args.get("title", "City Council Meeting")
             items = summarize_agenda_items(items, title)
 
-        video_player_config = None
-        if detail["video_url"]:
-            video_player_config = fetch_video_player_config(meeting_id)
-
         return jsonify({
             "agenda_items": items,
             "video_url": detail["video_url"],
-            "video_player_config": video_player_config,
             "summarizer_backend": backend,
         })
     except Exception as e:

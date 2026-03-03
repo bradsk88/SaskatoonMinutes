@@ -136,29 +136,6 @@ def _build_video_url(meeting_id: str) -> str:
     return f"{BASE_URL}/Players/ISIStandAlonePlayer.aspx?Id={meeting_id}"
 
 
-def fetch_video_player_config(meeting_id: str) -> dict | None:
-    """Fetch the ISI player page and extract data-client_id and data-file_name.
-
-    Returns {'client_id': ..., 'file_name': ...} or None if not available.
-    """
-    url = _build_video_url(meeting_id)
-    try:
-        resp = requests.get(url, headers=_PAGE_HEADERS, timeout=30, verify=False)
-        resp.raise_for_status()
-    except Exception:
-        return None
-
-    html = resp.text
-    client_id = re.search(r'data-client_id="([^"]+)"', html)
-    file_name = re.search(r'data-file_name="([^"]+)"', html)
-    if client_id and file_name:
-        return {
-            "client_id": client_id.group(1),
-            "file_name": file_name.group(1),
-        }
-    return None
-
-
 def _parse_escribemeetings_date(date_str: str) -> str:
     """Parse eSCRIBE date format like '/Date(1719457800000)/' to ISO date."""
     match = re.search(r"/Date\((\d+)\)/", date_str)
