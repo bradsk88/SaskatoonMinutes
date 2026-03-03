@@ -7,9 +7,12 @@ pub-saskatoon.escribemeetings.com.
 
 import re
 import json
+import urllib3
 import requests
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE_URL = "https://pub-saskatoon.escribemeetings.com"
 
@@ -82,7 +85,7 @@ def fetch_past_meetings(page: int = 1) -> tuple[list[Meeting], int]:
         "type": MEETING_TYPE,
         "pageNumber": page,
     }
-    resp = requests.post(url, json=payload, headers=_AJAX_HEADERS, timeout=30, verify=True)
+    resp = requests.post(url, json=payload, headers=_AJAX_HEADERS, timeout=30, verify=False)
     resp.raise_for_status()
 
     data = resp.json().get("d", {})
@@ -115,7 +118,7 @@ def fetch_meeting_detail(meeting_id: str) -> dict:
     Returns a dict with 'agenda_items' and 'video_url'.
     """
     url = f"{BASE_URL}/Meeting.aspx?Id={meeting_id}&Agenda=Agenda&lang=English"
-    resp = requests.get(url, headers=_PAGE_HEADERS, timeout=30, verify=True)
+    resp = requests.get(url, headers=_PAGE_HEADERS, timeout=30, verify=False)
     resp.raise_for_status()
     html = resp.text
 
