@@ -77,12 +77,16 @@ def api_meeting_detail(meeting_id: str):
 
 @app.route("/api/meeting/<meeting_id>/topics")
 def api_meeting_topics(meeting_id: str):
-    """Compact key-topic summaries for a meeting (used by the index page)."""
+    """Compact key-topic summaries for a meeting (used by the index page).
+
+    Fetches both the Agenda page (recommendations) and PostMinutes page
+    (vote results) to produce topic/outcome pairs.
+    """
     try:
         title = request.args.get("title", "City Council Meeting")
-        detail = fetch_meeting_detail(meeting_id)
+        detail = fetch_meeting_detail(meeting_id, include_votes=True)
         items = [item.to_dict() for item in detail["agenda_items"]]
-        topics = extract_meeting_topics(items, title, max_topics=5)
+        topics = extract_meeting_topics(items, title, max_topics=8)
         return jsonify({"meeting_id": meeting_id, "topics": topics})
     except (ConnectionError, SSLError):
         return jsonify({"error": _CONNECTION_ERROR_MSG}), 502

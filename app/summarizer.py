@@ -32,47 +32,52 @@ def summarize_agenda_items(agenda_items: list[dict], meeting_title: str) -> list
 
 
 def extract_meeting_topics(
-    agenda_items: list[dict], meeting_title: str, max_topics: int = 5
+    agenda_items: list[dict], meeting_title: str, max_topics: int = 8
 ) -> list[dict]:
     """Extract the most interesting non-procedural topics from a meeting.
 
-    Runs the configured summarizer on the items, filters out procedural ones,
-    ranks by a simple interest heuristic, and returns the top N.
+    Filters out procedural items, ranks by an interest heuristic that
+    prioritises contested votes, dollar amounts, and substantive
+    recommendations, then returns the top *max_topics* as topic/outcome pairs.
     """
-    items = summarize_agenda_items(agenda_items, meeting_title)
-
     substantive = [
-        item for item in items
+        item for item in agenda_items
         if not _is_procedural(item.get("title", ""))
-        and item.get("summary", "") != "Procedural item."
     ]
 
     scored = []
     for item in substantive:
         title = item.get("title", "")
-        summary = item.get("summary", "")
+        rec = item.get("recommendation", "")
+        vote = item.get("vote_result", "")
         section = item.get("section_number", "")
+        contested = item.get("is_contested", False)
 
-        # Longer summaries suggest more substance
-        summary_len_score = min(len(summary.split()) / 20.0, 1.0)
+        # Contested votes are always interesting
+        contested_score = 0.5 if contested else 0.0
 
-        # Titles with numbers/dollar amounts tend to be about specific decisions
-        specificity_score = 0.3 if re.search(r'\$|%|\d{4,}', title) else 0.0
+        # Dollar amounts or percentages in rec/title
+        has_money = bool(re.search(r'\$[\d,.]+', rec + " " + title))
+        money_score = 0.3 if has_money else 0.0
 
-        # Mid-level sections (e.g. "7.1") are often more interesting than
-        # top-level ("7") or deeply nested ("7.3.2.1")
+        # Items with explicit vote results
+        vote_score = 0.2 if vote else 0.0
+
+        # Items with recommendations (not just section headers)
+        rec_score = 0.2 if rec else 0.0
+
+        # Mid-level sections more interesting than top-level or deeply nested
         dot_count = section.count(".")
-        depth_score = 0.3 if 1 <= dot_count <= 2 else 0.1
+        depth_score = 0.15 if 1 <= dot_count <= 2 else 0.05
 
-        # Penalise items where summary == title (no real content to extract)
-        identity_penalty = 0.0 if summary.strip() == title.strip() else 0.3
+        # Penalise generic committee headers and appointment sub-items
+        title_lower = title.lower()
+        if "standing policy committee" in title_lower:
+            depth_score -= 0.2
+        if "appointments" in title_lower and dot_count >= 3:
+            depth_score -= 0.1
 
-        score = (
-            summary_len_score * 0.35
-            + specificity_score
-            + depth_score
-            + identity_penalty
-        )
+        score = contested_score + money_score + vote_score + rec_score + depth_score
         scored.append((score, item))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -82,14 +87,71 @@ def extract_meeting_topics(
     top_set = {id(item) for item in top_items}
     ordered = [item for item in substantive if id(item) in top_set]
 
-    return [
-        {
-            "title": item.get("title", ""),
-            "summary": _plainify(item.get("title", "")),
-            "section_number": item.get("section_number", ""),
-        }
-        for item in ordered
-    ]
+    return [_format_topic(item) for item in ordered]
+
+
+def _format_topic(item: dict) -> dict:
+    """Format a single agenda item as a topic/outcome pair for the index page."""
+    title = item.get("title", "")
+    rec = item.get("recommendation", "")
+    vote = item.get("vote_result", "")
+    contested = item.get("is_contested", False)
+
+    outcome = _format_outcome(vote, rec)
+    is_major = _is_major_decision(title, rec, contested)
+
+    return {
+        "topic": _plainify(title),
+        "outcome": outcome,
+        "outcome_detail": _clean_entities(rec) if rec else "",
+        "vote_result": vote,
+        "is_major": is_major,
+        "is_contested": contested,
+    }
+
+
+def _format_outcome(vote_result: str, recommendation: str) -> str:
+    """Convert raw vote result + recommendation into a short outcome label."""
+    if not vote_result and not recommendation:
+        return "Discussed"
+
+    if not vote_result:
+        return "Recommended"
+
+    upper = vote_result.upper()
+    # Extract vote counts like (7 to 4)
+    counts = re.search(r"\((\d+)\s+to\s+(\d+)\)", vote_result)
+    tally = f" ({counts.group(1)}-{counts.group(2)})" if counts else ""
+
+    if "DEFEATED" in upper:
+        return f"Defeated{tally}"
+    if "UNANIMOUSLY" in upper:
+        return "Approved"
+    if "CARRIED" in upper:
+        return f"Approved{tally}"
+    return vote_result
+
+
+def _is_major_decision(title: str, recommendation: str, is_contested: bool) -> bool:
+    """Determine whether a decision warrants visual highlighting."""
+    if is_contested:
+        return True
+    combined = title + " " + recommendation
+    if re.search(r"\$[\d,.]+", combined):
+        return True
+    title_lower = title.lower()
+    for keyword in ("bylaw", "budget", "acquisition", "contract", "tax"):
+        if keyword in title_lower:
+            return True
+    return False
+
+
+def _clean_entities(text: str) -> str:
+    """Decode common HTML entities."""
+    text = text.replace("&#58;", ":").replace("&#160;", " ")
+    text = text.replace("&amp;", "&").replace("&quot;", '"')
+    text = text.replace("&lt;", "<").replace("&gt;", ">")
+    return re.sub(r"\s+", " ", text).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +161,11 @@ def extract_meeting_topics(
 # Common procedural agenda item keywords
 _PROCEDURAL_KEYWORDS = {
     "call to order", "adjournment", "roll call", "adoption of agenda",
-    "confirmation of minutes", "declarations of conflict",
-    "communications to council", "o canada",
+    "confirmation of agenda", "confirmation of minutes", "adoption of minutes",
+    "declarations of conflict", "communications to council", "o canada",
+    "consent agenda", "public acknowledgments", "public acknowledgements",
+    "question period", "inquiries", "in camera session", "urgent business",
+    "committee reports (not on consent",
 }
 
 
@@ -160,6 +225,8 @@ _PLAIN_REPLACEMENTS = [
     (re.compile(r'^Standing\s+Policy\s+Committee\s+(?:on\s+)?', re.IGNORECASE), ''),
     # Strip leading "The " after other cleanup
     (re.compile(r'^The\s+', re.IGNORECASE), ''),
+    # Strip reference codes like "[FI2026-0204]" or "[CC2025-0802]"
+    (re.compile(r'\s*\[\w{2,4}\d{4}-\d{3,5}\]\s*'), ''),
     # Strip year suffixes like ", 2025" or standalone " 2025" at end
     (re.compile(r'[,\s]+\d{4}\s*$'), ''),
     # Collapse extra whitespace / dashes

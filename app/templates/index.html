@@ -5,7 +5,7 @@
 {% block content %}
 <section class="hero">
     <h1>Saskatoon City Council Meetings</h1>
-    <p>Browse recent council meetings, read AI-generated summaries, and jump straight to the topics you care about.</p>
+    <p>Browse recent council meetings and see what was discussed and decided.</p>
 </section>
 
 <section class="meetings-section">
@@ -58,6 +58,29 @@
                   .replace(/'/g, '&#39;').replace(/</g, '&lt;');
     }
 
+    function outcomeClass(topic) {
+        if (topic.is_contested) return 'outcome-contested';
+        if (topic.outcome.startsWith('Defeated')) return 'outcome-defeated';
+        if (topic.outcome.startsWith('Approved')) return 'outcome-approved';
+        return 'outcome-neutral';
+    }
+
+    function renderTopicsTable(topics) {
+        let html = '<table class="topics-table"><tbody>';
+        topics.forEach(t => {
+            const rowClass = t.is_major ? 'topic-major' : '';
+            const oClass = outcomeClass(t);
+            const tooltip = t.outcome_detail
+                ? ` data-tooltip="${escapeAttr(t.outcome_detail)}"` : '';
+            html += `<tr class="${rowClass}">`;
+            html += `<td class="topic-name">${escapeAttr(t.topic)}</td>`;
+            html += `<td class="topic-outcome"><span class="${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span></td>`;
+            html += `</tr>`;
+        });
+        html += '</tbody></table>';
+        return html;
+    }
+
     function buildCardHTML(m, dateStr, badges, isFeatured) {
         let topicsHtml;
         if (isFeatured) {
@@ -105,12 +128,7 @@
                 return;
             }
 
-            let html = '<ul class="topics-list">';
-            data.topics.forEach(t => {
-                html += `<li class="topic-item">${t.summary}</li>`;
-            });
-            html += '</ul>';
-            container.innerHTML = html;
+            container.innerHTML = renderTopicsTable(data.topics);
         } catch (err) {
             container.innerHTML = '<div class="topics-error">Failed to load topics.</div>';
         }

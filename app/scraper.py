@@ -9,7 +9,7 @@ import re
 import json
 import urllib3
 import requests
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from datetime import datetime
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -41,6 +41,10 @@ class AgendaItem:
     section_number: str  # e.g. "4.1.2"
     time_start_ms: int | None = None
     time_end_ms: int | None = None
+    recommendation: str = ""
+    vote_result: str = ""
+    vote_detail: str = ""
+    is_contested: bool = False
 
     @property
     def time_start_formatted(self) -> str | None:
@@ -57,6 +61,7 @@ class AgendaItem:
     def to_dict(self) -> dict:
         d = asdict(self)
         d["time_start_formatted"] = self.time_start_formatted
+        d["is_contested"] = self.is_contested
         return d
 
 
@@ -112,8 +117,11 @@ def fetch_past_meetings(page: int = 1) -> tuple[list[Meeting], int]:
     return meetings, total_count
 
 
-def fetch_meeting_detail(meeting_id: str) -> dict:
+def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
     """Fetch the full meeting page and extract agenda items + video bookmarks.
+
+    When *include_votes* is True, also fetches the PostMinutes page to obtain
+    vote results and merges recommendation text + vote data into each item.
 
     Returns a dict with 'agenda_items' and 'video_url'.
     """
@@ -125,6 +133,24 @@ def fetch_meeting_detail(meeting_id: str) -> dict:
     bookmarks = _extract_bookmarks(html)
     agenda_items = _extract_agenda_items(html, bookmarks)
     video_url = _build_video_url(meeting_id) if bookmarks else None
+
+    if include_votes:
+        # Extract recommendations and descriptions from the Agenda page
+        recs = _extract_recommendations(html)
+        descs = _extract_descriptions(html)
+        # Fetch vote results from the PostMinutes page
+        votes = fetch_meeting_votes(meeting_id)
+
+        for item in agenda_items:
+            if item.item_id in recs:
+                item.recommendation = recs[item.item_id]
+            if item.item_id in descs:
+                item.content = descs[item.item_id]
+            if item.item_id in votes:
+                v = votes[item.item_id]
+                item.vote_result = v["result"]
+                item.vote_detail = v["detail"]
+                item.is_contested = v["is_contested"]
 
     return {
         "agenda_items": agenda_items,
@@ -179,36 +205,41 @@ def _extract_bookmarks(html: str) -> dict[int, dict]:
 def _extract_agenda_items(html: str, bookmarks: dict) -> list[AgendaItem]:
     """Extract agenda items from the meeting page HTML.
 
-    The eSCRIBE page uses this structure per agenda item:
-        <DIV class='AgendaItemTitleRow'>
-          <H2 Id='AgendaItemAgendaItem{N}TitleHeader'>
-            <DIV class='AgendaItemCounter'>1.</DIV>
-            <DIV class='AgendaItemNavigate indent'>
-              <DIV class='AgendaItemTitle'>
-                <a href="javascript:SelectItem({N});">TITLE HERE</a>
+    The eSCRIBE page uses this structure per agenda item::
+
+        <DIV class='AgendaItem AgendaItem{N}'>
+          <DIV class='AgendaItemTitleRow'>
+            <H2 Id='AgendaItemAgendaItem{N}TitleHeader'>
+              <DIV class='AgendaItemCounter'>1.</DIV>
+              <DIV class='AgendaItemNavigate indent'>
+                <DIV class='AgendaItemTitle'>
+                  <a href="javascript:SelectItem({N});">TITLE HERE</a>
+                </DIV>
               </DIV>
-            </DIV>
-          </H2>
+            </H2>
+          </DIV>
         </DIV>
+
+    Note: the counter appears *before* the SelectItem link in the HTML, so
+    we match counter first, then the SelectItem/title.
     """
-    # Match each AgendaItemTitleRow and extract the item ID, number, and title.
     pattern = re.compile(
-        r"<DIV\s+class='AgendaItemTitleRow'\s*>"
-        r".*?SelectItem\((\d+)\).*?"         # item ID from javascript:SelectItem(N)
-        r"AgendaItemCounter.*?>([\d.]+)</DIV" # number from AgendaItemCounter
-        r".*?AgendaItemTitle.*?>(.*?)</a>",   # title text inside the <a> tag
+        r"AgendaItemCounter.*?>([\d.]+)</DIV"  # number from AgendaItemCounter
+        r".*?AgendaItemTitle.*?"
+        r"SelectItem\((\d+)\).*?>"             # item ID from javascript:SelectItem(N)
+        r"(.*?)</a>",                          # title text inside the <a> tag
         re.IGNORECASE | re.DOTALL,
     )
 
     items = []
-    seen_ids = set()
+    seen_ids: set[int] = set()
     for match in pattern.finditer(html):
-        item_id = int(match.group(1))
+        item_id = int(match.group(2))
         if item_id in seen_ids:
             continue
         seen_ids.add(item_id)
 
-        number = _clean_html(match.group(2)).strip()
+        number = _clean_html(match.group(1)).strip()
         title = _clean_html(match.group(3)).strip()
 
         bookmark = bookmarks.get(item_id, {})
@@ -229,3 +260,114 @@ def _extract_agenda_items(html: str, bookmarks: dict) -> list[AgendaItem]:
 def _clean_html(text: str) -> str:
     """Remove HTML tags from a string."""
     return re.sub(r"<[^>]+>", "", text).strip()
+
+
+def _item_blocks(html: str) -> dict[int, str]:
+    """Split the page HTML into per-item blocks keyed by item ID.
+
+    Uses SelectItem(N) positions as boundaries so that nested items are
+    correctly separated (parent content before the first child).
+    """
+    positions: list[tuple[int, int]] = []
+    for m in re.finditer(r"SelectItem\((\d+)\)", html):
+        positions.append((int(m.group(1)), m.start()))
+    # Deduplicate by item_id, keep first occurrence only
+    seen: set[int] = set()
+    unique: list[tuple[int, int]] = []
+    for item_id, pos in positions:
+        if item_id not in seen:
+            seen.add(item_id)
+            unique.append((item_id, pos))
+    unique.sort(key=lambda x: x[1])
+
+    blocks: dict[int, str] = {}
+    for i, (item_id, pos) in enumerate(unique):
+        end = unique[i + 1][1] if i + 1 < len(unique) else len(html)
+        blocks[item_id] = html[pos:end]
+    return blocks
+
+
+def _extract_recommendations(html: str) -> dict[int, str]:
+    """Extract recommendation/motion text per agenda item from the Agenda page.
+
+    Returns {item_id: recommendation_text}.
+    """
+    results: dict[int, str] = {}
+    for item_id, block in _item_blocks(html).items():
+        mt = re.search(
+            r"MotionText RichText.*?>(.*?)</DIV>",
+            block, re.DOTALL | re.IGNORECASE,
+        )
+        if mt:
+            text = _clean_html(mt.group(1))
+            text = re.sub(r"\s+", " ", text).strip()
+            if text:
+                results[item_id] = text
+    return results
+
+
+def _extract_descriptions(html: str) -> dict[int, str]:
+    """Extract AgendaItemDescription content per item.
+
+    Returns {item_id: description_text}.
+    """
+    results: dict[int, str] = {}
+    for item_id, block in _item_blocks(html).items():
+        dm = re.search(
+            r"AgendaItemDescription RichText.*?>(.*?)</DIV>",
+            block, re.DOTALL | re.IGNORECASE,
+        )
+        if dm:
+            text = _clean_html(dm.group(1))
+            text = re.sub(r"\s+", " ", text).strip()
+            if text:
+                results[item_id] = text
+    return results
+
+
+def _extract_votes(html: str) -> dict[int, dict]:
+    """Extract vote results per agenda item from the PostMinutes page.
+
+    Returns {item_id: {"result": str, "detail": str, "is_contested": bool}}.
+    """
+    results: dict[int, dict] = {}
+    for item_id, block in _item_blocks(html).items():
+        rt = re.search(
+            r"MotionResult.*?>(.*?)</DIV>",
+            block, re.DOTALL | re.IGNORECASE,
+        )
+        if not rt:
+            continue
+        result_text = _clean_html(rt.group(1)).strip()
+        if not result_text:
+            continue
+
+        vt = re.search(
+            r"VoterVote.*?>(.*?)</DIV>",
+            block, re.DOTALL | re.IGNORECASE,
+        )
+        detail = _clean_html(vt.group(1)).strip() if vt else ""
+
+        is_contested = (
+            "UNANIMOUSLY" not in result_text.upper()
+            and "DEFEATED" not in result_text.upper()
+            and re.search(r"\(\d+\s+to\s+\d+\)", result_text) is not None
+        ) or "DEFEATED" in result_text.upper()
+
+        results[item_id] = {
+            "result": result_text,
+            "detail": detail,
+            "is_contested": is_contested,
+        }
+    return results
+
+
+def fetch_meeting_votes(meeting_id: str) -> dict[int, dict]:
+    """Fetch PostMinutes page and extract vote results per item."""
+    url = f"{BASE_URL}/Meeting.aspx?Id={meeting_id}&Agenda=PostMinutes&lang=English"
+    try:
+        resp = requests.get(url, headers=_PAGE_HEADERS, timeout=30, verify=False)
+        resp.raise_for_status()
+    except Exception:
+        return {}
+    return _extract_votes(resp.text)
