@@ -31,6 +31,67 @@ def summarize_agenda_items(agenda_items: list[dict], meeting_title: str) -> list
         return _summarize_extractive(agenda_items, meeting_title)
 
 
+def extract_meeting_topics(
+    agenda_items: list[dict], meeting_title: str, max_topics: int = 5
+) -> list[dict]:
+    """Extract the most interesting non-procedural topics from a meeting.
+
+    Runs the configured summarizer on the items, filters out procedural ones,
+    ranks by a simple interest heuristic, and returns the top N.
+    """
+    items = summarize_agenda_items(agenda_items, meeting_title)
+
+    substantive = [
+        item for item in items
+        if not _is_procedural(item.get("title", ""))
+        and item.get("summary", "") != "Procedural item."
+    ]
+
+    scored = []
+    for item in substantive:
+        title = item.get("title", "")
+        summary = item.get("summary", "")
+        section = item.get("section_number", "")
+
+        # Longer summaries suggest more substance
+        summary_len_score = min(len(summary.split()) / 20.0, 1.0)
+
+        # Titles with numbers/dollar amounts tend to be about specific decisions
+        specificity_score = 0.3 if re.search(r'\$|%|\d{4,}', title) else 0.0
+
+        # Mid-level sections (e.g. "7.1") are often more interesting than
+        # top-level ("7") or deeply nested ("7.3.2.1")
+        dot_count = section.count(".")
+        depth_score = 0.3 if 1 <= dot_count <= 2 else 0.1
+
+        # Penalise items where summary == title (no real content to extract)
+        identity_penalty = 0.0 if summary.strip() == title.strip() else 0.3
+
+        score = (
+            summary_len_score * 0.35
+            + specificity_score
+            + depth_score
+            + identity_penalty
+        )
+        scored.append((score, item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top_items = [item for _, item in scored[:max_topics]]
+
+    # Return in original agenda order
+    top_set = {id(item) for item in top_items}
+    ordered = [item for item in substantive if id(item) in top_set]
+
+    return [
+        {
+            "title": item.get("title", ""),
+            "summary": item.get("summary", ""),
+            "section_number": item.get("section_number", ""),
+        }
+        for item in ordered
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Extractive backend (zero dependencies)
 # ---------------------------------------------------------------------------

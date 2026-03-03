@@ -10,6 +10,7 @@
 
 <section class="meetings-section">
     <h2>Recent Meetings</h2>
+    <div id="meetings-featured" class="meetings-featured"></div>
     <div id="meetings-list" class="meetings-grid">
         <div class="loading">Loading meetings...</div>
     </div>
@@ -24,13 +25,79 @@
     let currentPage = 1;
     let totalCount = 0;
     const PAGE_SIZE = 50;
+    const AUTO_SUMMARIZE_COUNT = 3;
+
+    function escapeAttr(str) {
+        return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                  .replace(/'/g, '&#39;').replace(/</g, '&lt;');
+    }
+
+    function buildCardHTML(m, dateStr, badges, isFeatured) {
+        let topicsHtml;
+        if (isFeatured) {
+            topicsHtml = `
+                <div class="meeting-topics" id="topics-${m.meeting_id}">
+                    <div class="topics-loading"><span class="spinner"></span> Loading key topics...</div>
+                </div>`;
+        } else {
+            topicsHtml = `
+                <div class="meeting-topics" id="topics-${m.meeting_id}">
+                    <button class="btn btn-sm btn-topics" data-meeting-id="${m.meeting_id}"
+                            data-meeting-title="${escapeAttr(m.title)}">
+                        Show Key Topics
+                    </button>
+                </div>`;
+        }
+
+        return `
+            <div class="meeting-date">${dateStr}</div>
+            <div class="meeting-title">${m.title}</div>
+            <div class="meeting-meta">
+                ${m.start_time ? `<span>${m.start_time}</span>` : ''}
+                ${badges.join(' ')}
+            </div>
+            ${topicsHtml}
+        `;
+    }
+
+    async function loadTopics(meetingId, title) {
+        const container = document.getElementById(`topics-${meetingId}`);
+        if (!container) return;
+        container.innerHTML = '<div class="topics-loading"><span class="spinner"></span> Loading key topics...</div>';
+
+        try {
+            const resp = await fetch(`/api/meeting/${meetingId}/topics?title=${encodeURIComponent(title)}`);
+            const data = await resp.json();
+
+            if (data.error) {
+                container.innerHTML = '<div class="topics-error">Could not load topics.</div>';
+                return;
+            }
+
+            if (!data.topics || data.topics.length === 0) {
+                container.innerHTML = '<div class="topics-empty">No substantive topics found.</div>';
+                return;
+            }
+
+            let html = '<ul class="topics-list">';
+            data.topics.forEach(t => {
+                html += `<li class="topic-item">${t.summary}</li>`;
+            });
+            html += '</ul>';
+            container.innerHTML = html;
+        } catch (err) {
+            container.innerHTML = '<div class="topics-error">Failed to load topics.</div>';
+        }
+    }
 
     async function loadMeetings(page) {
+        const featured = document.getElementById('meetings-featured');
         const container = document.getElementById('meetings-list');
         const loadMoreBtn = document.getElementById('load-more-btn');
         const loadMoreContainer = document.getElementById('load-more-container');
 
         if (page === 1) {
+            featured.innerHTML = '';
             container.innerHTML = '<div class="loading">Loading meetings...</div>';
         } else {
             loadMoreBtn.textContent = 'Loading...';
@@ -58,10 +125,15 @@
                 return;
             }
 
-            meetings.forEach(m => {
-                const card = document.createElement('a');
-                card.href = `/meeting/${m.meeting_id}`;
+            const autoSummarize = [];
+
+            meetings.forEach((m, index) => {
+                const isFeatured = (page === 1 && index < AUTO_SUMMARIZE_COUNT);
+
+                const card = document.createElement('div');
                 card.className = 'meeting-card';
+                card.style.cursor = 'pointer';
+                card.dataset.href = `/meeting/${m.meeting_id}`;
 
                 const date = new Date(m.date + 'T00:00:00');
                 const dateStr = date.toLocaleDateString('en-CA', {
@@ -72,15 +144,25 @@
                 if (m.has_video) badges.push('<span class="badge badge-video">Video</span>');
                 if (m.has_agenda) badges.push('<span class="badge badge-agenda">Agenda</span>');
 
-                card.innerHTML = `
-                    <div class="meeting-date">${dateStr}</div>
-                    <div class="meeting-title">${m.title}</div>
-                    <div class="meeting-meta">
-                        ${m.start_time ? `<span>${m.start_time}</span>` : ''}
-                        ${badges.join(' ')}
-                    </div>
-                `;
-                container.appendChild(card);
+                card.innerHTML = buildCardHTML(m, dateStr, badges, isFeatured);
+
+                // Navigate on card click, but not when clicking topics area
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('.meeting-topics')) return;
+                    window.location.href = card.dataset.href;
+                });
+
+                if (isFeatured) {
+                    featured.appendChild(card);
+                    autoSummarize.push(m);
+                } else {
+                    container.appendChild(card);
+                }
+            });
+
+            // Auto-load topics for featured meetings (fire all in parallel)
+            autoSummarize.forEach(m => {
+                loadTopics(m.meeting_id, m.title);
             });
 
             const loaded = page * PAGE_SIZE;
@@ -97,6 +179,16 @@
             container.innerHTML = `<div class="error">Failed to load meetings. Please try again.</div>`;
         }
     }
+
+    // Delegate click on "Show Key Topics" buttons
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-topics');
+        if (!btn) return;
+        e.stopPropagation();
+        const meetingId = btn.dataset.meetingId;
+        const title = btn.dataset.meetingTitle;
+        loadTopics(meetingId, title);
+    });
 
     document.getElementById('load-more-btn').addEventListener('click', () => {
         loadMeetings(currentPage + 1);
