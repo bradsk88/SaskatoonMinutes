@@ -85,7 +85,7 @@ def extract_meeting_topics(
     return [
         {
             "title": item.get("title", ""),
-            "summary": item.get("summary", ""),
+            "summary": _plainify(item.get("title", "")),
             "section_number": item.get("section_number", ""),
         }
         for item in ordered
@@ -128,6 +128,48 @@ def _summarize_extractive(agenda_items: list[dict], meeting_title: str) -> list[
 def _is_procedural(title: str) -> bool:
     title_lower = title.lower().strip()
     return any(kw in title_lower for kw in _PROCEDURAL_KEYWORDS)
+
+
+# Patterns stripped from titles to produce plain-language summaries
+_PLAIN_REPLACEMENTS = [
+    # "Bylaw No. 9876 - The Foo Bylaw, 2025 (No. 3)" → "Foo"
+    (re.compile(r'^Bylaw\s+No\.\s*\d+\s*[-–—]\s*', re.IGNORECASE), ''),
+    (re.compile(r'\bBylaw\b,?\s*', re.IGNORECASE), ''),
+    (re.compile(r'\(No\.\s*\d+\)', re.IGNORECASE), ''),
+    # "Award of Contract - Foo (Contract No. 25-0456)" → "Foo"
+    (re.compile(r'^Award\s+of\s+Contract\s*[-–—]\s*', re.IGNORECASE), ''),
+    (re.compile(r'\(Contract\s+No\.\s*[\w-]+\)', re.IGNORECASE), ''),
+    # "Request for Expressions of Interest - Foo" → "Foo"
+    (re.compile(r'^Request\s+for\s+Expressions?\s+of\s+Interest\s*[-–—]\s*', re.IGNORECASE), ''),
+    # "Request for Proposals - Foo" → "Foo"
+    (re.compile(r'^Request\s+for\s+Proposals?\s*[-–—]\s*', re.IGNORECASE), ''),
+    # "Enquiry - Councillor Name (Date) - Topic" → "Topic"
+    (re.compile(r'^Enquiry\s*[-–—]\s*Councillor\s+\S+(?:\s+\S+)?\s*\([^)]*\)\s*[-–—]\s*', re.IGNORECASE), ''),
+    (re.compile(r'^Enquiry\s*[-–—]\s*', re.IGNORECASE), ''),
+    # "Councillor X - Notice of Motion - Topic" → "Topic"
+    (re.compile(r'^Councillor\s+\S+(?:\s+\S+)?\s*[-–—]\s*Notice\s+of\s+Motion\s*[-–—]\s*', re.IGNORECASE), ''),
+    # "Report of the City Clerk - Foo" → "Foo"
+    (re.compile(r'^Report\s+of\s+the\s+\w[\w\s]{0,30}?[-–—]\s*', re.IGNORECASE), ''),
+    # Strip leading "The " after other cleanup
+    (re.compile(r'^The\s+', re.IGNORECASE), ''),
+    # Strip year suffixes like ", 2025" or standalone " 2025" at end
+    (re.compile(r'[,\s]+\d{4}\s*$'), ''),
+    # Collapse extra whitespace / dashes
+    (re.compile(r'\s*[-–—]\s*$'), ''),
+    (re.compile(r'\s{2,}'), ' '),
+]
+
+
+def _plainify(text: str) -> str:
+    """Convert a bureaucratic agenda title into plain language."""
+    result = text.strip()
+    for pattern, repl in _PLAIN_REPLACEMENTS:
+        result = pattern.sub(repl, result)
+    result = result.strip(' -–—,.')
+    # Ensure first letter is capitalised after stripping
+    if result:
+        result = result[0].upper() + result[1:]
+    return result or text.strip()
 
 
 def _extract_summary(text: str, title: str, max_sentences: int = 2) -> str:
