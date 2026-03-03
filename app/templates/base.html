@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Saskatoon Council Summarizer{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="/" class="logo">Saskatoon Council Summarizer</a>
+            <span class="tagline">Plain-language summaries of City Council meetings</span>
+        </nav>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <p>
+            Data sourced from
+            <a href="https://pub-saskatoon.escribemeetings.com/" target="_blank" rel="noopener">
+                City of Saskatoon eSCRIBE Portal
+            </a>.
+            Summaries are AI-generated and may not be perfectly accurate.
+        </p>
+    </footer>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

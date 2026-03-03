@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Saskatoon Council Summarizer{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Saskatoon City Council Meetings</h1>
+    <p>Browse recent council meetings, read AI-generated summaries, and jump straight to the topics you care about.</p>
+</section>
+
+<section class="meetings-section">
+    <h2>Recent Meetings</h2>
+    <div id="meetings-list" class="meetings-grid">
+        <div class="loading">Loading meetings...</div>
+    </div>
+    <div id="load-more-container" class="load-more-container" style="display: none;">
+        <button id="load-more-btn" class="btn">Load More Meetings</button>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentPage = 1;
+    let totalCount = 0;
+    const PAGE_SIZE = 50;
+
+    async function loadMeetings(page) {
+        const container = document.getElementById('meetings-list');
+        const loadMoreBtn = document.getElementById('load-more-btn');
+        const loadMoreContainer = document.getElementById('load-more-container');
+
+        if (page === 1) {
+            container.innerHTML = '<div class="loading">Loading meetings...</div>';
+        } else {
+            loadMoreBtn.textContent = 'Loading...';
+            loadMoreBtn.disabled = true;
+        }
+
+        try {
+            const resp = await fetch(`/api/meetings?page=${page}`);
+            const data = await resp.json();
+
+            if (data.error) {
+                container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                return;
+            }
+
+            totalCount = data.total_count;
+            const meetings = data.meetings;
+
+            if (page === 1) {
+                container.innerHTML = '';
+            }
+
+            if (meetings.length === 0 && page === 1) {
+                container.innerHTML = '<div class="empty">No meetings found.</div>';
+                return;
+            }
+
+            meetings.forEach(m => {
+                const card = document.createElement('a');
+                card.href = `/meeting/${m.meeting_id}`;
+                card.className = 'meeting-card';
+
+                const date = new Date(m.date + 'T00:00:00');
+                const dateStr = date.toLocaleDateString('en-CA', {
+                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                });
+
+                const badges = [];
+                if (m.has_video) badges.push('<span class="badge badge-video">Video</span>');
+                if (m.has_agenda) badges.push('<span class="badge badge-agenda">Agenda</span>');
+
+                card.innerHTML = `
+                    <div class="meeting-date">${dateStr}</div>
+                    <div class="meeting-title">${m.title}</div>
+                    <div class="meeting-meta">
+                        ${m.start_time ? `<span>${m.start_time}</span>` : ''}
+                        ${badges.join(' ')}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            const loaded = page * PAGE_SIZE;
+            if (loaded < totalCount) {
+                loadMoreContainer.style.display = 'flex';
+                loadMoreBtn.textContent = `Load More (${Math.min(loaded, totalCount)} of ${totalCount})`;
+                loadMoreBtn.disabled = false;
+            } else {
+                loadMoreContainer.style.display = 'none';
+            }
+
+            currentPage = page;
+        } catch (err) {
+            container.innerHTML = `<div class="error">Failed to load meetings. Please try again.</div>`;
+        }
+    }
+
+    document.getElementById('load-more-btn').addEventListener('click', () => {
+        loadMeetings(currentPage + 1);
+    });
+
+    loadMeetings(1);
+</script>
+{% endblock %}

@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Meeting Details - Saskatoon Council Summarizer{% endblock %}
+
+{% block content %}
+<section class="meeting-detail">
+    <a href="/" class="back-link">&larr; Back to all meetings</a>
+
+    <div id="meeting-header">
+        <div class="loading">Loading meeting details...</div>
+    </div>
+
+    <div id="video-section" class="video-section" style="display: none;">
+        <h2>Meeting Video</h2>
+        <div class="video-container">
+            <iframe id="video-frame" src="" allowfullscreen></iframe>
+        </div>
+    </div>
+
+    <div class="agenda-controls">
+        <h2>Agenda Items</h2>
+        <button id="summarize-btn" class="btn btn-primary" style="display: none;">
+            Generate AI Summaries
+        </button>
+    </div>
+
+    <div id="agenda-items" class="agenda-items">
+        <div class="loading">Loading agenda...</div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const meetingId = "{{ meeting_id }}";
+    let meetingTitle = "";
+    let videoUrl = null;
+
+    async function loadMeeting() {
+        const headerEl = document.getElementById('meeting-header');
+        const agendaEl = document.getElementById('agenda-items');
+        const videoSection = document.getElementById('video-section');
+        const summarizeBtn = document.getElementById('summarize-btn');
+
+        try {
+            const resp = await fetch(`/api/meeting/${meetingId}`);
+            const data = await resp.json();
+
+            if (data.error) {
+                headerEl.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                return;
+            }
+
+            videoUrl = data.video_url;
+
+            // Show video if available
+            if (videoUrl) {
+                videoSection.style.display = 'block';
+                document.getElementById('video-frame').src = videoUrl;
+            }
+
+            // Render agenda items
+            const items = data.agenda_items;
+            if (items.length === 0) {
+                agendaEl.innerHTML = '<div class="empty">No agenda items found for this meeting. The eSCRIBE page structure may have changed.</div>';
+                headerEl.innerHTML = `
+                    <h1>City Council Meeting</h1>
+                    <p>
+                        <a href="https://pub-saskatoon.escribemeetings.com/Meeting.aspx?Id=${meetingId}&Agenda=Agenda&lang=English"
+                           target="_blank" rel="noopener">
+                            View on eSCRIBE &rarr;
+                        </a>
+                    </p>
+                `;
+                return;
+            }
+
+            headerEl.innerHTML = `
+                <h1>City Council Meeting</h1>
+                <p class="meeting-meta-detail">
+                    ${items.length} agenda items
+                    ${videoUrl ? ' &middot; Video available' : ''}
+                    &middot;
+                    <a href="https://pub-saskatoon.escribemeetings.com/Meeting.aspx?Id=${meetingId}&Agenda=Agenda&lang=English"
+                       target="_blank" rel="noopener">
+                        View on eSCRIBE &rarr;
+                    </a>
+                </p>
+            `;
+
+            summarizeBtn.style.display = 'inline-block';
+            renderAgendaItems(items);
+
+        } catch (err) {
+            headerEl.innerHTML = `<div class="error">Failed to load meeting details.</div>`;
+        }
+    }
+
+    function renderAgendaItems(items) {
+        const container = document.getElementById('agenda-items');
+        container.innerHTML = '';
+
+        items.forEach(item => {
+            const el = document.createElement('div');
+            el.className = 'agenda-item';
+
+            const hasTimestamp = item.time_start_ms !== null;
+            const timestampHtml = hasTimestamp
+                ? `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
+                     title="Jump to this item in the video">
+                     &#9654; ${item.time_start_formatted}
+                   </button>`
+                : '';
+
+            const summaryHtml = item.summary
+                ? `<p class="item-summary">${item.summary}</p>`
+                : '';
+
+            el.innerHTML = `
+                <div class="item-header">
+                    <span class="item-number">${item.section_number}</span>
+                    <span class="item-title">${item.title}</span>
+                    ${timestampHtml}
+                </div>
+                ${summaryHtml}
+            `;
+            container.appendChild(el);
+        });
+    }
+
+    function seekVideo(timeMs) {
+        const iframe = document.getElementById('video-frame');
+        if (videoUrl) {
+            // The eSCRIBE player accepts a seek parameter
+            const seekSeconds = Math.floor(timeMs / 1000);
+            iframe.src = videoUrl + `&seek=${seekSeconds}`;
+            // Scroll to video
+            document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+
+    document.getElementById('summarize-btn').addEventListener('click', async function() {
+        const btn = this;
+        btn.textContent = 'Generating summaries...';
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch(`/api/meeting/${meetingId}?summarize=true&title=${encodeURIComponent(meetingTitle)}`);
+            const data = await resp.json();
+
+            if (data.error) {
+                alert('Error generating summaries: ' + data.error);
+                btn.textContent = 'Generate AI Summaries';
+                btn.disabled = false;
+                return;
+            }
+
+            renderAgendaItems(data.agenda_items);
+            btn.textContent = 'Summaries Generated';
+        } catch (err) {
+            alert('Failed to generate summaries. Make sure ANTHROPIC_API_KEY is set.');
+            btn.textContent = 'Generate AI Summaries';
+            btn.disabled = false;
+        }
+    });
+
+    loadMeeting();
+</script>
+{% endblock %}

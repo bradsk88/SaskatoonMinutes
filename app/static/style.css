@@ -1,0 +1,409 @@
+/* === Reset & Base === */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --color-bg: #f8f9fa;
+    --color-surface: #ffffff;
+    --color-primary: #1a5632;
+    --color-primary-light: #e8f5ee;
+    --color-text: #1a1a2e;
+    --color-text-muted: #6b7280;
+    --color-border: #e5e7eb;
+    --color-accent: #2563eb;
+    --color-video: #7c3aed;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    --radius: 8px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* === Header === */
+header {
+    background: var(--color-primary);
+    color: white;
+    padding: 0 1.5rem;
+    box-shadow: var(--shadow-md);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+nav {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    height: 56px;
+}
+
+.logo {
+    color: white;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.tagline {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.85rem;
+}
+
+/* === Main content === */
+main {
+    flex: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+    width: 100%;
+}
+
+/* === Hero === */
+.hero {
+    margin-bottom: 2rem;
+}
+
+.hero h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.hero p {
+    color: var(--color-text-muted);
+    font-size: 1.05rem;
+}
+
+/* === Meetings Grid === */
+.meetings-section h2 {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+}
+
+.meetings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem;
+}
+
+.meeting-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow 0.15s, border-color 0.15s;
+    display: block;
+}
+
+.meeting-card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--color-primary);
+}
+
+.meeting-date {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.35rem;
+}
+
+.meeting-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.meeting-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+/* === Badges === */
+.badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.badge-video {
+    background: #ede9fe;
+    color: var(--color-video);
+}
+
+.badge-agenda {
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+}
+
+/* === Buttons === */
+.btn {
+    display: inline-block;
+    padding: 0.6rem 1.2rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #14472a;
+}
+
+/* === Load More === */
+.load-more-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+/* === Meeting Detail === */
+.back-link {
+    display: inline-block;
+    color: var(--color-primary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+.meeting-detail h1 {
+    font-size: 1.6rem;
+    margin-bottom: 0.5rem;
+}
+
+.meeting-meta-detail {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.meeting-meta-detail a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+.meeting-meta-detail a:hover {
+    text-decoration: underline;
+}
+
+/* === Video Section === */
+.video-section {
+    margin-bottom: 2rem;
+}
+
+.video-section h2 {
+    font-size: 1.2rem;
+    margin-bottom: 0.75rem;
+}
+
+.video-container {
+    position: relative;
+    width: 100%;
+    padding-bottom: 56.25%;
+    background: #000;
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.video-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* === Agenda Items === */
+.agenda-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.agenda-controls h2 {
+    font-size: 1.2rem;
+}
+
+.agenda-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.agenda-item {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+}
+
+.item-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.item-number {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+    min-width: 3rem;
+    flex-shrink: 0;
+    padding-top: 0.1rem;
+}
+
+.item-title {
+    flex: 1;
+    font-weight: 500;
+}
+
+.timestamp-link {
+    background: #ede9fe;
+    color: var(--color-video);
+    border: none;
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+
+.timestamp-link:hover {
+    background: #ddd6fe;
+}
+
+.item-summary {
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* === States === */
+.loading {
+    text-align: center;
+    padding: 3rem;
+    color: var(--color-text-muted);
+}
+
+.error {
+    text-align: center;
+    padding: 2rem;
+    color: #dc2626;
+    background: #fef2f2;
+    border-radius: var(--radius);
+}
+
+.empty {
+    text-align: center;
+    padding: 2rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border);
+}
+
+/* === Footer === */
+footer {
+    text-align: center;
+    padding: 1.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    border-top: 1px solid var(--color-border);
+    margin-top: 3rem;
+}
+
+footer a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
+}
+
+/* === Responsive === */
+@media (max-width: 640px) {
+    .meetings-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .hero h1 {
+        font-size: 1.4rem;
+    }
+
+    nav {
+        flex-direction: column;
+        align-items: flex-start;
+        height: auto;
+        padding: 0.75rem 0;
+        gap: 0.25rem;
+    }
+
+    .agenda-controls {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .item-header {
+        flex-wrap: wrap;
+    }
+
+    .timestamp-link {
+        margin-top: 0.5rem;
+    }
+}
