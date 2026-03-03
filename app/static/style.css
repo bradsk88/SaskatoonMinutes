@@ -262,11 +262,11 @@ main {
 
 .video-loading-bar {
     padding: 0.5rem 1rem;
-    background: var(--primary);
+    background: #2563eb;
     color: #fff;
     font-size: 0.9rem;
     text-align: center;
-    border-radius: 0 0 var(--radius) var(--radius);
+    border-radius: 0 0 var(--radius, 8px) var(--radius, 8px);
 }
 
 /* === Agenda Items === */
