@@ -95,7 +95,6 @@
             const backendLabels = {
                 'extractive': 'Local (extractive)',
                 'local': 'Local (AI model)',
-                'claude': 'Cloud (Claude API)',
             };
             document.getElementById('backend-label').textContent = `Engine: ${backendLabels[backend] || backend}`;
             document.getElementById('summarize-controls').style.display = 'flex';

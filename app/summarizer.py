@@ -6,8 +6,6 @@ Backends (set via SUMMARIZER_BACKEND env var):
     sentence scoring. No cloud calls, no ML frameworks needed.
   - "local" — Local abstractive summarization using Hugging Face Transformers.
     Requires: pip install transformers torch
-  - "claude" — Cloud summarization via the Anthropic Claude API.
-    Requires: pip install anthropic, and ANTHROPIC_API_KEY set.
 """
 
 import os
@@ -19,20 +17,15 @@ from collections import Counter
 def get_backend() -> str:
     """Determine which summarization backend to use."""
     backend = os.environ.get("SUMMARIZER_BACKEND", "").lower()
-    if backend in ("extractive", "local", "claude"):
+    if backend in ("extractive", "local"):
         return backend
-    # Auto-detect: use claude if API key is set, otherwise extractive
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return "claude"
     return "extractive"
 
 
 def summarize_agenda_items(agenda_items: list[dict], meeting_title: str) -> list[dict]:
     """Summarize agenda items using the configured backend."""
     backend = get_backend()
-    if backend == "claude":
-        return _summarize_claude(agenda_items, meeting_title)
-    elif backend == "local":
+    if backend == "local":
         return _summarize_local(agenda_items, meeting_title)
     else:
         return _summarize_extractive(agenda_items, meeting_title)
@@ -198,86 +191,3 @@ def _summarize_local(agenda_items: list[dict], meeting_title: str) -> list[dict]
 
     return agenda_items
 
-
-# ---------------------------------------------------------------------------
-# Claude API backend
-# ---------------------------------------------------------------------------
-
-def _summarize_claude(agenda_items: list[dict], meeting_title: str) -> list[dict]:
-    """Summarize items using the Anthropic Claude API."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        for item in agenda_items:
-            item["summary"] = item.get("title", "No summary available")
-        return agenda_items
-
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
-
-    items_text = _format_items_for_prompt(agenda_items)
-
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4096,
-        messages=[
-            {
-                "role": "user",
-                "content": f"""You are summarizing agenda items from a Saskatoon City Council meeting: "{meeting_title}".
-
-For each numbered agenda item below, write a 1-3 sentence plain-language summary that a regular citizen would understand. Focus on what was discussed or decided and why it matters to residents.
-
-If an item is procedural (e.g. "Call to Order", "Adjournment"), just write "Procedural" as the summary.
-
-Format your response as one summary per line, prefixed with the item number:
-ITEM 1: summary here
-ITEM 2: summary here
-...
-
-Agenda items:
-{items_text}""",
-            }
-        ],
-    )
-
-    response_text = message.content[0].text
-    summaries = _parse_summaries(response_text, len(agenda_items))
-
-    for i, item in enumerate(agenda_items):
-        item["summary"] = summaries.get(i + 1, item.get("title", ""))
-
-    return agenda_items
-
-
-def _format_items_for_prompt(items: list[dict]) -> str:
-    parts = []
-    for i, item in enumerate(items, 1):
-        number = item.get("section_number", "")
-        title = item.get("title", "Untitled")
-        content = item.get("content", "")
-        entry = f"ITEM {i} [{number}]: {title}"
-        if content:
-            truncated = content[:1500] + "..." if len(content) > 1500 else content
-            entry += f"\n  Details: {truncated}"
-        parts.append(entry)
-    return "\n\n".join(parts)
-
-
-def _parse_summaries(response: str, count: int) -> dict[int, str]:
-    """Parse the numbered summaries from Claude's response."""
-    summaries = {}
-    for line in response.strip().split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        for prefix_pattern in ["ITEM ", "Item "]:
-            if line.startswith(prefix_pattern):
-                rest = line[len(prefix_pattern):]
-                parts = rest.split(":", 1)
-                if len(parts) == 2:
-                    try:
-                        num = int(parts[0].strip().rstrip("."))
-                        summaries[num] = parts[1].strip()
-                    except ValueError:
-                        pass
-                break
-    return summaries

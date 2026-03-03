@@ -10,11 +10,11 @@ timestamps so you can watch the discussion on any topic.
 - **Browse meetings** - Paginated list of past City Council meetings
 - **Agenda items with timestamps** - See every agenda item with a clickable
   timestamp that jumps to that point in the meeting video
-- **Summaries with multiple backends** - Generate plain-language summaries
-  using local extractive summarization (no dependencies), a local AI model,
-  or the Claude API
+- **Local summarization** - Generate plain-language summaries using local
+  extractive summarization (no dependencies) or a local AI model
 - **Embedded video** - Watch the meeting video directly in the app
 - **Mobile-friendly** - Responsive design that works on all devices
+- **No cloud dependencies** - Everything runs locally
 
 ## Quick Start
 
@@ -42,7 +42,6 @@ Set `SUMMARIZER_BACKEND` in your `.env` file (or as an environment variable):
 |---|---|---|---|
 | **Extractive** (default) | `extractive` | None | Zero-dependency sentence scoring. Picks the most relevant sentences from each agenda item. Fast, runs anywhere. |
 | **Local AI model** | `local` | `transformers`, `torch` | Abstractive summarization using a local Hugging Face model (distilbart by default). Better quality, but needs ~1.5GB of model downloads on first run. |
-| **Claude API** | `claude` | `anthropic` | Best quality summaries via the Anthropic API. Requires an API key. |
 
 ### Using the local AI model
 
@@ -54,21 +53,11 @@ python run.py
 
 You can change the model with `SUMMARIZER_MODEL` (default: `sshleifer/distilbart-cnn-12-6`).
 
-### Using Claude API
-
-```bash
-pip install anthropic
-echo 'SUMMARIZER_BACKEND=claude' >> .env
-echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
-python run.py
-```
-
 ## Configuration
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `SUMMARIZER_BACKEND` | No | `extractive` | Summarization engine: `extractive`, `local`, or `claude`. Auto-detects `claude` if `ANTHROPIC_API_KEY` is set. |
-| `ANTHROPIC_API_KEY` | Only for `claude` | — | Anthropic API key |
+| `SUMMARIZER_BACKEND` | No | `extractive` | Summarization engine: `extractive` or `local` |
 | `SUMMARIZER_MODEL` | No | `sshleifer/distilbart-cnn-12-6` | Hugging Face model for the `local` backend |
 | `FLASK_SECRET_KEY` | No | `dev-key-change-me` | Secret key for Flask sessions |
 
@@ -78,11 +67,10 @@ python run.py
    platform's internal API endpoints. Extracts agenda items and video
    bookmark timestamps from the meeting pages.
 
-2. **Summarizer** (`app/summarizer.py`) - Three backends:
+2. **Summarizer** (`app/summarizer.py`) - Two backends:
    - *Extractive* — scores sentences by word frequency, position, and title
      overlap, then selects the top sentences. No external dependencies.
    - *Local* — runs a Hugging Face summarization pipeline locally.
-   - *Claude* — sends items to the Anthropic API for high-quality summaries.
 
 3. **Web app** (`app/main.py`) - Flask application serving the UI and
    API endpoints. The frontend fetches data asynchronously and shows which
