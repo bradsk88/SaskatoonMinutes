@@ -1,22 +1,212 @@
 """
-Summarizer module using the Anthropic Claude API.
+Summarizer module supporting multiple backends.
 
-Takes agenda items from a council meeting and produces concise,
-plain-language summaries for each topic.
+Backends (set via SUMMARIZER_BACKEND env var):
+  - "extractive" (default) — Zero-dependency extractive summarization using
+    sentence scoring. No cloud calls, no ML frameworks needed.
+  - "local" — Local abstractive summarization using Hugging Face Transformers.
+    Requires: pip install transformers torch
+  - "claude" — Cloud summarization via the Anthropic Claude API.
+    Requires: pip install anthropic, and ANTHROPIC_API_KEY set.
 """
 
 import os
+import re
+import math
+from collections import Counter
+
+
+def get_backend() -> str:
+    """Determine which summarization backend to use."""
+    backend = os.environ.get("SUMMARIZER_BACKEND", "").lower()
+    if backend in ("extractive", "local", "claude"):
+        return backend
+    # Auto-detect: use claude if API key is set, otherwise extractive
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "claude"
+    return "extractive"
 
 
 def summarize_agenda_items(agenda_items: list[dict], meeting_title: str) -> list[dict]:
-    """Summarize a list of agenda items using Claude.
+    """Summarize agenda items using the configured backend."""
+    backend = get_backend()
+    if backend == "claude":
+        return _summarize_claude(agenda_items, meeting_title)
+    elif backend == "local":
+        return _summarize_local(agenda_items, meeting_title)
+    else:
+        return _summarize_extractive(agenda_items, meeting_title)
 
-    Each agenda item dict should have: title, section_number, content.
-    Returns the same list with a 'summary' field added to each item.
+
+# ---------------------------------------------------------------------------
+# Extractive backend (zero dependencies)
+# ---------------------------------------------------------------------------
+
+# Common procedural agenda item keywords
+_PROCEDURAL_KEYWORDS = {
+    "call to order", "adjournment", "roll call", "adoption of agenda",
+    "confirmation of minutes", "declarations of conflict",
+    "communications to council", "o canada",
+}
+
+
+def _summarize_extractive(agenda_items: list[dict], meeting_title: str) -> list[dict]:
+    """Summarize items using extractive sentence scoring.
+
+    For each item, scores sentences by word frequency, position, and
+    overlap with the title, then picks the top sentences as a summary.
     """
+    for item in agenda_items:
+        title = item.get("title", "")
+        content = item.get("content", "")
+
+        # Check if procedural
+        if _is_procedural(title):
+            item["summary"] = "Procedural item."
+            continue
+
+        text = f"{title}. {content}".strip() if content else title
+        item["summary"] = _extract_summary(text, title, max_sentences=2)
+
+    return agenda_items
+
+
+def _is_procedural(title: str) -> bool:
+    title_lower = title.lower().strip()
+    return any(kw in title_lower for kw in _PROCEDURAL_KEYWORDS)
+
+
+def _extract_summary(text: str, title: str, max_sentences: int = 2) -> str:
+    """Score and select the best sentences from the text."""
+    sentences = _split_sentences(text)
+    if len(sentences) <= max_sentences:
+        return " ".join(sentences)
+
+    # Build word frequency from the full text
+    words = _tokenize(text)
+    word_freq = Counter(words)
+    # Normalize by max frequency
+    max_freq = max(word_freq.values()) if word_freq else 1
+
+    title_words = set(_tokenize(title))
+
+    scored = []
+    for i, sentence in enumerate(sentences):
+        sent_words = _tokenize(sentence)
+        if not sent_words:
+            continue
+
+        # Frequency score: average normalized frequency of words in sentence
+        freq_score = sum(word_freq[w] / max_freq for w in sent_words) / len(sent_words)
+
+        # Position score: earlier sentences get higher scores
+        position_score = 1.0 / (1.0 + math.log1p(i))
+
+        # Title overlap: fraction of title words present in sentence
+        if title_words:
+            overlap_score = len(title_words & set(sent_words)) / len(title_words)
+        else:
+            overlap_score = 0.0
+
+        # Length penalty: prefer sentences that aren't too short or too long
+        length = len(sent_words)
+        length_score = 1.0 if 8 <= length <= 30 else 0.5
+
+        score = (freq_score * 0.3) + (position_score * 0.3) + (overlap_score * 0.25) + (length_score * 0.15)
+        scored.append((score, i, sentence))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    # Pick top sentences, but return them in original order
+    selected = sorted(scored[:max_sentences], key=lambda x: x[1])
+    return " ".join(s[2] for s in selected)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentences using basic rules."""
+    # Split on period, exclamation, question mark followed by space or end
+    parts = re.split(r'(?<=[.!?])\s+', text.strip())
+    return [s.strip() for s in parts if s.strip() and len(s.strip()) > 10]
+
+
+def _tokenize(text: str) -> list[str]:
+    """Tokenize text into lowercase words, filtering stop words."""
+    words = re.findall(r'[a-z]+', text.lower())
+    return [w for w in words if w not in _STOP_WORDS and len(w) > 2]
+
+
+_STOP_WORDS = {
+    "the", "and", "for", "that", "this", "with", "are", "was", "were",
+    "been", "have", "has", "had", "not", "but", "from", "they", "which",
+    "their", "will", "would", "could", "should", "can", "may", "its",
+    "than", "other", "into", "all", "also", "any", "each", "our",
+    "about", "more", "some", "such", "when", "what", "there", "these",
+    "those", "then", "how", "who", "where", "being", "does", "did",
+    "very", "just", "over", "after", "before",
+}
+
+
+# ---------------------------------------------------------------------------
+# Local Transformers backend
+# ---------------------------------------------------------------------------
+
+_local_pipeline = None
+
+
+def _get_local_pipeline():
+    global _local_pipeline
+    if _local_pipeline is None:
+        from transformers import pipeline
+        model_name = os.environ.get(
+            "SUMMARIZER_MODEL", "sshleifer/distilbart-cnn-12-6"
+        )
+        _local_pipeline = pipeline("summarization", model=model_name)
+    return _local_pipeline
+
+
+def _summarize_local(agenda_items: list[dict], meeting_title: str) -> list[dict]:
+    """Summarize items using a local Hugging Face Transformers model."""
+    pipe = _get_local_pipeline()
+
+    for item in agenda_items:
+        title = item.get("title", "")
+        content = item.get("content", "")
+
+        if _is_procedural(title):
+            item["summary"] = "Procedural item."
+            continue
+
+        text = f"{title}. {content}".strip() if content else title
+
+        # Model needs reasonable input length
+        if len(text.split()) < 15:
+            item["summary"] = text
+            continue
+
+        # Truncate to model max input (~1024 tokens for distilbart)
+        truncated = " ".join(text.split()[:900])
+
+        try:
+            result = pipe(
+                truncated,
+                max_length=80,
+                min_length=20,
+                do_sample=False,
+            )
+            item["summary"] = result[0]["summary_text"]
+        except Exception:
+            item["summary"] = title
+
+    return agenda_items
+
+
+# ---------------------------------------------------------------------------
+# Claude API backend
+# ---------------------------------------------------------------------------
+
+def _summarize_claude(agenda_items: list[dict], meeting_title: str) -> list[dict]:
+    """Summarize items using the Anthropic Claude API."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        # Return items without summaries if no API key
         for item in agenda_items:
             item["summary"] = item.get("title", "No summary available")
         return agenda_items
@@ -24,7 +214,6 @@ def summarize_agenda_items(agenda_items: list[dict], meeting_title: str) -> list
     import anthropic
     client = anthropic.Anthropic(api_key=api_key)
 
-    # Build a single prompt with all agenda items for efficiency
     items_text = _format_items_for_prompt(agenda_items)
 
     message = client.messages.create(
@@ -67,7 +256,6 @@ def _format_items_for_prompt(items: list[dict]) -> str:
         content = item.get("content", "")
         entry = f"ITEM {i} [{number}]: {title}"
         if content:
-            # Truncate very long content
             truncated = content[:1500] + "..." if len(content) > 1500 else content
             entry += f"\n  Details: {truncated}"
         parts.append(entry)
@@ -81,11 +269,9 @@ def _parse_summaries(response: str, count: int) -> dict[int, str]:
         line = line.strip()
         if not line:
             continue
-        # Match patterns like "ITEM 1:" or "ITEM 1."
         for prefix_pattern in ["ITEM ", "Item "]:
             if line.startswith(prefix_pattern):
                 rest = line[len(prefix_pattern):]
-                # Extract number and summary
                 parts = rest.split(":", 1)
                 if len(parts) == 2:
                     try:

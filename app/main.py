@@ -9,7 +9,7 @@ import os
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 from app.scraper import fetch_past_meetings, fetch_meeting_detail
-from app.summarizer import summarize_agenda_items
+from app.summarizer import summarize_agenda_items, get_backend
 
 load_dotenv()
 
@@ -51,7 +51,9 @@ def api_meeting_detail(meeting_id: str):
         detail = fetch_meeting_detail(meeting_id)
         items = [item.to_dict() for item in detail["agenda_items"]]
 
-        # Summarize if requested and API key is available
+        backend = get_backend()
+
+        # Summarize if requested
         if request.args.get("summarize", "false").lower() == "true":
             title = request.args.get("title", "City Council Meeting")
             items = summarize_agenda_items(items, title)
@@ -59,6 +61,7 @@ def api_meeting_detail(meeting_id: str):
         return jsonify({
             "agenda_items": items,
             "video_url": detail["video_url"],
+            "summarizer_backend": backend,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

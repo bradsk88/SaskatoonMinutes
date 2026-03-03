@@ -19,9 +19,12 @@
 
     <div class="agenda-controls">
         <h2>Agenda Items</h2>
-        <button id="summarize-btn" class="btn btn-primary" style="display: none;">
-            Generate AI Summaries
-        </button>
+        <div class="summarize-controls" style="display: none;" id="summarize-controls">
+            <span id="backend-label" class="backend-label"></span>
+            <button id="summarize-btn" class="btn btn-primary">
+                Generate Summaries
+            </button>
+        </div>
     </div>
 
     <div id="agenda-items" class="agenda-items">
@@ -88,7 +91,14 @@
                 </p>
             `;
 
-            summarizeBtn.style.display = 'inline-block';
+            const backend = data.summarizer_backend || 'extractive';
+            const backendLabels = {
+                'extractive': 'Local (extractive)',
+                'local': 'Local (AI model)',
+                'claude': 'Cloud (Claude API)',
+            };
+            document.getElementById('backend-label').textContent = `Engine: ${backendLabels[backend] || backend}`;
+            document.getElementById('summarize-controls').style.display = 'flex';
             renderAgendaItems(items);
 
         } catch (err) {
@@ -150,7 +160,7 @@
 
             if (data.error) {
                 alert('Error generating summaries: ' + data.error);
-                btn.textContent = 'Generate AI Summaries';
+                btn.textContent = 'Generate Summaries';
                 btn.disabled = false;
                 return;
             }
@@ -158,8 +168,8 @@
             renderAgendaItems(data.agenda_items);
             btn.textContent = 'Summaries Generated';
         } catch (err) {
-            alert('Failed to generate summaries. Make sure ANTHROPIC_API_KEY is set.');
-            btn.textContent = 'Generate AI Summaries';
+            alert('Failed to generate summaries.');
+            btn.textContent = 'Generate Summaries';
             btn.disabled = false;
         }
     });
