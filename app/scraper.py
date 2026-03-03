@@ -7,7 +7,6 @@ pub-saskatoon.escribemeetings.com.
 
 import re
 import json
-import certifi
 import requests
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -83,7 +82,7 @@ def fetch_past_meetings(page: int = 1) -> tuple[list[Meeting], int]:
         "type": MEETING_TYPE,
         "pageNumber": page,
     }
-    resp = requests.post(url, json=payload, headers=_AJAX_HEADERS, timeout=30, verify=certifi.where())
+    resp = requests.post(url, json=payload, headers=_AJAX_HEADERS, timeout=30, verify=True)
     resp.raise_for_status()
 
     data = resp.json().get("d", {})
@@ -116,7 +115,7 @@ def fetch_meeting_detail(meeting_id: str) -> dict:
     Returns a dict with 'agenda_items' and 'video_url'.
     """
     url = f"{BASE_URL}/Meeting.aspx?Id={meeting_id}&Agenda=Agenda&lang=English"
-    resp = requests.get(url, headers=_PAGE_HEADERS, timeout=30, verify=certifi.where())
+    resp = requests.get(url, headers=_PAGE_HEADERS, timeout=30, verify=True)
     resp.raise_for_status()
     html = resp.text
 
