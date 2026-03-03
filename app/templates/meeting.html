@@ -148,7 +148,13 @@
             bar.style.display = 'block';
             iframe.src = videoUrl + `&initial_seek=${seekSeconds}&auto_play=true`;
             iframe.onload = function() {
-                setTimeout(function() { bar.style.display = 'none'; }, 4000);
+                setTimeout(function() {
+                    bar.style.opacity = '0';
+                    setTimeout(function() {
+                        bar.style.display = 'none';
+                        bar.style.opacity = '1';
+                    }, 5000);
+                }, 4000);
             };
             document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
         }
