@@ -147,7 +147,11 @@
             const seekSeconds = Math.floor(timeMs / 1000);
             overlay.style.display = 'flex';
             iframe.src = videoUrl + `&initial_seek=${seekSeconds}&auto_play=true`;
-            iframe.onload = function() { overlay.style.display = 'none'; };
+            // iframe.onload fires when the page loads, but the video
+            // still needs seconds to buffer. Wait a bit after that.
+            iframe.onload = function() {
+                setTimeout(function() { overlay.style.display = 'none'; }, 4000);
+            };
             document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
         }
     }
