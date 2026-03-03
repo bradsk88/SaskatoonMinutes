@@ -7,9 +7,15 @@ agenda items, and jump to specific timestamps in the meeting video.
 
 import os
 from flask import Flask, render_template, jsonify, request
+from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
 from app.scraper import fetch_past_meetings, fetch_meeting_detail
 from app.summarizer import summarize_agenda_items, get_backend
+
+_CONNECTION_ERROR_MSG = (
+    "Could not connect to the City of Saskatoon eSCRIBE server. "
+    "Check your internet connection and try again."
+)
 
 load_dotenv()
 
@@ -34,6 +40,8 @@ def api_meetings():
             "total_count": total_count,
             "page": page,
         })
+    except (ConnectionError, SSLError):
+        return jsonify({"error": _CONNECTION_ERROR_MSG}), 502
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
