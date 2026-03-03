@@ -141,7 +141,7 @@
         const iframe = document.getElementById('video-frame');
         if (videoUrl) {
             const seekSeconds = Math.floor(timeMs / 1000);
-            iframe.src = videoUrl + `&initial_seek=${seekSeconds}`;
+            iframe.src = videoUrl + `&initial_seek=${seekSeconds}&auto_play=true`;
             document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
         }
     }
