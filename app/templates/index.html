@@ -24,6 +24,7 @@
     let totalCount = 0;
     const PAGE_SIZE = 50;
     const AUTO_SUMMARIZE_COUNT = 3;
+    const ESCRIBEMEETINGS_BASE = 'https://pub-saskatoon.escribemeetings.com';
 
     function skeletonCard(withTopics) {
         const topicLines = withTopics
@@ -60,8 +61,8 @@
 
     function outcomeClass(topic) {
         if (topic.is_contested) return 'outcome-contested';
-        if (topic.outcome.startsWith('Defeated')) return 'outcome-defeated';
-        if (topic.outcome.startsWith('Approved')) return 'outcome-approved';
+        if (topic.outcome && topic.outcome.startsWith('Defeated')) return 'outcome-defeated';
+        if (topic.outcome && topic.outcome.startsWith('Approved')) return 'outcome-approved';
         return 'outcome-neutral';
     }
 
@@ -109,9 +110,30 @@
         `;
     }
 
+    function renderTopicsInContainer(meetingId, topics) {
+        const container = document.getElementById(`topics-${meetingId}`);
+        if (!container) return;
+
+        if (!topics || topics.length === 0) {
+            container.innerHTML = '<div class="topics-empty">No substantive topics found.</div>';
+            return;
+        }
+        container.innerHTML = renderTopicsTable(topics);
+    }
+
     async function loadTopics(meetingId, title) {
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
+
+        // Static mode: use preloaded topics if available
+        const preloadedEl = document.getElementById('preloaded-topics');
+        if (preloadedEl) {
+            const allTopics = JSON.parse(preloadedEl.textContent);
+            renderTopicsInContainer(meetingId, allTopics[meetingId]);
+            return;
+        }
+
+        // Dynamic mode: fetch from API
         container.innerHTML = topicsSkeleton();
 
         try {
@@ -123,15 +145,48 @@
                 return;
             }
 
-            if (!data.topics || data.topics.length === 0) {
-                container.innerHTML = '<div class="topics-empty">No substantive topics found.</div>';
-                return;
-            }
-
-            container.innerHTML = renderTopicsTable(data.topics);
+            renderTopicsInContainer(meetingId, data.topics);
         } catch (err) {
             container.innerHTML = '<div class="topics-error">Failed to load topics.</div>';
         }
+    }
+
+    function renderMeetingCards(meetings, targetFeatured, targetGrid, isStatic) {
+        meetings.forEach((m, index) => {
+            const isFeatured = (index < AUTO_SUMMARIZE_COUNT);
+
+            const card = document.createElement('div');
+            card.className = 'meeting-card';
+            card.style.cursor = 'pointer';
+
+            if (isStatic) {
+                card.dataset.href = `${ESCRIBEMEETINGS_BASE}/Meeting.aspx?Id=${m.meeting_id}&Agenda=Agenda&lang=English`;
+            } else {
+                card.dataset.href = `/meeting/${m.meeting_id}`;
+            }
+
+            const date = new Date(m.date + 'T00:00:00');
+            const dateStr = date.toLocaleDateString('en-CA', {
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            });
+
+            const badges = [];
+            if (m.has_video) badges.push('<span class="badge badge-video">Video</span>');
+            if (m.has_agenda) badges.push('<span class="badge badge-agenda">Agenda</span>');
+
+            card.innerHTML = buildCardHTML(m, dateStr, badges, isFeatured);
+
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.meeting-topics')) return;
+                window.location.href = card.dataset.href;
+            });
+
+            if (isFeatured) {
+                targetFeatured.appendChild(card);
+            } else {
+                targetGrid.appendChild(card);
+            }
+        });
     }
 
     async function loadMeetings(page) {
@@ -140,6 +195,32 @@
         const loadMoreBtn = document.getElementById('load-more-btn');
         const loadMoreContainer = document.getElementById('load-more-container');
 
+        // Static mode: use preloaded data if available
+        const preloadedEl = document.getElementById('preloaded-meetings');
+        if (preloadedEl && page === 1) {
+            const data = JSON.parse(preloadedEl.textContent);
+            totalCount = data.total_count;
+            const meetings = data.meetings;
+
+            featured.innerHTML = '';
+            container.innerHTML = '';
+
+            if (meetings.length === 0) {
+                container.innerHTML = '<div class="empty">No meetings found.</div>';
+                return;
+            }
+
+            renderMeetingCards(meetings, featured, container, true);
+
+            // Load topics for ALL meetings from preloaded data
+            meetings.forEach(m => loadTopics(m.meeting_id, m.title));
+
+            loadMoreContainer.style.display = 'none';
+            currentPage = 1;
+            return;
+        }
+
+        // Dynamic mode: fetch from Flask API
         if (page === 1) {
             featured.innerHTML = skeletonCard(true) + skeletonCard(true) + skeletonCard(true);
             container.innerHTML = skeletonCard(false).repeat(6);
@@ -192,7 +273,6 @@
 
                 card.innerHTML = buildCardHTML(m, dateStr, badges, isFeatured);
 
-                // Navigate on card click, but not when clicking topics area
                 card.addEventListener('click', (e) => {
                     if (e.target.closest('.meeting-topics')) return;
                     window.location.href = card.dataset.href;

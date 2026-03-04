@@ -8,6 +8,7 @@ Backends (set via SUMMARIZER_BACKEND env var):
     Requires: pip install transformers torch
 """
 
+import html as html_mod
 import os
 import re
 import math
@@ -237,7 +238,7 @@ _PLAIN_REPLACEMENTS = [
 
 def _plainify(text: str) -> str:
     """Convert a bureaucratic agenda title into plain language."""
-    result = text.strip()
+    result = html_mod.unescape(text.strip())
     for pattern, repl in _PLAIN_REPLACEMENTS:
         result = pattern.sub(repl, result)
     result = result.strip(' -–—,.')
@@ -368,4 +369,3 @@ def _summarize_local(agenda_items: list[dict], meeting_title: str) -> list[dict]
             item["summary"] = title
 
     return agenda_items
-
