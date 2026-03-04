@@ -297,27 +297,32 @@
     });
 
     function setupStickyVideo(videoSection) {
-        // Sentinel sits just after the video section; when it scrolls out of
-        // view the video becomes a sticky mini-player.
-        const sentinel = document.createElement('div');
-        sentinel.className = 'video-spacer';
-        sentinel.style.height = '0px';
-        videoSection.parentNode.insertBefore(sentinel, videoSection.nextSibling);
+        const sectionHeight = videoSection.offsetHeight;
 
+        // Spacer preserves layout space when the video goes fixed.
+        // It lives right after the video and is always present but
+        // hidden until we need it.
+        const spacer = document.createElement('div');
+        spacer.className = 'video-spacer';
+        spacer.style.height = sectionHeight + 'px';
+        spacer.style.display = 'none';
+        videoSection.parentNode.insertBefore(spacer, videoSection.nextSibling);
+
+        // Zero-height sentinel sits right before the video section.
+        // It never changes size so it can't cause a feedback loop.
+        const sentinel = document.createElement('div');
+        videoSection.parentNode.insertBefore(sentinel, videoSection);
+
+        // When the sentinel (top of video area) scrolls out above
+        // the viewport, stick the video. When it reappears, unstick.
         const observer = new IntersectionObserver(function(entries) {
             const entry = entries[0];
-            if (!entry.isIntersecting) {
-                // Sentinel scrolled above viewport → stick
-                if (!videoSection.classList.contains('sticky')) {
-                    sentinel.style.height = videoSection.offsetHeight + 'px';
-                    videoSection.classList.add('sticky');
-                }
-            } else {
-                // Sentinel visible again → unstick
-                if (videoSection.classList.contains('sticky')) {
-                    videoSection.classList.remove('sticky');
-                    sentinel.style.height = '0px';
-                }
+            if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
+                spacer.style.display = 'block';
+                videoSection.classList.add('sticky');
+            } else if (entry.isIntersecting) {
+                videoSection.classList.remove('sticky');
+                spacer.style.display = 'none';
             }
         }, { threshold: 0 });
 
