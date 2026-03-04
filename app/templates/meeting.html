@@ -330,6 +330,11 @@
     function scrollToAgendaItem(timeMs) {
         const el = document.querySelector(`.agenda-item[data-time-ms="${timeMs}"]`);
         if (!el) return;
+        // Expand clamped transcript so the user can read it
+        const transcript = el.querySelector('.transcript-clamped');
+        if (transcript) {
+            transcript.classList.remove('transcript-clamped');
+        }
         // Use a small delay so the sticky player has time to activate
         setTimeout(function() {
             const rect = el.getBoundingClientRect();
