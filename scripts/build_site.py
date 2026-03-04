@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build a static version of the Saskatoon Council Summarizer for GitHub Pages.
+Build a static version of the YXEMinutes for GitHub Pages.
 
 Fetches meeting data from eSCRIBE (reusing app.scraper), generates topic
 summaries (reusing app.summarizer), and produces a self-contained static
@@ -103,7 +103,7 @@ def render_index_html(meetings_data, total_count, topics_data):
         index = f.read()
 
     # --- Extract blocks from index.html ---
-    title_block = _extract_block("title", index) or "Saskatoon Council Summarizer"
+    title_block = _extract_block("title", index) or "YXEMinutes"
     content_block = _extract_block("content", index)
 
     # Scripts block: need to be more careful since there may be multiple endblocks
@@ -130,7 +130,7 @@ def render_index_html(meetings_data, total_count, topics_data):
     # --- Assemble final HTML from base.html ---
     output = base
     output = output.replace(
-        "{% block title %}Saskatoon Council Summarizer{% endblock %}",
+        "{% block title %}YXEMinutes{% endblock %}",
         title_block,
     )
     output = output.replace(
@@ -158,7 +158,7 @@ def render_meeting_html(meeting_id, detail_data):
 
     title_block = (
         _extract_block("title", meeting)
-        or "Meeting Details - Saskatoon Council Summarizer"
+        or "Meeting Details - YXEMinutes"
     )
     content_block = _extract_block("content", meeting)
 
@@ -188,7 +188,7 @@ def render_meeting_html(meeting_id, detail_data):
     # Assemble from base.html
     output = base
     output = output.replace(
-        "{% block title %}Saskatoon Council Summarizer{% endblock %}",
+        "{% block title %}YXEMinutes{% endblock %}",
         title_block,
     )
     output = output.replace(
