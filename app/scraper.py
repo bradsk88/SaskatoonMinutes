@@ -132,6 +132,7 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
 
     bookmarks = _extract_bookmarks(html)
     agenda_items = _extract_agenda_items(html, bookmarks)
+    _propagate_timestamps(agenda_items)
     video_url = _build_video_url(meeting_id) if bookmarks else None
 
     if include_votes:
@@ -255,6 +256,36 @@ def _extract_agenda_items(html: str, bookmarks: dict) -> list[AgendaItem]:
         items.append(item)
 
     return items
+
+
+def _propagate_timestamps(items: list[AgendaItem]) -> None:
+    """Inherit timestamps from parent sections for items without bookmarks.
+
+    Consent-agenda sub-items (e.g. 8.2.1, 8.5.3) are approved in a single
+    motion under the parent section (e.g. 8.) and only the parent has a video
+    bookmark.  This propagates the parent's timestamp to those children so
+    they sort correctly in video order.
+    """
+    # Build a lookup from section_number to timestamp
+    ts_by_section: dict[str, tuple[int, int | None]] = {}
+    for item in items:
+        if item.time_start_ms is not None:
+            ts_by_section[item.section_number] = (
+                item.time_start_ms,
+                item.time_end_ms,
+            )
+
+    for item in items:
+        if item.time_start_ms is not None:
+            continue
+        # Walk up the section hierarchy: "8.2.1" -> "8.2" -> "8."
+        parts = item.section_number.rstrip(".").split(".")
+        for depth in range(len(parts) - 1, 0, -1):
+            ancestor = ".".join(parts[:depth]) + "."
+            if ancestor in ts_by_section:
+                item.time_start_ms = ts_by_section[ancestor][0]
+                item.time_end_ms = ts_by_section[ancestor][1]
+                break
 
 
 def _clean_html(text: str) -> str:
