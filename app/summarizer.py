@@ -279,6 +279,12 @@ _TOPIC_CATEGORIES = {
         r"affordable housing", r"housing\b", r"residential",
         r"infill\b", r"densif", r"rental",
     ],
+    "Zoning & Dev": [
+        r"rezon", r"zoning\b", r"land\s+use", r"corridor\s+plan",
+        r"redevelop", r"subdivision", r"building\s+standard",
+        r"development\s+review", r"reserve\s+redesignation",
+        r"land\s+development", r"neighbourhood\s+plan",
+    ],
     "Transit": [
         r"\btransit\b", r"bus rapid", r"\bBRT\b", r"grade.separation",
         r"rail\s+(grade|cross)", r"public\s+transport",
@@ -298,9 +304,9 @@ _TOPIC_CATEGORIES = {
         r"merchant", r"commercial\s+district", r"storefront",
     ],
     "Infrastructure": [
-        r"water\s+main", r"sewer", r"storm\s*water", r"utilit",
-        r"landfill", r"waste\s+manage", r"capital\s+project",
-        r"bridge\b", r"road\s+construct",
+        r"water\s+main", r"waterworks", r"sewer", r"storm\s*water",
+        r"utilit", r"landfill", r"waste\b", r"capital\s+project",
+        r"bridge\b", r"road\s+construct", r"pipeline\b",
     ],
     "Public Safety": [
         r"police", r"fire\s+(?:dep|serv|stat)", r"\bSPS\b",
@@ -308,7 +314,7 @@ _TOPIC_CATEGORIES = {
     ],
     "Recreation": [
         r"ice\s+sheet", r"arena\b", r"leisure", r"recreation",
-        r"pool\b", r"sport\s+facil", r"playground",
+        r"pool\b", r"sport\s+facil", r"playground", r"golf\s+course",
     ],
     "Property Tax": [
         r"property\s+tax", r"tax\s+lien", r"mill\s+rate",
@@ -321,7 +327,7 @@ _TOPIC_CATEGORIES = {
     "Environment": [
         r"climate\b", r"emission", r"sustainab", r"solar\b",
         r"energy\s+effic", r"electric\s+vehicle", r"\bEV\b",
-        r"greenhouse\s+gas", r"carbon\b",
+        r"greenhouse\s+gas", r"carbon\b", r"environmental",
     ],
 }
 

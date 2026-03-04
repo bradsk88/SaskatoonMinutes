@@ -655,6 +655,11 @@ main {
     color: #5b21b6;
 }
 
+.badge-cat-zoning-dev {
+    background: #fdf4ff;
+    color: #86198f;
+}
+
 .badge-cat-property-tax {
     background: #fce7f3;
     color: #9d174d;
@@ -907,6 +912,11 @@ footer a:hover {
     .badge-cat-recreation {
         background: #3b1f5e;
         color: #c4b5fd;
+    }
+
+    .badge-cat-zoning-dev {
+        background: #701a75;
+        color: #f0abfc;
     }
 
     .badge-cat-property-tax {
