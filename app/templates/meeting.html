@@ -158,11 +158,37 @@
         return `<div class="transcript-content">${parts}</div>`;
     }
 
+    function computeOutOfOrder(items) {
+        // Build video-order ranks for items that have timestamps
+        const withTs = items
+            .map((item, i) => ({ agendaIdx: i, ts: item.time_start_ms }))
+            .filter(x => x.ts !== null);
+        if (withTs.length < 2) return new Map();
+
+        const sorted = [...withTs].sort((a, b) => a.ts - b.ts);
+        const videoRank = new Map();
+        sorted.forEach((x, rank) => videoRank.set(x.agendaIdx, rank));
+        const agendaRank = new Map();
+        withTs.forEach((x, rank) => agendaRank.set(x.agendaIdx, rank));
+
+        const result = new Map();
+        for (const x of withTs) {
+            const diff = agendaRank.get(x.agendaIdx) - videoRank.get(x.agendaIdx);
+            // Only flag if shifted by 3+ positions
+            if (Math.abs(diff) >= 3) {
+                result.set(x.agendaIdx, diff > 0 ? 'earlier' : 'later');
+            }
+        }
+        return result;
+    }
+
     function renderAgendaItems(items) {
         const container = document.getElementById('agenda-items');
         container.innerHTML = '';
 
-        items.forEach(item => {
+        const outOfOrder = computeOutOfOrder(items);
+
+        items.forEach((item, idx) => {
             const el = document.createElement('div');
             el.className = 'agenda-item';
 
@@ -172,6 +198,11 @@
                      title="Jump to this item in the video">
                      &#9654; ${item.time_start_formatted}
                    </button>`
+                : '';
+
+            const ooo = outOfOrder.get(idx);
+            const oooBadgeHtml = ooo
+                ? `<span class="badge badge-reorder">Discussed ${ooo} in video</span>`
                 : '';
 
             const summaryHtml = item.summary
@@ -184,6 +215,7 @@
                 <div class="item-header">
                     <span class="item-number">${item.section_number}</span>
                     <span class="item-title">${item.title}</span>
+                    ${oooBadgeHtml}
                     ${timestampHtml}
                 </div>
                 ${summaryHtml}

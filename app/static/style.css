@@ -166,6 +166,17 @@ main {
     color: var(--color-primary);
 }
 
+.badge-reorder {
+    background: #fff7ed;
+    color: #c2410c;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 /* === Buttons === */
 .btn {
     display: inline-block;
@@ -733,6 +744,11 @@ footer a:hover {
     .badge-video {
         background: #2e2459;
         color: #a78bfa;
+    }
+
+    .badge-reorder {
+        background: #431407;
+        color: #fdba74;
     }
 
     .badge-outcome-approved {
