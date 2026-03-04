@@ -352,6 +352,8 @@
             return;
         }
 
+        // Ignore clicks on links/buttons inside the transcript
+        if (e.target.closest('a, button')) return;
         const el = e.target.closest('.transcript-clampable');
         if (!el) return;
         el.classList.toggle('transcript-clamped');
