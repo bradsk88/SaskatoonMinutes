@@ -836,7 +836,7 @@ main {
     border-radius: 6px;
     font-size: 0.78rem;
     font-weight: 400;
-    max-width: 400px;
+    max-width: min(400px, 90vw);
     width: max-content;
     white-space: normal;
     z-index: 10;
