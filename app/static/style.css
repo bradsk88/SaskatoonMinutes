@@ -611,6 +611,11 @@ main {
     color: #9d174d;
 }
 
+.badge-category {
+    background: #e0f2fe;
+    color: #0c4a6e;
+}
+
 /* Major decision row highlight */
 .topic-major {
     background: #fffbeb;
@@ -807,6 +812,11 @@ footer a:hover {
     .badge-location {
         background: #5b1a3a;
         color: #f9a8d4;
+    }
+
+    .badge-category {
+        background: #164e63;
+        color: #67e8f9;
     }
 
     /* Major decision row */

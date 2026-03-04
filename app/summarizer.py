@@ -113,10 +113,14 @@ def _format_topic(item: dict) -> dict:
 
 
 def _extract_badges(item: dict) -> list[dict]:
-    """Extract contextual badges (money, people, locations) from an agenda item."""
+    """Extract contextual badges (category, money, people, locations) from an agenda item."""
     badges = []
     title = item.get("title", "")
     rec = item.get("recommendation", "")
+
+    # Category badges first (most prominent)
+    for cat in _categorize_topic(title, rec):
+        badges.append({"type": "category", "label": cat})
 
     # Dollar amounts with surrounding context for a verb and purpose
     combined = title + " " + rec
@@ -262,6 +266,77 @@ _SASKATOON_NEIGHBOURHOODS = [
     "Kelsey-Woodlawn", "Adelaide", "Churchill", "Aspen Ridge",
     "Cumberland", "Downtown",
 ]
+
+# Maps urban-development category labels to keyword patterns.
+# Matched case-insensitively against title + recommendation text.
+_TOPIC_CATEGORIES = {
+    "Homelessness": [
+        r"homeless", r"drop.in", r"shelter\b", r"supportive housing",
+        r"vulnerable\s+p", r"encampment", r"unshelter",
+    ],
+    "Housing": [
+        r"affordable housing", r"housing\b", r"residential",
+        r"infill\b", r"densif", r"rental",
+    ],
+    "Transit": [
+        r"\btransit\b", r"bus rapid", r"\bBRT\b", r"grade.separation",
+        r"rail\s+(grade|cross)", r"public\s+transport",
+    ],
+    "Traffic": [
+        r"\btraffic\b", r"intersection", r"speed\s+limit",
+        r"road\s+(clos|safe|improv)", r"pedestrian", r"cycling",
+        r"sidewalk", r"crosswalk", r"active\s+transport",
+    ],
+    "Greenspace": [
+        r"\bpark\b(?!ing)", r"\belm\b", r"urban\s+forest", r"tree\b",
+        r"green\s*space", r"natural\s+area", r"river\s*bank",
+        r"meewasin", r"\btrail\b",
+    ],
+    "Small Business": [
+        r"business\s+improvement", r"\bBID\b", r"small\s+business",
+        r"merchant", r"commercial\s+district", r"storefront",
+    ],
+    "Infrastructure": [
+        r"water\s+main", r"sewer", r"storm\s*water", r"utilit",
+        r"landfill", r"waste\s+manage", r"capital\s+project",
+        r"bridge\b", r"road\s+construct",
+    ],
+    "Public Safety": [
+        r"police", r"fire\s+(?:dep|serv|stat)", r"\bSPS\b",
+        r"community\s+safety", r"crime\b", r"bylaw\s+enforce",
+    ],
+    "Recreation": [
+        r"ice\s+sheet", r"arena\b", r"leisure", r"recreation",
+        r"pool\b", r"sport\s+facil", r"playground",
+    ],
+    "Property Tax": [
+        r"property\s+tax", r"tax\s+lien", r"mill\s+rate",
+        r"assessment\b", r"tax\s+levy",
+    ],
+    "Arts & Culture": [
+        r"public\s+art", r"art\s+gallery", r"cultur",
+        r"heritage\b", r"festival\b", r"mural\b",
+    ],
+    "Environment": [
+        r"climate\b", r"emission", r"sustainab", r"solar\b",
+        r"energy\s+effic", r"electric\s+vehicle", r"\bEV\b",
+        r"greenhouse\s+gas", r"carbon\b",
+    ],
+}
+
+
+def _categorize_topic(title: str, recommendation: str) -> list[str]:
+    """Return up to 2 urban-development category labels for an agenda item."""
+    combined = title + " " + recommendation
+    matches = []
+    for category, patterns in _TOPIC_CATEGORIES.items():
+        for pat in patterns:
+            if re.search(pat, combined, re.IGNORECASE):
+                matches.append(category)
+                break
+        if len(matches) >= 2:
+            break
+    return matches
 
 
 def _format_outcome(vote_result: str, recommendation: str) -> str:
