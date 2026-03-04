@@ -277,39 +277,32 @@
     });
 
     function setupStickyVideo(videoSection) {
-        // Insert a zero-height sentinel that stays in normal flow.
-        // We observe the sentinel instead of the video section itself,
-        // because once the video becomes position:fixed it's always
-        // "in viewport" and would toggle the observer endlessly.
-        const sentinel = document.createElement('div');
-        sentinel.style.height = '0';
-        videoSection.parentNode.insertBefore(sentinel, videoSection);
-
-        let spacer = null;
         const sectionHeight = videoSection.offsetHeight;
+        const triggerOffset = videoSection.offsetTop + sectionHeight;
+        let isSticky = false;
+        let spacer = null;
 
-        const observer = new IntersectionObserver(function(entries) {
-            entries.forEach(function(entry) {
-                if (!entry.isIntersecting) {
-                    // Sentinel scrolled out — go sticky
-                    if (!spacer) {
-                        spacer = document.createElement('div');
-                        spacer.className = 'video-spacer';
-                        spacer.style.height = sectionHeight + 'px';
-                        videoSection.parentNode.insertBefore(spacer, videoSection.nextSibling);
-                    }
-                    videoSection.classList.add('sticky');
-                } else {
-                    // Sentinel back in view — remove sticky
-                    videoSection.classList.remove('sticky');
-                    if (spacer) {
-                        spacer.remove();
-                        spacer = null;
-                    }
+        window.addEventListener('scroll', function() {
+            const shouldStick = window.scrollY > triggerOffset;
+            if (shouldStick === isSticky) return;
+            isSticky = shouldStick;
+
+            if (isSticky) {
+                if (!spacer) {
+                    spacer = document.createElement('div');
+                    spacer.className = 'video-spacer';
+                    spacer.style.height = sectionHeight + 'px';
+                    videoSection.parentNode.insertBefore(spacer, videoSection.nextSibling);
                 }
-            });
-        }, { threshold: 0 });
-        observer.observe(sentinel);
+                videoSection.classList.add('sticky');
+            } else {
+                videoSection.classList.remove('sticky');
+                if (spacer) {
+                    spacer.remove();
+                    spacer = null;
+                }
+            }
+        });
     }
 
     function scrollToAgendaItem(timeMs) {
