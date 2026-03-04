@@ -1320,9 +1320,8 @@ footer a:hover {
     }
 
     .item-title {
-        /* Force the title to fill the row so badges/timestamp wrap below */
-        min-width: 0;
-        flex-basis: calc(100% - 4rem);
+        /* Force the title to fill the remaining row width so badges wrap below */
+        flex: 1 0 calc(100% - 3rem - 0.75rem);
     }
 
 }
