@@ -1322,6 +1322,12 @@ footer a:hover {
         flex-wrap: wrap;
     }
 
+    .item-title {
+        /* Force the title to fill the row so badges/timestamp wrap below */
+        min-width: 0;
+        flex-basis: calc(100% - 4rem);
+    }
+
     .badge-attachments {
         font-size: 0;
         padding: 0.15rem 0.35rem;
@@ -1329,10 +1335,6 @@ footer a:hover {
 
     .badge-attachments::before {
         font-size: 0.7rem;
-    }
-
-    .timestamp-link {
-        margin-top: 0.5rem;
     }
 }
 
