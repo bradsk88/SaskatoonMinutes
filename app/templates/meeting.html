@@ -297,34 +297,31 @@
     });
 
     function setupStickyVideo(videoSection) {
-        const sectionHeight = videoSection.offsetHeight;
-        // Trigger when the bottom of the video section leaves the viewport top
-        const triggerOffset = videoSection.offsetTop + sectionHeight;
-        let spacer = null;
+        // Sentinel sits just after the video section; when it scrolls out of
+        // view the video becomes a sticky mini-player.
+        const sentinel = document.createElement('div');
+        sentinel.className = 'video-spacer';
+        sentinel.style.height = '0px';
+        videoSection.parentNode.insertBefore(sentinel, videoSection.nextSibling);
 
-        // Create a persistent spacer that we show/hide to avoid layout thrash
-        spacer = document.createElement('div');
-        spacer.className = 'video-spacer';
-        spacer.style.height = sectionHeight + 'px';
-        spacer.style.display = 'none';
-        videoSection.parentNode.insertBefore(spacer, videoSection.nextSibling);
-
-        let ticking = false;
-        window.addEventListener('scroll', function() {
-            if (ticking) return;
-            ticking = true;
-            requestAnimationFrame(function() {
-                ticking = false;
-                const shouldStick = window.scrollY > triggerOffset;
-                if (shouldStick && !videoSection.classList.contains('sticky')) {
-                    spacer.style.display = 'block';
+        const observer = new IntersectionObserver(function(entries) {
+            const entry = entries[0];
+            if (!entry.isIntersecting) {
+                // Sentinel scrolled above viewport → stick
+                if (!videoSection.classList.contains('sticky')) {
+                    sentinel.style.height = videoSection.offsetHeight + 'px';
                     videoSection.classList.add('sticky');
-                } else if (!shouldStick && videoSection.classList.contains('sticky')) {
-                    videoSection.classList.remove('sticky');
-                    spacer.style.display = 'none';
                 }
-            });
-        });
+            } else {
+                // Sentinel visible again → unstick
+                if (videoSection.classList.contains('sticky')) {
+                    videoSection.classList.remove('sticky');
+                    sentinel.style.height = '0px';
+                }
+            }
+        }, { threshold: 0 });
+
+        observer.observe(sentinel);
     }
 
     function scrollToAgendaItem(timeMs) {
