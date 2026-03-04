@@ -47,8 +47,14 @@
         const agendaEl = document.getElementById('agenda-items');
         const videoSection = document.getElementById('video-section');
         try {
-            const resp = await fetch(`/api/meeting/${meetingId}`);
-            const data = await resp.json();
+            let data;
+            const preloadedEl = document.getElementById('preloaded-meeting');
+            if (preloadedEl) {
+                data = JSON.parse(preloadedEl.textContent);
+            } else {
+                const resp = await fetch(`/api/meeting/${meetingId}`);
+                data = await resp.json();
+            }
 
             if (data.error) {
                 headerEl.innerHTML = `<div class="error">Error: ${data.error}</div>`;

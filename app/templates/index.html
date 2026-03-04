@@ -236,7 +236,7 @@
 
             let openHref;
             if (isStatic) {
-                openHref = `${ESCRIBEMEETINGS_BASE}/Meeting.aspx?Id=${m.meeting_id}&Agenda=Agenda&lang=English`;
+                openHref = `meeting/${m.meeting_id}.html`;
             } else {
                 openHref = `/meeting/${m.meeting_id}`;
             }
