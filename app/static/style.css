@@ -312,12 +312,17 @@ main {
     background: #ede9fe;
     color: var(--color-video);
     text-decoration: none;
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     font-weight: 600;
     flex-shrink: 0;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.45rem;
+    height: 1.45rem;
+    border-radius: 50%;
     transition: background 0.15s;
+    line-height: 1;
 }
 
 .topic-play-link:hover {
