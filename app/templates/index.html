@@ -110,8 +110,13 @@
             let rowClass = t.is_major ? 'topic-major' : '';
             if (t.is_consent) rowClass += ' topic-consent';
             const oClass = outcomeClass(t);
-            const tooltip = t.outcome_detail
-                ? ` data-tooltip="${escapeAttr(t.outcome_detail)}"` : '';
+            const tooltipText = t.outcome_detail
+                ? (t.outcome && t.outcome.startsWith('Approved')
+                    ? 'Approved: ' + t.outcome_detail
+                    : t.outcome_detail)
+                : '';
+            const tooltip = tooltipText
+                ? ` data-tooltip="${escapeAttr(tooltipText)}"` : '';
 
             // Collect category slugs for this topic row
             const catSlugs = (t.badges || [])
