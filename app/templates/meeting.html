@@ -22,9 +22,10 @@
 
     <div class="agenda-controls">
         <h2>Agenda Items</h2>
-        <button id="sort-toggle" class="btn btn-sm" style="display: none;">
-            Video order
-        </button>
+        <div id="sort-toggle" class="sort-toggle" style="display: none;">
+            <button class="sort-option" data-sort="video">Video order</button>
+            <button class="sort-option" data-sort="agenda">Agenda order</button>
+        </div>
     </div>
 
     <div id="agenda-items" class="agenda-items">
@@ -39,7 +40,7 @@
     let meetingTitle = "";
     let videoUrl = null;
     let currentItems = [];
-    let sortByVideo = false;
+    let sortByVideo = true;
 
     async function loadMeeting() {
         const headerEl = document.getElementById('meeting-header');
@@ -94,8 +95,9 @@
             currentItems = items;
             if (videoUrl) {
                 document.getElementById('sort-toggle').style.display = '';
+                updateSortButtons();
             }
-            renderAgendaItems(items);
+            renderAgendaItems(sortedItems());
 
         } catch (err) {
             headerEl.innerHTML = `<div class="error">Failed to load meeting details.</div>`;
@@ -265,9 +267,18 @@
         return [...withTs, ...withoutTs];
     }
 
-    document.getElementById('sort-toggle').addEventListener('click', function() {
-        sortByVideo = !sortByVideo;
-        this.textContent = sortByVideo ? 'Agenda order' : 'Video order';
+    function updateSortButtons() {
+        document.querySelectorAll('.sort-option').forEach(btn => {
+            const isActive = (btn.dataset.sort === 'video') === sortByVideo;
+            btn.classList.toggle('sort-active', isActive);
+        });
+    }
+
+    document.getElementById('sort-toggle').addEventListener('click', function(e) {
+        const btn = e.target.closest('.sort-option');
+        if (!btn) return;
+        sortByVideo = btn.dataset.sort === 'video';
+        updateSortButtons();
         renderAgendaItems(sortedItems());
     });
 
