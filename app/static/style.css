@@ -1322,6 +1322,15 @@ footer a:hover {
         flex-wrap: wrap;
     }
 
+    .badge-attachments {
+        font-size: 0;
+        padding: 0.15rem 0.35rem;
+    }
+
+    .badge-attachments::before {
+        font-size: 0.7rem;
+    }
+
     .timestamp-link {
         margin-top: 0.5rem;
     }
