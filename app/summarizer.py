@@ -363,16 +363,26 @@ def _format_outcome(vote_result: str, recommendation: str) -> str:
         return "Recommended"
 
     upper = vote_result.upper()
+    rec_upper = recommendation.upper()
     # Extract vote counts like (7 to 4)
     counts = re.search(r"\((\d+)\s+to\s+(\d+)\)", vote_result)
     tally = f" ({counts.group(1)}-{counts.group(2)})" if counts else ""
 
     if "DEFEATED" in upper:
         return f"Defeated{tally}"
+    if "DEFERRED" in upper or "TABLED" in upper:
+        return "Deferred"
+    if "WITHDRAWN" in upper:
+        return "Withdrawn"
+    # A motion to defer/table that carried is a deferral, not an approval
+    if re.search(r"\bDEFER(?:RED)?\b", rec_upper) or "TABLED" in rec_upper:
+        return "Deferred"
     if "UNANIMOUSLY" in upper:
         return "Approved"
     if "CARRIED" in upper:
         return f"Approved{tally}"
+    if "RECEIVED" in upper or "NOTED" in upper:
+        return "Received"
     return vote_result
 
 

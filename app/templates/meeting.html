@@ -132,19 +132,23 @@
                   .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
     }
 
-    function outcomeExplanation(voteResult) {
+    function outcomeExplanation(voteResult, recommendation) {
         if (!voteResult) return '';
         const v = voteResult.toUpperCase();
+        const r = (recommendation || '').toUpperCase();
+        if (v.includes('DEFEATED'))
+            return 'A majority of councillors voted against. This item was rejected.';
+        if (v.includes('DEFERRED') || v.includes('TABLED'))
+            return 'This item was postponed to a future meeting.';
+        if (v.includes('WITHDRAWN'))
+            return 'This item was pulled from consideration before a vote took place.';
+        // A carried motion to defer is a deferral, not an approval
+        if (/\bDEFER(?:RED)?\b/.test(r) || r.includes('TABLED'))
+            return 'This item was postponed to a future meeting.';
         if (v.includes('UNANIMOUSLY') && v.includes('CARRIED'))
             return 'Every councillor voted in favour. This item is approved.';
         if (v.includes('CARRIED'))
             return 'A majority of councillors voted in favour. This item is approved.';
-        if (v.includes('DEFEATED'))
-            return 'A majority of councillors voted against. This item was rejected.';
-        if (v.includes('WITHDRAWN'))
-            return 'This item was pulled from consideration before a vote took place.';
-        if (v.includes('TABLED') || v.includes('DEFERRED'))
-            return 'This item was postponed to a future meeting.';
         if (v.includes('RECEIVED') || v.includes('NOTED'))
             return 'Council acknowledged this item. No vote or action was required.';
         return '';
@@ -177,7 +181,7 @@
         if (vote) {
             const contested = item.is_contested;
             const voteClass = contested ? 'vote-contested' : 'vote-carried';
-            const explanation = outcomeExplanation(vote);
+            const explanation = outcomeExplanation(vote, rec);
             parts += `<div class="transcript-block">
                 <div class="transcript-label">Vote</div>
                 <div class="transcript-vote ${voteClass}">${escapeHtml(vote)}</div>

@@ -158,6 +158,11 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
                 item.vote_result = v["result"]
                 item.vote_detail = v["detail"]
                 item.is_contested = v["is_contested"]
+                # If the actual motion text differs from the agenda
+                # recommendation (e.g. a motion to defer), use it instead
+                motion = v.get("motion_text", "")
+                if motion and motion != item.recommendation:
+                    item.recommendation = motion
 
     return {
         "agenda_items": agenda_items,
@@ -413,6 +418,14 @@ def _extract_votes(html: str) -> dict[int, dict]:
         )
         detail = _clean_html(vt.group(1)).strip() if vt else ""
 
+        # Extract the actual motion text (may differ from the agenda
+        # recommendation, e.g. a motion to defer)
+        mt = re.search(
+            r"MotionText RichText.*?>(.*?)</DIV>",
+            block, re.DOTALL | re.IGNORECASE,
+        )
+        motion_text = _clean_html(mt.group(1)).strip() if mt else ""
+
         is_contested = (
             "UNANIMOUSLY" not in result_text.upper()
             and "DEFEATED" not in result_text.upper()
@@ -422,6 +435,7 @@ def _extract_votes(html: str) -> dict[int, dict]:
         results[item_id] = {
             "result": result_text,
             "detail": detail,
+            "motion_text": motion_text,
             "is_contested": is_contested,
         }
     return results

@@ -802,6 +802,11 @@ main {
     font-weight: 600;
 }
 
+.badge-outcome-deferred {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
 .badge-outcome-neutral {
     background: #f3f4f6;
     color: #6b7280;
@@ -1079,6 +1084,11 @@ footer a:hover {
     .badge-outcome-contested {
         background: #78350f;
         color: #fcd34d;
+    }
+
+    .badge-outcome-deferred {
+        background: #312e81;
+        color: #a5b4fc;
     }
 
     .badge-outcome-neutral {
