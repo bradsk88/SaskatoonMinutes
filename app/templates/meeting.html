@@ -67,6 +67,7 @@
             if (videoUrl) {
                 videoSection.style.display = 'block';
                 document.getElementById('video-frame').src = videoUrl;
+                setupStickyVideo(videoSection);
             }
 
             // Render agenda items
@@ -188,6 +189,7 @@
         const el = document.createElement('div');
         el.className = 'agenda-item';
         el.dataset.itemId = item.item_id;
+        if (item.time_start_ms !== null) el.dataset.timeMs = item.time_start_ms;
 
         const isConsent = item.timestamp_inherited === true;
         if (isConsent) el.classList.add('agenda-item-consent');
@@ -274,6 +276,42 @@
         el.classList.toggle('transcript-clamped');
     });
 
+    function setupStickyVideo(videoSection) {
+        let spacer = null;
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (!entry.isIntersecting) {
+                    // Scrolled past — go sticky
+                    if (!spacer) {
+                        spacer = document.createElement('div');
+                        spacer.className = 'video-spacer';
+                        spacer.style.height = videoSection.offsetHeight + 'px';
+                        videoSection.parentNode.insertBefore(spacer, videoSection.nextSibling);
+                    }
+                    videoSection.classList.add('sticky');
+                } else {
+                    // Back in view — remove sticky
+                    videoSection.classList.remove('sticky');
+                    if (spacer) {
+                        spacer.remove();
+                        spacer = null;
+                    }
+                }
+            });
+        }, { threshold: 0 });
+        observer.observe(videoSection);
+    }
+
+    function scrollToAgendaItem(timeMs) {
+        const el = document.querySelector(`.agenda-item[data-time-ms="${timeMs}"]`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.remove('highlight');
+        // Force reflow so re-adding the class restarts the animation
+        void el.offsetWidth;
+        el.classList.add('highlight');
+    }
+
     function seekVideo(timeMs) {
         const iframe = document.getElementById('video-frame');
         const bar = document.getElementById('video-loading');
@@ -290,7 +328,7 @@
                     }, 5000);
                 }, 4000);
             };
-            document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
+            scrollToAgendaItem(timeMs);
         }
     }
 
