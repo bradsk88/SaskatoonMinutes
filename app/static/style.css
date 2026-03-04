@@ -616,6 +616,126 @@ footer a:hover {
     text-decoration: underline;
 }
 
+/* === Dark Mode (system preference) === */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --color-bg: #0f1117;
+        --color-surface: #1a1d27;
+        --color-primary: #2d8a54;
+        --color-primary-light: #1a2f22;
+        --color-text: #e4e6eb;
+        --color-text-muted: #9ca3af;
+        --color-border: #2d3140;
+        --color-accent: #60a5fa;
+        --color-video: #a78bfa;
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Badges */
+    .badge-video {
+        background: #2e2459;
+        color: #a78bfa;
+    }
+
+    .badge-outcome-approved {
+        background: #064e3b;
+        color: #6ee7b7;
+    }
+
+    .badge-outcome-defeated {
+        background: #7f1d1d;
+        color: #fca5a5;
+    }
+
+    .badge-outcome-contested {
+        background: #78350f;
+        color: #fcd34d;
+    }
+
+    .badge-outcome-neutral {
+        background: #374151;
+        color: #9ca3af;
+    }
+
+    .badge-money {
+        background: #1e3a5f;
+        color: #93c5fd;
+    }
+
+    .badge-person {
+        background: #3b1f5e;
+        color: #c4b5fd;
+    }
+
+    .badge-location {
+        background: #5b1a3a;
+        color: #f9a8d4;
+    }
+
+    /* Major decision row */
+    .topic-major {
+        background: #292317;
+    }
+
+    /* Buttons */
+    .btn-primary:hover:not(:disabled) {
+        background: #236b42;
+    }
+
+    .btn-topics {
+        background: #1a2f22;
+        color: #6ee7b7;
+    }
+
+    .btn-topics:hover:not(:disabled) {
+        background: #1f3a2b;
+        border-color: var(--color-primary);
+    }
+
+    /* Timestamp link */
+    .timestamp-link {
+        background: #2e2459;
+        color: #a78bfa;
+    }
+
+    .timestamp-link:hover {
+        background: #3b2d70;
+    }
+
+    /* Video loading bar */
+    .video-loading-bar {
+        background: #1d4ed8;
+    }
+
+    /* Skeleton shimmer */
+    .skeleton {
+        background: linear-gradient(90deg, var(--color-border) 25%, #252833 50%, var(--color-border) 75%);
+        background-size: 400px 100%;
+    }
+
+    /* Error/empty states */
+    .error {
+        color: #f87171;
+        background: #1f1215;
+    }
+
+    .topics-error {
+        color: #f87171;
+    }
+
+    /* Tooltip */
+    [data-tooltip]:hover::after {
+        background: #e4e6eb;
+        color: #1a1d27;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    [data-tooltip]:hover::before {
+        border-top-color: #e4e6eb;
+    }
+}
+
 /* === Responsive === */
 @media (max-width: 640px) {
     .meetings-grid {
