@@ -126,7 +126,8 @@ def _extract_badges(item: dict) -> list[dict]:
         badges.append({"type": f"cat-{slug}", "label": cat})
 
     # Dollar amounts with surrounding context for a verb and purpose
-    combined = title + " " + rec
+    content = item.get("content", "")
+    combined = title + " " + rec + " " + content
     money_count = 0
     for m in re.finditer(r'\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion))?', combined):
         raw = m.group()
