@@ -253,6 +253,11 @@
             ? `<span class="badge badge-reorder">Discussed ${ooo} in video</span>`
             : '';
 
+        const attachCount = (item.attachments || []).length;
+        const attachBadgeHtml = attachCount > 0
+            ? `<button class="badge badge-attachments" title="Click to show attachments">${attachCount} Attachment${attachCount !== 1 ? 's' : ''}</button>`
+            : '';
+
         const badgesHtml = (item.badges || [])
             .map(b => `<span class="topic-badge badge-${escapeHtml(b.type)}">${escapeHtml(b.label)}</span>`)
             .join(' ');
@@ -268,6 +273,7 @@
                 <span class="item-number">${item.section_number}</span>
                 <span class="item-title">${item.title}</span>
                 ${oooBadgeHtml}
+                ${attachBadgeHtml}
                 ${timestampHtml}
             </div>
             ${badgesHtml ? `<div class="item-badges">${badgesHtml}</div>` : ''}
@@ -314,6 +320,17 @@
 
     // Click to toggle clamp on overflowing transcripts
     document.getElementById('agenda-items').addEventListener('click', function(e) {
+        // Attachments badge: expand the transcript to reveal attachment links
+        const attachBadge = e.target.closest('.badge-attachments');
+        if (attachBadge) {
+            const item = attachBadge.closest('.agenda-item');
+            if (item) {
+                const transcript = item.querySelector('.transcript-clamped');
+                if (transcript) transcript.classList.remove('transcript-clamped');
+            }
+            return;
+        }
+
         const el = e.target.closest('.transcript-clampable');
         if (!el) return;
         el.classList.toggle('transcript-clamped');

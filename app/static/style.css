@@ -529,6 +529,27 @@ main {
     white-space: nowrap;
 }
 
+.badge-attachments {
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border: none;
+    border-radius: 999px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.badge-attachments::before {
+    content: "\1F4CE ";
+}
+
+.badge-attachments:hover {
+    background: #fde68a;
+}
+
 .item-header {
     display: flex;
     align-items: flex-start;
@@ -1065,6 +1086,15 @@ footer a:hover {
     .badge-consent {
         background: #374151;
         color: #9ca3af;
+    }
+
+    .badge-attachments {
+        background: #78350f;
+        color: #fcd34d;
+    }
+
+    .badge-attachments:hover {
+        background: #92400e;
     }
 
     .agenda-item-consent {
