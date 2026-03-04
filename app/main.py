@@ -10,7 +10,7 @@ from flask import Flask, render_template, jsonify, request
 from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
 from app.scraper import fetch_past_meetings, fetch_meeting_detail
-from app.summarizer import summarize_agenda_items, extract_meeting_topics, get_backend
+from app.summarizer import summarize_agenda_items, extract_meeting_topics, extract_badges, get_backend
 
 _CONNECTION_ERROR_MSG = (
     "Could not connect to the City of Saskatoon eSCRIBE server. "
@@ -58,6 +58,9 @@ def api_meeting_detail(meeting_id: str):
     try:
         detail = fetch_meeting_detail(meeting_id, include_votes=True)
         items = [item.to_dict() for item in detail["agenda_items"]]
+
+        for item in items:
+            item["badges"] = extract_badges(item)
 
         backend = get_backend()
 

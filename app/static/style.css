@@ -489,6 +489,13 @@ main {
     background: #ddd6fe;
 }
 
+.item-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.25rem;
+}
+
 .item-summary {
     margin-top: 0.6rem;
     padding-top: 0.6rem;

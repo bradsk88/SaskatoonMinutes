@@ -196,6 +196,10 @@
             ? `<span class="badge badge-reorder">Discussed ${ooo} in video</span>`
             : '';
 
+        const badgesHtml = (item.badges || [])
+            .map(b => `<span class="topic-badge badge-${escapeHtml(b.type)}">${escapeHtml(b.label)}</span>`)
+            .join(' ');
+
         const summaryHtml = item.summary
             ? `<p class="item-summary">${item.summary}</p>`
             : '';
@@ -209,6 +213,7 @@
                 ${oooBadgeHtml}
                 ${timestampHtml}
             </div>
+            ${badgesHtml ? `<div class="item-badges">${badgesHtml}</div>` : ''}
             ${summaryHtml}
             ${transcriptHtml}
         `;

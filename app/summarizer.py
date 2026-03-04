@@ -170,6 +170,11 @@ def _extract_badges(item: dict) -> list[dict]:
     return badges
 
 
+def extract_badges(item: dict) -> list[dict]:
+    """Extract contextual badges for a single agenda item (public API)."""
+    return _extract_badges(item)
+
+
 # Maps context keywords (found near a dollar amount) to short badge verbs.
 _MONEY_CONTEXT = [
     # Multi-word / specific patterns first
