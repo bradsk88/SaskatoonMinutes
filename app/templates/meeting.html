@@ -219,37 +219,24 @@
         const container = document.getElementById('agenda-items');
         const outOfOrder = computeOutOfOrder(items);
 
-        // FLIP: record old positions keyed by item_id
-        const oldRects = new Map();
-        if (animate) {
-            container.querySelectorAll('.agenda-item').forEach(el => {
-                oldRects.set(el.dataset.itemId, el.getBoundingClientRect());
-            });
-        }
-
         container.innerHTML = '';
+        const STAGGER = 40;
         items.forEach((item, idx) => {
-            container.appendChild(buildItemEl(item, outOfOrder, idx));
+            const el = buildItemEl(item, outOfOrder, idx);
+            if (animate) {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(-12px)';
+            }
+            container.appendChild(el);
         });
         applyTranscriptClamps();
 
-        // FLIP: animate from old position to new
-        if (animate && oldRects.size > 0) {
-            container.querySelectorAll('.agenda-item').forEach(el => {
-                const oldRect = oldRects.get(el.dataset.itemId);
-                if (!oldRect) {
-                    el.style.opacity = '0';
-                    el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 200 });
-                    el.style.opacity = '';
-                    return;
-                }
-                const newRect = el.getBoundingClientRect();
-                const dy = oldRect.top - newRect.top;
-                if (Math.abs(dy) < 1) return;
+        if (animate) {
+            container.querySelectorAll('.agenda-item').forEach((el, i) => {
                 el.animate([
-                    { transform: `translateY(${dy}px)` },
-                    { transform: 'translateY(0)' }
-                ], { duration: 350, easing: 'ease-out' });
+                    { opacity: 0, transform: 'translateY(-12px)' },
+                    { opacity: 1, transform: 'translateY(0)' }
+                ], { duration: 250, delay: i * STAGGER, fill: 'forwards', easing: 'ease-out' });
             });
         }
     }
