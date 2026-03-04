@@ -178,48 +178,80 @@
         return result;
     }
 
-    function renderAgendaItems(items) {
-        const container = document.getElementById('agenda-items');
-        container.innerHTML = '';
+    function buildItemEl(item, outOfOrder, idx) {
+        const el = document.createElement('div');
+        el.className = 'agenda-item';
+        el.dataset.itemId = item.item_id;
 
+        const hasTimestamp = item.time_start_ms !== null;
+        const timestampHtml = hasTimestamp
+            ? `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
+                 title="Jump to this item in the video">
+                 &#9654; ${item.time_start_formatted}
+               </button>`
+            : '';
+
+        const ooo = outOfOrder.get(idx);
+        const oooBadgeHtml = ooo
+            ? `<span class="badge badge-reorder">Discussed ${ooo} in video</span>`
+            : '';
+
+        const summaryHtml = item.summary
+            ? `<p class="item-summary">${item.summary}</p>`
+            : '';
+
+        const transcriptHtml = buildTranscriptHtml(item);
+
+        el.innerHTML = `
+            <div class="item-header">
+                <span class="item-number">${item.section_number}</span>
+                <span class="item-title">${item.title}</span>
+                ${oooBadgeHtml}
+                ${timestampHtml}
+            </div>
+            ${summaryHtml}
+            ${transcriptHtml}
+        `;
+        return el;
+    }
+
+    function renderAgendaItems(items, animate) {
+        const container = document.getElementById('agenda-items');
         const outOfOrder = computeOutOfOrder(items);
 
+        // FLIP: record old positions keyed by item_id
+        const oldRects = new Map();
+        if (animate) {
+            container.querySelectorAll('.agenda-item').forEach(el => {
+                oldRects.set(el.dataset.itemId, el.getBoundingClientRect());
+            });
+        }
+
+        container.innerHTML = '';
         items.forEach((item, idx) => {
-            const el = document.createElement('div');
-            el.className = 'agenda-item';
-
-            const hasTimestamp = item.time_start_ms !== null;
-            const timestampHtml = hasTimestamp
-                ? `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
-                     title="Jump to this item in the video">
-                     &#9654; ${item.time_start_formatted}
-                   </button>`
-                : '';
-
-            const ooo = outOfOrder.get(idx);
-            const oooBadgeHtml = ooo
-                ? `<span class="badge badge-reorder">Discussed ${ooo} in video</span>`
-                : '';
-
-            const summaryHtml = item.summary
-                ? `<p class="item-summary">${item.summary}</p>`
-                : '';
-
-            const transcriptHtml = buildTranscriptHtml(item);
-
-            el.innerHTML = `
-                <div class="item-header">
-                    <span class="item-number">${item.section_number}</span>
-                    <span class="item-title">${item.title}</span>
-                    ${oooBadgeHtml}
-                    ${timestampHtml}
-                </div>
-                ${summaryHtml}
-                ${transcriptHtml}
-            `;
-            container.appendChild(el);
+            container.appendChild(buildItemEl(item, outOfOrder, idx));
         });
         applyTranscriptClamps();
+
+        // FLIP: animate from old position to new
+        if (animate && oldRects.size > 0) {
+            container.querySelectorAll('.agenda-item').forEach(el => {
+                const oldRect = oldRects.get(el.dataset.itemId);
+                if (!oldRect) {
+                    el.style.opacity = '0';
+                    el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 200 });
+                    el.style.opacity = '';
+                    return;
+                }
+                const newRect = el.getBoundingClientRect();
+                const dy = oldRect.top - newRect.top;
+                if (Math.abs(dy) < 1) return;
+                el.animate([
+                    { transform: `translateY(${dy}px)` },
+                    { transform: 'translateY(0)' }
+                ], { duration: 350, easing: 'ease-out' });
+            });
+        }
     }
 
     function applyTranscriptClamps() {
@@ -279,7 +311,7 @@
         if (!btn) return;
         sortByVideo = btn.dataset.sort === 'video';
         updateSortButtons();
-        renderAgendaItems(sortedItems());
+        renderAgendaItems(sortedItems(), true);
     });
 
     loadMeeting();
