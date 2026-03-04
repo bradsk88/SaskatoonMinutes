@@ -282,7 +282,7 @@
             : '';
 
         const badgesHtml = (item.badges || [])
-            .map(b => `<span class="topic-badge badge-${escapeHtml(b.type)}">${escapeHtml(b.label)}</span>`)
+            .map(b => `<span class="badge topic-badge badge-${escapeHtml(b.type)}">${escapeHtml(b.label)}</span>`)
             .join(' ');
 
         const summaryHtml = item.summary

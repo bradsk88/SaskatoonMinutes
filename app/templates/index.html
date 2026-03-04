@@ -126,13 +126,13 @@
 
             // Outcome badge (always first) — consent items get a plain-language label
             let badgesHtml = t.is_consent
-                ? `<span class="topic-badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`
-                : `<span class="topic-badge badge-${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span>`;
+                ? `<span class="badge topic-badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`
+                : `<span class="badge topic-badge badge-${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span>`;
 
             // Extra extracted badges
             if (t.badges) {
                 t.badges.forEach(b => {
-                    badgesHtml += ` <span class="topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
+                    badgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
                 });
             }
 
@@ -204,7 +204,7 @@
                 (t.badges || []).forEach(b => {
                     if (b.type.startsWith('cat-') && !seen.has(b.type)) {
                         seen.add(b.type);
-                        html += `<span class="topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span> `;
+                        html += `<span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span> `;
                     }
                 });
             });
@@ -358,7 +358,7 @@
 
         ALL_CATEGORIES.forEach(cat => {
             const chip = document.createElement('button');
-            chip.className = `filter-chip topic-badge badge-${cat.slug}`;
+            chip.className = `filter-chip badge topic-badge badge-${cat.slug}`;
             chip.textContent = cat.label;
             chip.dataset.slug = cat.slug;
             chip.addEventListener('click', () => {

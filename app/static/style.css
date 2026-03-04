@@ -242,10 +242,6 @@ main {
 .badge-reorder {
     background: #fff7ed;
     color: #c2410c;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
     white-space: nowrap;
     flex-shrink: 0;
 }
@@ -532,20 +528,13 @@ main {
 .badge-consent {
     background: #fef2f2;
     color: #991b1b;
-    font-size: 0.7rem;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
     white-space: nowrap;
 }
 
 .badge-attachments {
     background: #fef3c7;
     color: #92400e;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
     border: none;
-    border-radius: 999px;
     white-space: nowrap;
     cursor: pointer;
     transition: background 0.15s;
@@ -802,11 +791,6 @@ main {
 }
 
 .topic-badge {
-    display: inline-block;
-    padding: 0.1rem 0.45rem;
-    border-radius: 9999px;
-    font-size: 0.7rem;
-    font-weight: 500;
     white-space: nowrap;
     line-height: 1.4;
 }
