@@ -251,10 +251,10 @@
         const hasTimestamp = item.time_start_ms !== null;
         let timestampHtml = '';
         if (isConsent) {
-            timestampHtml = `<span class="badge badge-consent" title="Approved as a group without individual discussion">Not discussed</span>`;
+            timestampHtml = `<span class="badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`;
         } else if (hasTimestamp) {
             timestampHtml = `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
-                 title="Jump to this item in the video">
+                 data-tooltip="Jump to this item in the video">
                  &#9654; ${item.time_start_formatted}
                </button>`;
         }
@@ -266,7 +266,7 @@
 
         const attachCount = (item.attachments || []).length;
         const attachBadgeHtml = attachCount > 0
-            ? `<button class="badge badge-attachments" title="Click to show attachments">${attachCount} Attachment${attachCount !== 1 ? 's' : ''}</button>`
+            ? `<button class="badge badge-attachments" data-tooltip="Click to show attachments">${attachCount} Attachment${attachCount !== 1 ? 's' : ''}</button>`
             : '';
 
         const badgesHtml = (item.badges || [])
