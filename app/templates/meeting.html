@@ -159,8 +159,8 @@
         const result = new Map();
         for (const x of withTs) {
             const diff = agendaRank.get(x.agendaIdx) - videoRank.get(x.agendaIdx);
-            // Only flag if shifted by 3+ positions
-            if (Math.abs(diff) >= 3) {
+            // Only flag if shifted by 2+ positions
+            if (Math.abs(diff) >= 2) {
                 result.set(x.agendaIdx, diff > 0 ? 'earlier' : 'later');
             }
         }
