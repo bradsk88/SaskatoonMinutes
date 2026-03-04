@@ -10,30 +10,39 @@
 
 <section class="meetings-section">
     <h2>Recent Meetings</h2>
-    <div id="meetings-featured" class="meetings-featured"></div>
     <div id="meetings-list" class="meetings-grid"></div>
-    <div id="load-more-container" class="load-more-container" style="display: none;">
-        <button id="load-more-btn" class="btn">Load More Meetings</button>
+    <div id="scroll-sentinel" class="scroll-sentinel"></div>
+    <div id="end-message" class="end-message" style="display: none;">
+        All meetings loaded.
     </div>
 </section>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    let currentPage = 1;
-    let totalCount = 0;
-    const PAGE_SIZE = 50;
-    const AUTO_SUMMARIZE_COUNT = 3;
+    const API_PAGE_SIZE = 50;
     const ESCRIBEMEETINGS_BASE = 'https://pub-saskatoon.escribemeetings.com';
 
-    function skeletonCard(withTopics) {
-        const topicLines = withTopics
-            ? `<div class="skeleton-topics">
-                   <div class="skeleton skeleton-line-sm long"></div>
-                   <div class="skeleton skeleton-line-sm medium"></div>
-                   <div class="skeleton skeleton-line-sm long"></div>
-               </div>`
-            : '';
+    let apiPage = 1;
+    let totalCount = 0;
+    let buffer = [];
+    let allFetched = false;
+    let rendering = false;
+    let observer = null;
+
+    function calcBatchSize() {
+        const viewportH = window.innerHeight;
+        // Deduct fixed chrome: header ~56px, hero ~80px, section header ~40px, padding ~32px
+        const usedHeight = 56 + 80 + 40 + 32;
+        const available = viewportH - usedHeight;
+        const cardRowHeight = 136; // ~120px card + 16px gap
+        const mainWidth = Math.min(window.innerWidth, 1100) - 48; // 1.5rem*2 padding
+        const cols = Math.max(1, Math.floor(mainWidth / 336)); // 320 min-col + 16 gap
+        const rows = Math.max(1, Math.floor(available / cardRowHeight));
+        return Math.max(3, rows * cols);
+    }
+
+    function skeletonCard() {
         return `<div class="skeleton-card">
             <div class="skeleton skeleton-line short"></div>
             <div class="skeleton skeleton-line medium"></div>
@@ -41,7 +50,11 @@
                 <div class="skeleton skeleton-badge"></div>
                 <div class="skeleton skeleton-badge"></div>
             </div>
-            ${topicLines}
+            <div class="skeleton-topics">
+                <div class="skeleton skeleton-line-sm long"></div>
+                <div class="skeleton skeleton-line-sm medium"></div>
+                <div class="skeleton skeleton-line-sm long"></div>
+            </div>
         </div>`;
     }
 
@@ -95,23 +108,7 @@
         return html;
     }
 
-    function buildCardHTML(m, dateStr, badges, isFeatured) {
-        let topicsHtml;
-        if (isFeatured) {
-            topicsHtml = `
-                <div class="meeting-topics" id="topics-${m.meeting_id}">
-                    ${topicsSkeleton()}
-                </div>`;
-        } else {
-            topicsHtml = `
-                <div class="meeting-topics" id="topics-${m.meeting_id}">
-                    <button class="btn btn-sm btn-topics" data-meeting-id="${m.meeting_id}"
-                            data-meeting-title="${escapeAttr(m.title)}">
-                        Show Key Topics
-                    </button>
-                </div>`;
-        }
-
+    function buildCardHTML(m, dateStr, badges, openHref) {
         return `
             <div class="meeting-date">${dateStr}</div>
             <div class="meeting-title">${m.title}</div>
@@ -119,7 +116,12 @@
                 ${m.start_time ? `<span>${m.start_time}</span>` : ''}
                 ${badges.join(' ')}
             </div>
-            ${topicsHtml}
+            <div class="meeting-topics" id="topics-${m.meeting_id}">
+                ${topicsSkeleton()}
+            </div>
+            <div class="meeting-card-actions">
+                <a href="${openHref}" class="btn btn-sm btn-open">Open</a>
+            </div>
         `;
     }
 
@@ -164,18 +166,16 @@
         }
     }
 
-    function renderMeetingCards(meetings, targetFeatured, targetGrid, isStatic) {
-        meetings.forEach((m, index) => {
-            const isFeatured = (index < AUTO_SUMMARIZE_COUNT);
-
+    function renderMeetingCards(meetings, targetGrid, isStatic) {
+        meetings.forEach(m => {
             const card = document.createElement('div');
             card.className = 'meeting-card';
-            card.style.cursor = 'pointer';
 
+            let openHref;
             if (isStatic) {
-                card.dataset.href = `${ESCRIBEMEETINGS_BASE}/Meeting.aspx?Id=${m.meeting_id}&Agenda=Agenda&lang=English`;
+                openHref = `${ESCRIBEMEETINGS_BASE}/Meeting.aspx?Id=${m.meeting_id}&Agenda=Agenda&lang=English`;
             } else {
-                card.dataset.href = `/meeting/${m.meeting_id}`;
+                openHref = `/meeting/${m.meeting_id}`;
             }
 
             const date = new Date(m.date + 'T00:00:00');
@@ -187,153 +187,120 @@
             if (m.has_video) badges.push('<span class="badge badge-video">Video</span>');
             if (m.has_agenda) badges.push('<span class="badge badge-agenda">Agenda</span>');
 
-            card.innerHTML = buildCardHTML(m, dateStr, badges, isFeatured);
-
-            card.addEventListener('click', (e) => {
-                if (e.target.closest('.meeting-topics')) return;
-                window.location.href = card.dataset.href;
-            });
-
-            if (isFeatured) {
-                targetFeatured.appendChild(card);
-            } else {
-                targetGrid.appendChild(card);
-            }
+            card.innerHTML = buildCardHTML(m, dateStr, badges, openHref);
+            targetGrid.appendChild(card);
         });
     }
 
-    async function loadMeetings(page) {
-        const featured = document.getElementById('meetings-featured');
+    async function fetchNextApiPage() {
+        if (allFetched) return;
+        try {
+            const resp = await fetch(`/api/meetings?page=${apiPage}`);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+
+            totalCount = data.total_count;
+            buffer.push(...data.meetings);
+            apiPage++;
+
+            if ((apiPage - 1) * API_PAGE_SIZE >= totalCount || data.meetings.length === 0) {
+                allFetched = true;
+            }
+        } catch (err) {
+            const container = document.getElementById('meetings-list');
+            if (container.children.length === 0) {
+                container.innerHTML = '<div class="error">Failed to load meetings. Please try again.</div>';
+            }
+            allFetched = true;
+        }
+    }
+
+    async function renderBatch() {
+        if (rendering) return;
+        rendering = true;
+
         const container = document.getElementById('meetings-list');
-        const loadMoreBtn = document.getElementById('load-more-btn');
-        const loadMoreContainer = document.getElementById('load-more-container');
+        const batchSize = calcBatchSize();
+
+        // Fetch more from API if buffer is too small
+        if (buffer.length < batchSize && !allFetched) {
+            await fetchNextApiPage();
+        }
+
+        const batch = buffer.splice(0, batchSize);
+
+        if (batch.length === 0) {
+            if (allFetched && container.children.length === 0) {
+                container.innerHTML = '<div class="empty">No meetings found.</div>';
+            }
+            if (allFetched) {
+                document.getElementById('end-message').style.display = 'block';
+                if (observer) observer.disconnect();
+            }
+            rendering = false;
+            return;
+        }
+
+        renderMeetingCards(batch, container, false);
+
+        // Auto-summarize all meetings in the batch
+        batch.forEach(m => loadTopics(m.meeting_id, m.title));
+
+        // Pre-fetch next API page if buffer is running low
+        if (buffer.length === 0 && !allFetched) {
+            fetchNextApiPage(); // fire and forget
+        }
+
+        if (allFetched && buffer.length === 0) {
+            document.getElementById('end-message').style.display = 'block';
+            if (observer) observer.disconnect();
+        }
+
+        rendering = false;
+    }
+
+    function setupInfiniteScroll() {
+        const sentinel = document.getElementById('scroll-sentinel');
+        observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                renderBatch();
+            }
+        }, {
+            rootMargin: '200px'
+        });
+        observer.observe(sentinel);
+    }
+
+    async function init() {
+        const container = document.getElementById('meetings-list');
 
         // Static mode: use preloaded data if available
         const preloadedEl = document.getElementById('preloaded-meetings');
-        if (preloadedEl && page === 1) {
+        if (preloadedEl) {
             const data = JSON.parse(preloadedEl.textContent);
             totalCount = data.total_count;
             const meetings = data.meetings;
-
-            featured.innerHTML = '';
-            container.innerHTML = '';
 
             if (meetings.length === 0) {
                 container.innerHTML = '<div class="empty">No meetings found.</div>';
                 return;
             }
 
-            renderMeetingCards(meetings, featured, container, true);
-
-            // Load topics for ALL meetings from preloaded data
+            renderMeetingCards(meetings, container, true);
             meetings.forEach(m => loadTopics(m.meeting_id, m.title));
-
-            loadMoreContainer.style.display = 'none';
-            currentPage = 1;
             return;
         }
 
-        // Dynamic mode: fetch from Flask API
-        if (page === 1) {
-            featured.innerHTML = skeletonCard(true) + skeletonCard(true) + skeletonCard(true);
-            container.innerHTML = skeletonCard(false).repeat(6);
-        } else {
-            loadMoreBtn.textContent = 'Loading...';
-            loadMoreBtn.disabled = true;
-        }
+        // Dynamic mode: show skeletons, fetch, render first batch
+        const skeletonCount = calcBatchSize();
+        container.innerHTML = skeletonCard().repeat(skeletonCount);
 
-        try {
-            const resp = await fetch(`/api/meetings?page=${page}`);
-            const data = await resp.json();
-
-            if (data.error) {
-                featured.innerHTML = '';
-                container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
-                return;
-            }
-
-            totalCount = data.total_count;
-            const meetings = data.meetings;
-
-            if (page === 1) {
-                featured.innerHTML = '';
-                container.innerHTML = '';
-            }
-
-            if (meetings.length === 0 && page === 1) {
-                container.innerHTML = '<div class="empty">No meetings found.</div>';
-                return;
-            }
-
-            const autoSummarize = [];
-
-            meetings.forEach((m, index) => {
-                const isFeatured = (page === 1 && index < AUTO_SUMMARIZE_COUNT);
-
-                const card = document.createElement('div');
-                card.className = 'meeting-card';
-                card.style.cursor = 'pointer';
-                card.dataset.href = `/meeting/${m.meeting_id}`;
-
-                const date = new Date(m.date + 'T00:00:00');
-                const dateStr = date.toLocaleDateString('en-CA', {
-                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-                });
-
-                const badges = [];
-                if (m.has_video) badges.push('<span class="badge badge-video">Video</span>');
-                if (m.has_agenda) badges.push('<span class="badge badge-agenda">Agenda</span>');
-
-                card.innerHTML = buildCardHTML(m, dateStr, badges, isFeatured);
-
-                card.addEventListener('click', (e) => {
-                    if (e.target.closest('.meeting-topics')) return;
-                    window.location.href = card.dataset.href;
-                });
-
-                if (isFeatured) {
-                    featured.appendChild(card);
-                    autoSummarize.push(m);
-                } else {
-                    container.appendChild(card);
-                }
-            });
-
-            // Auto-load topics for featured meetings (fire all in parallel)
-            autoSummarize.forEach(m => {
-                loadTopics(m.meeting_id, m.title);
-            });
-
-            const loaded = page * PAGE_SIZE;
-            if (loaded < totalCount) {
-                loadMoreContainer.style.display = 'flex';
-                loadMoreBtn.textContent = `Load More (${Math.min(loaded, totalCount)} of ${totalCount})`;
-                loadMoreBtn.disabled = false;
-            } else {
-                loadMoreContainer.style.display = 'none';
-            }
-
-            currentPage = page;
-        } catch (err) {
-            featured.innerHTML = '';
-            container.innerHTML = `<div class="error">Failed to load meetings. Please try again.</div>`;
-        }
+        await fetchNextApiPage();
+        container.innerHTML = '';
+        await renderBatch();
+        setupInfiniteScroll();
     }
 
-    // Delegate click on "Show Key Topics" buttons
-    document.addEventListener('click', (e) => {
-        const btn = e.target.closest('.btn-topics');
-        if (!btn) return;
-        e.stopPropagation();
-        const meetingId = btn.dataset.meetingId;
-        const title = btn.dataset.meetingTitle;
-        loadTopics(meetingId, title);
-    });
-
-    document.getElementById('load-more-btn').addEventListener('click', () => {
-        loadMeetings(currentPage + 1);
-    });
-
-    loadMeetings(1);
+    init();
 </script>
 {% endblock %}
