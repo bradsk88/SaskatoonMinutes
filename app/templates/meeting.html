@@ -204,6 +204,18 @@
         return `<div class="transcript-content">${parts}</div>`;
     }
 
+    function buildAttachmentsOnlyHtml(item) {
+        const attachments = item.attachments || [];
+        if (attachments.length === 0) return '';
+        const links = attachments
+            .map(a => `<li><a class="attachment-link" href="${escapeHtml(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.name)}</a></li>`)
+            .join('');
+        return `<div class="transcript-content"><div class="transcript-block">
+                <div class="transcript-label">Attachments</div>
+                <ul class="attachment-list">${links}</ul>
+            </div></div>`;
+    }
+
     function computeOutOfOrder(items) {
         // Build video-order ranks for items that have timestamps
         const withTs = items
@@ -266,7 +278,9 @@
             ? `<p class="item-summary">${item.summary}</p>`
             : '';
 
-        const transcriptHtml = isConsent ? '' : buildTranscriptHtml(item);
+        const transcriptHtml = isConsent
+            ? buildAttachmentsOnlyHtml(item)
+            : buildTranscriptHtml(item);
 
         el.innerHTML = `
             <div class="item-header">
@@ -327,6 +341,13 @@
             if (item) {
                 const transcript = item.querySelector('.transcript-clamped');
                 if (transcript) transcript.classList.remove('transcript-clamped');
+                // Scroll so the attachment list is visible
+                setTimeout(function() {
+                    const attachBlock = item.querySelector('.attachment-list');
+                    if (attachBlock) {
+                        attachBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 50);
             }
             return;
         }
