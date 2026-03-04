@@ -220,12 +220,12 @@
         const outOfOrder = computeOutOfOrder(items);
 
         container.innerHTML = '';
-        const STAGGER = 40;
+        const STAGGER = 60;
         items.forEach((item, idx) => {
             const el = buildItemEl(item, outOfOrder, idx);
             if (animate) {
                 el.style.opacity = '0';
-                el.style.transform = 'translateY(-12px)';
+                el.style.transform = 'translateY(-20px)';
             }
             container.appendChild(el);
         });
@@ -234,9 +234,9 @@
         if (animate) {
             container.querySelectorAll('.agenda-item').forEach((el, i) => {
                 el.animate([
-                    { opacity: 0, transform: 'translateY(-12px)' },
+                    { opacity: 0, transform: 'translateY(-20px)' },
                     { opacity: 1, transform: 'translateY(0)' }
-                ], { duration: 250, delay: i * STAGGER, fill: 'forwards', easing: 'ease-out' });
+                ], { duration: 450, delay: i * STAGGER, fill: 'forwards', easing: 'ease-out' });
             });
         }
     }
