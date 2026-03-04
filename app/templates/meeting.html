@@ -278,7 +278,7 @@
 
         const attachCount = (item.attachments || []).length;
         const attachBadgeHtml = attachCount > 0
-            ? `<button class="badge badge-attachments" data-tooltip="Click to show attachments">${attachCount} Attachment${attachCount !== 1 ? 's' : ''}</button>`
+            ? `<button class="badge badge-attachments">${attachCount} Attachment${attachCount !== 1 ? 's' : ''}</button>`
             : '';
 
         const badgesHtml = (item.badges || [])
