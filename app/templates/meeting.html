@@ -326,6 +326,8 @@
                 videoSection.style.width = miniWidth + 'px';
                 videoSection.style.height = miniHeight + 'px';
                 container.style.width = containerWidth + 'px';
+                container.style.height = containerHeight + 'px';
+                container.style.paddingBottom = '0';
                 container.style.transform = 'scale(' + scale + ')';
                 videoSection.classList.add('sticky');
             } else if (entry.isIntersecting) {
@@ -333,6 +335,8 @@
                 videoSection.style.width = '';
                 videoSection.style.height = '';
                 container.style.width = '';
+                container.style.height = '';
+                container.style.paddingBottom = '';
                 container.style.transform = '';
                 spacer.style.display = 'none';
             }
