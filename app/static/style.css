@@ -431,9 +431,14 @@ main {
 }
 
 .video-section.sticky .video-loading-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
     border-radius: 0;
     font-size: 0.75rem;
     padding: 0.35rem 0.5rem;
+    z-index: 10;
 }
 
 .video-spacer {

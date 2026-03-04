@@ -312,17 +312,23 @@
         spacer.style.display = 'none';
         videoSection.parentNode.insertBefore(spacer, videoSection.nextSibling);
 
-        // Zero-height sentinel sits right before the video section.
+        // Sentinel placed before the section. It has height equal to
+        // 75% of the section so the observer fires after 75% has
+        // scrolled out, not immediately at the top edge.
         const sentinel = document.createElement('div');
+        sentinel.style.height = Math.round(containerHeight * 0.75) + 'px';
+        sentinel.style.marginBottom = -Math.round(containerHeight * 0.75) + 'px';
+        sentinel.style.pointerEvents = 'none';
         videoSection.parentNode.insertBefore(sentinel, videoSection);
 
-        const observer = new IntersectionObserver(function(entries) {
-            const entry = entries[0];
+        var isSticky = false;
+
+        var observer = new IntersectionObserver(function(entries) {
+            var entry = entries[0];
             if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
+                if (isSticky) return;
+                isSticky = true;
                 spacer.style.display = 'block';
-                // Scale only the video container so the iframe always
-                // renders at full size. The section is clipped to the
-                // mini-player dimensions.
                 videoSection.style.width = miniWidth + 'px';
                 videoSection.style.height = miniHeight + 'px';
                 container.style.width = containerWidth + 'px';
@@ -331,6 +337,8 @@
                 container.style.transform = 'scale(' + scale + ')';
                 videoSection.classList.add('sticky');
             } else if (entry.isIntersecting) {
+                if (!isSticky) return;
+                isSticky = false;
                 videoSection.classList.remove('sticky');
                 videoSection.style.width = '';
                 videoSection.style.height = '';
