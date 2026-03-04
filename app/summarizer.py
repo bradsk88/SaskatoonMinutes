@@ -100,7 +100,6 @@ def _format_topic(item: dict) -> dict:
 
     outcome = _format_outcome(vote, rec)
     is_major = _is_major_decision(title, rec, contested)
-    was_discussed = not (outcome == "Approved" and not contested and not is_major)
 
     return {
         "topic": _plainify(title),
@@ -109,7 +108,7 @@ def _format_topic(item: dict) -> dict:
         "vote_result": vote,
         "is_major": is_major,
         "is_contested": contested,
-        "was_discussed": was_discussed,
+        "is_consent": item.get("timestamp_inherited", False),
         "badges": _extract_badges(item),
         "time_start_ms": item.get("time_start_ms"),
     }

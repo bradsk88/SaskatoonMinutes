@@ -108,7 +108,7 @@
         let html = '<table class="topics-table"><tbody>';
         topics.forEach(t => {
             let rowClass = t.is_major ? 'topic-major' : '';
-            if (t.was_discussed === false) rowClass += ' topic-consent';
+            if (t.is_consent) rowClass += ' topic-consent';
             const oClass = outcomeClass(t);
             const tooltip = t.outcome_detail
                 ? ` data-tooltip="${escapeAttr(t.outcome_detail)}"` : '';
