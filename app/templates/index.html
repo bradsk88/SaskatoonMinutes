@@ -139,7 +139,7 @@
             // Play button for topics with video timestamps
             let playHtml = '';
             if (openHref && t.time_start_ms != null) {
-                playHtml = `<a href="${openHref}?t=${t.time_start_ms}" class="topic-play-link" title="Play video at this topic">&#9654;</a>`;
+                playHtml = `<a href="${openHref}?t=${t.time_start_ms}" class="topic-play-link" title="Play video at this topic" aria-label="Play"></a>`;
             }
 
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
