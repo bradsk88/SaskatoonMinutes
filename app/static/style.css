@@ -673,6 +673,13 @@ main {
     color: #92400e;
 }
 
+.transcript-vote-explanation {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+    margin-top: 0.25rem;
+}
+
 .transcript-vote-detail {
     font-size: 0.82rem;
     color: var(--color-text-muted);
