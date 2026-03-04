@@ -22,6 +22,9 @@
 
     <div class="agenda-controls">
         <h2>Agenda Items</h2>
+        <button id="sort-toggle" class="btn btn-sm" style="display: none;">
+            Video order
+        </button>
     </div>
 
     <div id="agenda-items" class="agenda-items">
@@ -35,6 +38,8 @@
     const meetingId = "{{ meeting_id }}";
     let meetingTitle = "";
     let videoUrl = null;
+    let currentItems = [];
+    let sortByVideo = false;
 
     async function loadMeeting() {
         const headerEl = document.getElementById('meeting-header');
@@ -86,6 +91,10 @@
                 </p>
             `;
 
+            currentItems = items;
+            if (videoUrl) {
+                document.getElementById('sort-toggle').style.display = '';
+            }
             renderAgendaItems(items);
 
         } catch (err) {
@@ -246,6 +255,21 @@
             document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
         }
     }
+
+    function sortedItems() {
+        if (!sortByVideo) return currentItems;
+        // Items with timestamps sorted by time, then items without at the end
+        const withTs = currentItems.filter(i => i.time_start_ms !== null);
+        const withoutTs = currentItems.filter(i => i.time_start_ms === null);
+        withTs.sort((a, b) => a.time_start_ms - b.time_start_ms);
+        return [...withTs, ...withoutTs];
+    }
+
+    document.getElementById('sort-toggle').addEventListener('click', function() {
+        sortByVideo = !sortByVideo;
+        this.textContent = sortByVideo ? 'Agenda order' : 'Video order';
+        renderAgendaItems(sortedItems());
+    });
 
     loadMeeting();
 </script>
