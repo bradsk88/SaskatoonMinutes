@@ -120,9 +120,17 @@ def _extract_badges(item: dict) -> list[dict]:
 
     # Dollar amounts with surrounding context for a verb
     combined = title + " " + rec
+    seen_verbs: set[str] = set()
     for m in re.finditer(r'\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion))?', combined):
         raw = m.group()
         verb = _money_verb(combined, m.start())
+        # Skip if we already have a badge with the same verb (e.g. two "allocated")
+        # or if this amount has no verb and we already have a money badge
+        if verb and verb in seen_verbs:
+            continue
+        if not verb and seen_verbs:
+            continue
+        seen_verbs.add(verb)
         formatted = _format_money(raw)
         label = f"{formatted} {verb}" if verb else formatted
         badges.append({"type": "money", "label": label})
@@ -164,11 +172,11 @@ _MONEY_CONTEXT = [
     (r'award', 'awarded'),
     (r'approv', 'approved'),
     (r'budget', 'budgeted'),
-    (r'fund(?:ing|ed)?', 'funded'),
+    (r'allocat', 'allocated'),
+    (r'fund(?:ing|ed)', 'funded'),
     (r'grant', 'granted'),
     (r'contract', 'contract'),
     (r'spend|expenditure|expend', 'spent'),
-    (r'allocat', 'allocated'),
     (r'invest', 'invested'),
     (r'lev(?:y|ied)', 'levied'),
     (r'increas', 'increase'),
