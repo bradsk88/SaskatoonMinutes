@@ -143,6 +143,7 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
         recs = _extract_recommendations(html)
         descs = _extract_descriptions(html)
         attachments = _extract_attachments(html)
+        _distribute_confirmation_attachments(agenda_items, attachments)
         # Fetch vote results from the PostMinutes page
         votes = fetch_meeting_votes(meeting_id)
 
@@ -439,6 +440,130 @@ def _extract_votes(html: str) -> dict[int, dict]:
             "is_contested": is_contested,
         }
     return results
+
+
+def _normalize_name(name: str) -> str:
+    """Normalize an attachment name for deduplication.
+
+    Strips the file extension, trailing ``(N)`` copy suffixes, the
+    ``_Redacted`` tag, and leading reference codes (e.g. ``CC2026-0101``)
+    so that e.g. ``Foo_Redacted.pdf`` and ``CC2026-0101 Foo_Redacted(1).pdf``
+    compare as equal.
+    """
+    # Remove file extension
+    n = re.sub(r'\.\w{2,4}$', '', name)
+    # Remove trailing (1), (2), etc.
+    n = re.sub(r'\(\d+\)\s*$', '', n)
+    # Remove _Redacted suffix
+    n = re.sub(r'_Redacted\s*$', '', n, flags=re.IGNORECASE)
+    # Remove leading reference codes like "CC2026-0101 " or "6.2.3 "
+    n = re.sub(r'^[\w]{2,4}\d{4}-\d{3,5}\s+', '', n)
+    n = re.sub(r'^\d+(?:\.\d+)*\s+', '', n)
+    return n.strip().lower()
+
+
+def _tokenize_for_match(text: str) -> set[str]:
+    """Extract meaningful lowercase words from text for fuzzy matching."""
+    # Remove common attachment prefixes
+    text = re.sub(
+        r'^(Comments|RTS|Request to Speak|Submitting Comments)\s*[-–—]\s*',
+        '', text, flags=re.IGNORECASE,
+    )
+    # Remove person names (word patterns like "J. Smith" or "John Smith")
+    # by stripping everything before the second " - " separator
+    parts = re.split(r'\s*[-–—]\s*', text, maxsplit=2)
+    if len(parts) >= 2:
+        # Use the last part which is typically the topic
+        text = parts[-1]
+    # Remove file extension and _Redacted
+    text = re.sub(r'_Redacted(?:\(\d+\))?\.\w{2,4}$', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\.\w{2,4}$', '', text)
+    words = set(re.findall(r'[a-z]{3,}', text.lower()))
+    # Remove very common stopwords
+    words -= {'the', 'and', 'for', 'that', 'this', 'with', 'from', 'are', 'was'}
+    return words
+
+
+def _distribute_confirmation_attachments(
+    agenda_items: list["AgendaItem"],
+    attachments: dict[int, list[dict]],
+) -> None:
+    """Move attachments from 'Confirmation of Agenda' items to matching items.
+
+    Public comments and requests-to-speak are filed under the Confirmation
+    item on eSCRIBE but actually relate to specific agenda items.  This
+    function matches them by keyword overlap and adds them to the correct
+    items (skipping duplicates).
+    """
+    # Find confirmation-of-agenda items
+    confirmation_ids: list[int] = []
+    for item in agenda_items:
+        if "confirmation of agenda" in item.title.lower():
+            confirmation_ids.append(item.item_id)
+
+    if not confirmation_ids:
+        return
+
+    # Build candidate targets (all non-procedural items with titles)
+    candidates: list[tuple["AgendaItem", set[str]]] = []
+    for item in agenda_items:
+        if item.item_id in confirmation_ids:
+            continue
+        title_lower = item.title.lower()
+        if any(kw in title_lower for kw in (
+            "call to order", "adjournment", "roll call",
+            "adoption of minutes", "confirmation of",
+            "consent agenda", "committee reports (not on consent",
+        )):
+            continue
+        words = set(re.findall(r'[a-z]{3,}', title_lower))
+        words -= {'the', 'and', 'for', 'that', 'this', 'with', 'from',
+                   'are', 'was', 'report', 'committee', 'standing',
+                   'policy', 'city', 'council'}
+        if words:
+            candidates.append((item, words))
+
+    for conf_id in confirmation_ids:
+        conf_attachments = attachments.get(conf_id, [])
+        if not conf_attachments:
+            continue
+
+        for att in conf_attachments:
+            att_words = _tokenize_for_match(att["name"])
+            if not att_words:
+                continue
+
+            # Score each candidate by word overlap
+            best_item = None
+            best_score = 0.0
+            for item, title_words in candidates:
+                overlap = att_words & title_words
+                if not overlap:
+                    continue
+                # Score = overlap relative to attachment words
+                score = len(overlap) / len(att_words)
+                if score > best_score:
+                    best_score = score
+                    best_item = item
+
+            # Require at least 30% word overlap to match
+            if best_item is None or best_score < 0.3:
+                continue
+
+            # Check for duplicates on the target item
+            target_id = best_item.item_id
+            existing = attachments.get(target_id, [])
+            att_norm = _normalize_name(att["name"])
+            already_exists = any(
+                _normalize_name(e["name"]) == att_norm for e in existing
+            )
+            if already_exists:
+                continue
+
+            # Add the attachment to the target item
+            if target_id not in attachments:
+                attachments[target_id] = []
+            attachments[target_id].append(att)
 
 
 def fetch_meeting_votes(meeting_id: str) -> dict[int, dict]:
