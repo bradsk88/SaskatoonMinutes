@@ -138,12 +138,27 @@
         return html;
     }
 
+    function formatCardTitle(title) {
+        // Strip the generic prefix that every meeting shares
+        return title
+            .replace(/^CITY COUNCIL AGENDA\s*[-–—]\s*/i, '')
+            .replace(/\bMEETING\b/i, '')
+            .trim() || title;
+    }
+
+    function extractTime(startTime) {
+        // Pull just the time portion, e.g. "9:30 AM" from "Wednesday, 25 February 2026 @ 9:30 AM"
+        const m = startTime && startTime.match(/@\s*(.+)/);
+        return m ? m[1].trim() : '';
+    }
+
     function buildCardHTML(m, dateStr, openHref) {
+        const cardTitle = formatCardTitle(m.title);
+        const time = extractTime(m.start_time);
         return `
-            <div class="meeting-date">${dateStr}</div>
-            <div class="meeting-title">${m.title}</div>
+            <div class="meeting-date">${dateStr}${time ? ` &middot; ${time}` : ''}</div>
+            <div class="meeting-title">${cardTitle}</div>
             <div class="meeting-meta">
-                ${m.start_time ? `<span>${m.start_time}</span>` : ''}
                 <span class="meeting-categories" id="cats-${m.meeting_id}"></span>
             </div>
             <div class="meeting-topics" id="topics-${m.meeting_id}">
