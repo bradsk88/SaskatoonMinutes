@@ -135,7 +135,7 @@
 
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
-            html += `<div class="topic-name">${playHtml}${escapeAttr(t.topic)}</div>`;
+            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${playHtml}</div>`;
             html += `<div class="topic-badges">${badgesHtml}</div>`;
             html += `</td>`;
             html += `</tr>`;

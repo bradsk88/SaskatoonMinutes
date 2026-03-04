@@ -314,10 +314,11 @@ main {
 .topic-play-link {
     color: var(--color-video);
     text-decoration: none;
-    margin-right: 0.35rem;
-    font-size: 0.7rem;
-    opacity: 0.6;
+    font-size: 1rem;
+    flex-shrink: 0;
+    opacity: 0.55;
     transition: opacity 0.15s;
+    padding: 0.1rem 0.25rem;
 }
 
 .topic-play-link:hover {
@@ -655,6 +656,13 @@ main {
 .topic-name {
     color: var(--color-text);
     line-height: 1.4;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.topic-name > span {
+    flex: 1;
 }
 
 /* Topic badges row */
