@@ -9,7 +9,6 @@
     <a href="/" class="back-link">&larr; Back to all meetings</a>
 
     <div id="video-section" class="video-section" style="display: none;">
-        <h2>Meeting Video</h2>
         <div class="video-container">
             <iframe id="video-frame" src="" allowfullscreen></iframe>
         </div>
@@ -204,6 +203,18 @@
         return `<div class="transcript-content">${parts}</div>`;
     }
 
+    function buildAttachmentsOnlyHtml(item) {
+        const attachments = item.attachments || [];
+        if (attachments.length === 0) return '';
+        const links = attachments
+            .map(a => `<li><a class="attachment-link" href="${escapeHtml(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.name)}</a></li>`)
+            .join('');
+        return `<div class="transcript-content"><div class="transcript-block">
+                <div class="transcript-label">Attachments</div>
+                <ul class="attachment-list">${links}</ul>
+            </div></div>`;
+    }
+
     function computeOutOfOrder(items) {
         // Build video-order ranks for items that have timestamps
         const withTs = items
@@ -240,10 +251,10 @@
         const hasTimestamp = item.time_start_ms !== null;
         let timestampHtml = '';
         if (isConsent) {
-            timestampHtml = `<span class="badge badge-consent" title="Approved as a group without individual discussion">Not discussed</span>`;
+            timestampHtml = `<span class="badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`;
         } else if (hasTimestamp) {
             timestampHtml = `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
-                 title="Jump to this item in the video">
+                 data-tooltip="Jump to this item in the video">
                  &#9654; ${item.time_start_formatted}
                </button>`;
         }
@@ -251,6 +262,11 @@
         const ooo = outOfOrder.get(idx);
         const oooBadgeHtml = ooo
             ? `<span class="badge badge-reorder">Discussed ${ooo} in video</span>`
+            : '';
+
+        const attachCount = (item.attachments || []).length;
+        const attachBadgeHtml = attachCount > 0
+            ? `<button class="badge badge-attachments" data-tooltip="Click to show attachments">${attachCount} Attachment${attachCount !== 1 ? 's' : ''}</button>`
             : '';
 
         const badgesHtml = (item.badges || [])
@@ -261,13 +277,16 @@
             ? `<p class="item-summary">${item.summary}</p>`
             : '';
 
-        const transcriptHtml = isConsent ? '' : buildTranscriptHtml(item);
+        const transcriptHtml = isConsent
+            ? buildAttachmentsOnlyHtml(item)
+            : buildTranscriptHtml(item);
 
         el.innerHTML = `
             <div class="item-header">
                 <span class="item-number">${item.section_number}</span>
                 <span class="item-title">${item.title}</span>
                 ${oooBadgeHtml}
+                ${attachBadgeHtml}
                 ${timestampHtml}
             </div>
             ${badgesHtml ? `<div class="item-badges">${badgesHtml}</div>` : ''}
@@ -314,6 +333,26 @@
 
     // Click to toggle clamp on overflowing transcripts
     document.getElementById('agenda-items').addEventListener('click', function(e) {
+        // Attachments badge: expand the transcript to reveal attachment links
+        const attachBadge = e.target.closest('.badge-attachments');
+        if (attachBadge) {
+            const item = attachBadge.closest('.agenda-item');
+            if (item) {
+                const transcript = item.querySelector('.transcript-clamped');
+                if (transcript) transcript.classList.remove('transcript-clamped');
+                // Scroll so the attachment list is visible
+                setTimeout(function() {
+                    const attachBlock = item.querySelector('.attachment-list');
+                    if (attachBlock) {
+                        attachBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 50);
+            }
+            return;
+        }
+
+        // Ignore clicks on links/buttons inside the transcript
+        if (e.target.closest('a, button')) return;
         const el = e.target.closest('.transcript-clampable');
         if (!el) return;
         el.classList.toggle('transcript-clamped');

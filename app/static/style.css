@@ -512,21 +512,37 @@ main {
 }
 
 .agenda-item-consent {
-    opacity: 0.5;
     padding: 0.6rem 1.25rem;
 }
 
-.agenda-item-consent:hover {
-    opacity: 0.8;
-}
-
 .badge-consent {
-    background: #f3f4f6;
-    color: #6b7280;
+    background: #fef2f2;
+    color: #991b1b;
     font-size: 0.7rem;
     padding: 0.15rem 0.5rem;
     border-radius: 999px;
     white-space: nowrap;
+}
+
+.badge-attachments {
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border: none;
+    border-radius: 999px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.badge-attachments::before {
+    content: "\1F4CE ";
+}
+
+.badge-attachments:hover {
+    background: #fde68a;
 }
 
 .item-header {
@@ -901,12 +917,7 @@ main {
 }
 
 .topic-consent {
-    opacity: 0.45;
     font-size: 0.85em;
-}
-
-.topic-consent:hover {
-    opacity: 0.75;
 }
 
 /* Tooltip on hover */
@@ -1063,12 +1074,17 @@ footer a:hover {
     }
 
     .badge-consent {
-        background: #374151;
-        color: #9ca3af;
+        background: #7f1d1d;
+        color: #fca5a5;
     }
 
-    .agenda-item-consent {
-        opacity: 0.45;
+    .badge-attachments {
+        background: #78350f;
+        color: #fcd34d;
+    }
+
+    .badge-attachments:hover {
+        background: #92400e;
     }
 
     .badge-outcome-approved {
@@ -1183,7 +1199,6 @@ footer a:hover {
     }
 
     .topic-consent {
-        opacity: 0.4;
     }
 
     /* Buttons */
