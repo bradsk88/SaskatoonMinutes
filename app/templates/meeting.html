@@ -22,12 +22,6 @@
 
     <div class="agenda-controls">
         <h2>Agenda Items</h2>
-        <div class="summarize-controls" style="display: none;" id="summarize-controls">
-            <span id="backend-label" class="backend-label"></span>
-            <button id="summarize-btn" class="btn btn-primary">
-                Generate Summaries
-            </button>
-        </div>
     </div>
 
     <div id="agenda-items" class="agenda-items">
@@ -46,8 +40,6 @@
         const headerEl = document.getElementById('meeting-header');
         const agendaEl = document.getElementById('agenda-items');
         const videoSection = document.getElementById('video-section');
-        const summarizeBtn = document.getElementById('summarize-btn');
-
         try {
             const resp = await fetch(`/api/meeting/${meetingId}`);
             const data = await resp.json();
@@ -94,13 +86,6 @@
                 </p>
             `;
 
-            const backend = data.summarizer_backend || 'extractive';
-            const backendLabels = {
-                'extractive': 'Local (extractive)',
-                'local': 'Local (AI model)',
-            };
-            document.getElementById('backend-label').textContent = `Engine: ${backendLabels[backend] || backend}`;
-            document.getElementById('summarize-controls').style.display = 'flex';
             renderAgendaItems(items);
 
         } catch (err) {
@@ -261,31 +246,6 @@
             document.getElementById('video-section').scrollIntoView({ behavior: 'smooth' });
         }
     }
-
-    document.getElementById('summarize-btn').addEventListener('click', async function() {
-        const btn = this;
-        btn.textContent = 'Generating summaries...';
-        btn.disabled = true;
-
-        try {
-            const resp = await fetch(`/api/meeting/${meetingId}?summarize=true&title=${encodeURIComponent(meetingTitle)}`);
-            const data = await resp.json();
-
-            if (data.error) {
-                alert('Error generating summaries: ' + data.error);
-                btn.textContent = 'Generate Summaries';
-                btn.disabled = false;
-                return;
-            }
-
-            renderAgendaItems(data.agenda_items);
-            btn.textContent = 'Summaries Generated';
-        } catch (err) {
-            alert('Failed to generate summaries.');
-            btn.textContent = 'Generate Summaries';
-            btn.disabled = false;
-        }
-    });
 
     loadMeeting();
 </script>

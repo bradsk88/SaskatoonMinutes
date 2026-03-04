@@ -316,20 +316,6 @@ main {
     font-size: 1.2rem;
 }
 
-.summarize-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.backend-label {
-    font-size: 0.8rem;
-    color: var(--color-text-muted);
-    background: var(--color-bg);
-    padding: 0.25rem 0.6rem;
-    border-radius: 999px;
-    border: 1px solid var(--color-border);
-}
 
 .agenda-items {
     display: flex;
