@@ -1279,3 +1279,34 @@ footer a:hover {
         margin-top: 0.5rem;
     }
 }
+
+/* === Back to Top Button === */
+.back-to-top {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 90;
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    border-radius: 2rem;
+    padding: 0.6rem 1.1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.back-to-top.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.back-to-top:hover {
+    filter: brightness(1.1);
+}

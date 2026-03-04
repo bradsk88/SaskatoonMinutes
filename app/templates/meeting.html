@@ -3,6 +3,8 @@
 {% block title %}Meeting Details - Saskatoon Council Summarizer{% endblock %}
 
 {% block content %}
+<button id="back-to-top" class="back-to-top" aria-label="Back to top">&uarr; Top</button>
+
 <section class="meeting-detail">
     <a href="/" class="back-link">&larr; Back to all meetings</a>
 
@@ -431,6 +433,15 @@
         sortByVideo = btn.dataset.sort === 'video';
         updateSortButtons();
         renderAgendaItems(sortedItems(), true);
+    });
+
+    // Back-to-top button
+    const backToTop = document.getElementById('back-to-top');
+    window.addEventListener('scroll', function() {
+        backToTop.classList.toggle('visible', window.scrollY > 400);
+    }, { passive: true });
+    backToTop.addEventListener('click', function() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
     loadMeeting().then(() => {
