@@ -411,13 +411,13 @@ main {
     top: 1rem;
     right: 1rem;
     left: auto;
-    width: 320px;
     z-index: 100;
     margin-bottom: 0;
     border-radius: var(--radius);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
     background: #000;
-    transition: width 0.3s ease, box-shadow 0.3s ease;
+    /* width and transform-origin set by JS */
+    transform-origin: top right;
 }
 
 .video-section.sticky h2,
@@ -426,8 +426,6 @@ main {
 }
 
 .video-section.sticky .video-container {
-    padding-bottom: 0;
-    height: 180px;
     border-radius: var(--radius);
 }
 
@@ -442,15 +440,6 @@ main {
 }
 .agenda-item.highlight {
     animation: agenda-highlight 1.5s ease-out;
-}
-
-@media (max-width: 600px) {
-    .video-section.sticky {
-        width: 200px;
-    }
-    .video-section.sticky .video-container {
-        height: 112px;
-    }
 }
 
 /* === Agenda Items === */

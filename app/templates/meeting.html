@@ -298,10 +298,11 @@
 
     function setupStickyVideo(videoSection) {
         const sectionHeight = videoSection.offsetHeight;
+        const sectionWidth = videoSection.offsetWidth;
+        const miniWidth = window.innerWidth <= 600 ? 200 : 320;
+        const scale = miniWidth / sectionWidth;
 
         // Spacer preserves layout space when the video goes fixed.
-        // It lives right after the video and is always present but
-        // hidden until we need it.
         const spacer = document.createElement('div');
         spacer.className = 'video-spacer';
         spacer.style.height = sectionHeight + 'px';
@@ -309,27 +310,23 @@
         videoSection.parentNode.insertBefore(spacer, videoSection.nextSibling);
 
         // Zero-height sentinel sits right before the video section.
-        // It never changes size so it can't cause a feedback loop.
         const sentinel = document.createElement('div');
         videoSection.parentNode.insertBefore(sentinel, videoSection);
 
-        // When the sentinel (top of video area) scrolls out above
-        // the viewport, stick the video. When it reappears, unstick.
         const observer = new IntersectionObserver(function(entries) {
             const entry = entries[0];
             if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
                 spacer.style.display = 'block';
+                // Keep the iframe at full size so the embedded player
+                // renders at full dimensions — then scale down visually.
+                videoSection.style.width = sectionWidth + 'px';
+                videoSection.style.transform = 'scale(' + scale + ')';
                 videoSection.classList.add('sticky');
             } else if (entry.isIntersecting) {
                 videoSection.classList.remove('sticky');
+                videoSection.style.width = '';
+                videoSection.style.transform = '';
                 spacer.style.display = 'none';
-                // The embedded player sizes itself to the mini-player
-                // dimensions and won't grow back on its own. Force a
-                // reload so it picks up the full-size container.
-                const iframe = document.getElementById('video-frame');
-                if (iframe && iframe.src) {
-                    iframe.src = iframe.src;
-                }
             }
         }, { threshold: 0 });
 
