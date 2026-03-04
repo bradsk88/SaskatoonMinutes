@@ -155,15 +155,7 @@
             </div>`;
         }
 
-        return `
-            <button class="transcript-toggle" aria-expanded="false">
-                Details
-                <span class="toggle-chevron">&#9662;</span>
-            </button>
-            <div class="transcript-content" hidden>
-                ${parts}
-            </div>
-        `;
+        return `<div class="transcript-content transcript-clamped">${parts}</div>`;
     }
 
     function renderAgendaItems(items) {
@@ -201,14 +193,10 @@
         });
     }
 
-    // Delegate click on transcript toggle buttons
+    // Click clamped transcript to expand
     document.getElementById('agenda-items').addEventListener('click', function(e) {
-        const toggle = e.target.closest('.transcript-toggle');
-        if (!toggle) return;
-        const content = toggle.nextElementSibling;
-        const expanded = toggle.getAttribute('aria-expanded') === 'true';
-        toggle.setAttribute('aria-expanded', String(!expanded));
-        content.hidden = expanded;
+        const el = e.target.closest('.transcript-clamped');
+        if (el) el.classList.remove('transcript-clamped');
     });
 
     function seekVideo(timeMs) {
