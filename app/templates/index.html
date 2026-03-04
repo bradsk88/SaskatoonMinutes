@@ -35,11 +35,9 @@
         // Deduct fixed chrome: header ~56px, hero ~80px, section header ~40px, padding ~32px
         const usedHeight = 56 + 80 + 40 + 32;
         const available = viewportH - usedHeight;
-        const cardRowHeight = 136; // ~120px card + 16px gap
-        const mainWidth = Math.min(window.innerWidth, 1100) - 48; // 1.5rem*2 padding
-        const cols = Math.max(1, Math.floor(mainWidth / 336)); // 320 min-col + 16 gap
-        const rows = Math.max(1, Math.floor(available / cardRowHeight));
-        return Math.max(3, rows * cols);
+        const cardHeight = 136; // ~120px card + 16px gap
+        const count = Math.floor(available / cardHeight);
+        return Math.max(3, count);
     }
 
     function skeletonCard() {
