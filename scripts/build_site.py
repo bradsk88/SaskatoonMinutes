@@ -238,6 +238,11 @@ def main():
         os.path.join(OUTPUT_DIR, "style.css"),
     )
 
+    # Copy CNAME for custom domain (GitHub Pages requires it in the deploy root)
+    cname_path = os.path.join(PROJECT_ROOT, "CNAME")
+    if os.path.exists(cname_path):
+        shutil.copy2(cname_path, os.path.join(OUTPUT_DIR, "CNAME"))
+
     print(f"Static site built in {OUTPUT_DIR}/")
     print(f"  index.html ({len(html):,} bytes)")
     print(f"  {len(details_data)} meeting detail pages")
