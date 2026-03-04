@@ -108,7 +108,81 @@ def _format_topic(item: dict) -> dict:
         "vote_result": vote,
         "is_major": is_major,
         "is_contested": contested,
+        "badges": _extract_badges(item),
     }
+
+
+def _extract_badges(item: dict) -> list[dict]:
+    """Extract contextual badges (money, people, locations) from an agenda item."""
+    badges = []
+    title = item.get("title", "")
+    rec = item.get("recommendation", "")
+
+    # Dollar amounts from title and recommendation
+    money_matches = re.findall(
+        r'\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion))?', title + " " + rec
+    )
+    for raw in money_matches[:2]:
+        badges.append({"type": "money", "label": _format_money(raw)})
+
+    # Councillor names from title
+    councillor_matches = re.findall(
+        r'Councillor\s+([A-Z]\.?\s*[A-Za-z]+)', title
+    )
+    for name in councillor_matches[:2]:
+        badges.append({"type": "person", "label": name.strip()})
+
+    # Street addresses from title only (recommendation has too many false positives)
+    addr_matches = re.findall(
+        r'(\d+\s+(?:[A-Z][\w]+\s+)*?'
+        r'(?:Street|Avenue|Drive|Road|Crescent|Boulevard|Place|Way|Circle)'
+        r'(?:\s+(?:North|South|East|West))?)',
+        title
+    )
+    for addr in addr_matches[:1]:
+        badges.append({"type": "location", "label": addr.strip()})
+
+    # Saskatoon neighbourhood names (only if no street address found)
+    if not addr_matches:
+        title_lower = title.lower()
+        for hood in _SASKATOON_NEIGHBOURHOODS:
+            if hood.lower() in title_lower:
+                badges.append({"type": "location", "label": hood})
+                break
+
+    return badges
+
+
+def _format_money(raw: str) -> str:
+    """Convert a raw dollar match like '$1,500,000' into '$1.5M'."""
+    if re.search(r'(million|billion)', raw, re.IGNORECASE):
+        return raw.strip()
+    numeric = raw.replace('$', '').replace(',', '')
+    try:
+        val = float(numeric)
+    except ValueError:
+        return raw.strip()
+    if val >= 1_000_000_000:
+        return f"${val / 1_000_000_000:.1f}B".replace('.0B', 'B')
+    if val >= 1_000_000:
+        return f"${val / 1_000_000:.1f}M".replace('.0M', 'M')
+    if val >= 100_000:
+        return f"${val / 1_000:.0f}K"
+    return raw.strip()
+
+
+_SASKATOON_NEIGHBOURHOODS = [
+    "Nutana", "Riversdale", "Broadway", "Sutherland", "City Park",
+    "Caswell Hill", "Westmount", "Fairhaven", "Haultain", "Varsity View",
+    "Buena Vista", "Exhibition", "Confederation", "Lakeview",
+    "Lawson Heights", "Silverspring", "Stonebridge", "Willowgrove",
+    "Brighton", "Evergreen", "Rosewood", "Kensington", "Montgomery",
+    "Dundonald", "Pleasant Hill", "King George", "Meadowgreen", "Mayfair",
+    "Massey Place", "Pacific Heights", "Hampton Village", "Blairmore",
+    "Holiday Park", "Forest Grove", "College Park", "Greystone Heights",
+    "Kelsey-Woodlawn", "Adelaide", "Churchill", "Aspen Ridge",
+    "Cumberland", "Downtown",
+]
 
 
 def _format_outcome(vote_result: str, recommendation: str) -> str:

@@ -422,32 +422,62 @@ main {
     line-height: 1.4;
 }
 
-.topic-outcome {
-    text-align: right;
-    white-space: nowrap;
+/* Topic badges row */
+.topic-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    padding-top: 0.15rem;
+}
+
+.topic-badge {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
     font-weight: 500;
+    white-space: nowrap;
+    line-height: 1.4;
 }
 
-/* Outcome status colors */
-.outcome-approved {
-    color: var(--color-primary);
+/* Outcome badge colors */
+.badge-outcome-approved {
+    background: #dcfce7;
+    color: #166534;
 }
 
-.outcome-defeated {
-    color: #dc2626;
+.badge-outcome-defeated {
+    background: #fee2e2;
+    color: #991b1b;
     font-weight: 600;
 }
 
-.outcome-contested {
+.badge-outcome-contested {
     background: #fef3c7;
     color: #92400e;
-    padding: 0.15rem 0.5rem;
-    border-radius: 4px;
     font-weight: 600;
 }
 
-.outcome-neutral {
-    color: var(--color-text-muted);
+.badge-outcome-neutral {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+/* Extracted detail badges */
+.badge-money {
+    background: #dbeafe;
+    color: #1e40af;
+    font-weight: 600;
+}
+
+.badge-person {
+    background: #f3e8ff;
+    color: #6b21a8;
+}
+
+.badge-location {
+    background: #fce7f3;
+    color: #9d174d;
 }
 
 /* Major decision row highlight */

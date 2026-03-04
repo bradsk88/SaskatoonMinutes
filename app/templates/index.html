@@ -73,9 +73,22 @@
             const oClass = outcomeClass(t);
             const tooltip = t.outcome_detail
                 ? ` data-tooltip="${escapeAttr(t.outcome_detail)}"` : '';
+
+            // Outcome badge (always first)
+            let badgesHtml = `<span class="topic-badge badge-${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span>`;
+
+            // Extra extracted badges
+            if (t.badges) {
+                t.badges.forEach(b => {
+                    badgesHtml += ` <span class="topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
+                });
+            }
+
             html += `<tr class="${rowClass}">`;
-            html += `<td class="topic-name">${escapeAttr(t.topic)}</td>`;
-            html += `<td class="topic-outcome"><span class="${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span></td>`;
+            html += `<td class="topic-cell">`;
+            html += `<div class="topic-name">${escapeAttr(t.topic)}</div>`;
+            html += `<div class="topic-badges">${badgesHtml}</div>`;
+            html += `</td>`;
             html += `</tr>`;
         });
         html += '</tbody></table>';
