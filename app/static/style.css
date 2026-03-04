@@ -512,17 +512,12 @@ main {
 }
 
 .agenda-item-consent {
-    opacity: 0.5;
     padding: 0.6rem 1.25rem;
 }
 
-.agenda-item-consent:hover {
-    opacity: 0.8;
-}
-
 .badge-consent {
-    background: #f3f4f6;
-    color: #6b7280;
+    background: #fef2f2;
+    color: #991b1b;
     font-size: 0.7rem;
     padding: 0.15rem 0.5rem;
     border-radius: 999px;
@@ -1084,8 +1079,8 @@ footer a:hover {
     }
 
     .badge-consent {
-        background: #374151;
-        color: #9ca3af;
+        background: #7f1d1d;
+        color: #fca5a5;
     }
 
     .badge-attachments {
@@ -1095,10 +1090,6 @@ footer a:hover {
 
     .badge-attachments:hover {
         background: #92400e;
-    }
-
-    .agenda-item-consent {
-        opacity: 0.45;
     }
 
     .badge-outcome-approved {
