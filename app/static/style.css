@@ -551,9 +551,6 @@ main {
     transition: background 0.15s;
 }
 
-.badge-attachments::before {
-    content: "\1F4CE ";
-}
 
 .badge-attachments:hover {
     background: #fde68a;
@@ -1328,14 +1325,6 @@ footer a:hover {
         flex-basis: calc(100% - 4rem);
     }
 
-    .badge-attachments {
-        font-size: 0;
-        padding: 0.15rem 0.35rem;
-    }
-
-    .badge-attachments::before {
-        font-size: 0.7rem;
-    }
 }
 
 /* === Back to Top Button === */
