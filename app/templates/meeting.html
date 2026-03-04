@@ -70,7 +70,19 @@
                 const tParam = new URLSearchParams(window.location.search).get('t');
                 if (tParam) {
                     const seekSeconds = Math.floor(parseInt(tParam, 10) / 1000);
-                    document.getElementById('video-frame').src = videoUrl + `&initial_seek=${seekSeconds}&auto_play=true`;
+                    const bar = document.getElementById('video-loading');
+                    const iframe = document.getElementById('video-frame');
+                    bar.style.display = 'block';
+                    iframe.src = videoUrl + `&initial_seek=${seekSeconds}&auto_play=true`;
+                    iframe.onload = function() {
+                        setTimeout(function() {
+                            bar.style.opacity = '0';
+                            setTimeout(function() {
+                                bar.style.display = 'none';
+                                bar.style.opacity = '1';
+                            }, 5000);
+                        }, 4000);
+                    };
                 } else {
                     document.getElementById('video-frame').src = videoUrl;
                 }
