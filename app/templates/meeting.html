@@ -270,10 +270,6 @@
             ? `<button class="badge badge-attachments" title="Click to show attachments">${attachCount} Attachment${attachCount !== 1 ? 's' : ''}</button>`
             : '';
 
-        const summarizeBtnHtml = attachCount > 0
-            ? `<button class="badge badge-summarize-pdf" title="Use AI to summarize PDF attachments">Summarize PDFs</button>`
-            : '';
-
         const badgesHtml = (item.badges || [])
             .map(b => `<span class="topic-badge badge-${escapeHtml(b.type)}">${escapeHtml(b.label)}</span>`)
             .join(' ');
@@ -292,7 +288,6 @@
                 <span class="item-title">${item.title}</span>
                 ${oooBadgeHtml}
                 ${attachBadgeHtml}
-                ${summarizeBtnHtml}
                 ${timestampHtml}
             </div>
             ${badgesHtml ? `<div class="item-badges">${badgesHtml}</div>` : ''}
@@ -337,168 +332,8 @@
         });
     }
 
-    // ---------- Client-side PDF text extraction & extractive summarizer ----------
-
-    const STOP_WORDS = new Set([
-        "the","and","for","that","this","with","are","was","were",
-        "been","have","has","had","not","but","from","they","which",
-        "their","will","would","could","should","can","may","its",
-        "than","other","into","all","also","any","each","our",
-        "about","more","some","such","when","what","there","these",
-        "those","then","how","who","where","being","does","did",
-        "very","just","over","after","before",
-    ]);
-
-    function tokenize(text) {
-        const words = text.toLowerCase().match(/[a-z]+/g) || [];
-        return words.filter(w => w.length > 2 && !STOP_WORDS.has(w));
-    }
-
-    function splitSentences(text) {
-        const parts = text.trim().split(/(?<=[.!?])\s+/);
-        return parts.map(s => s.trim()).filter(s => s.length > 10);
-    }
-
-    function extractSummary(text, title, maxSentences) {
-        maxSentences = maxSentences || 3;
-        const sentences = splitSentences(text);
-        if (sentences.length <= maxSentences) return sentences.join(' ');
-
-        const words = tokenize(text);
-        const freq = {};
-        let maxFreq = 1;
-        for (const w of words) {
-            freq[w] = (freq[w] || 0) + 1;
-            if (freq[w] > maxFreq) maxFreq = freq[w];
-        }
-
-        const titleWords = new Set(tokenize(title || ''));
-        const scored = [];
-
-        for (let i = 0; i < sentences.length; i++) {
-            const sentWords = tokenize(sentences[i]);
-            if (!sentWords.length) continue;
-
-            const freqScore = sentWords.reduce((s, w) => s + (freq[w] || 0) / maxFreq, 0) / sentWords.length;
-            const posScore = 1.0 / (1.0 + Math.log1p(i));
-            let overlapScore = 0;
-            if (titleWords.size > 0) {
-                let overlap = 0;
-                for (const w of sentWords) { if (titleWords.has(w)) overlap++; }
-                overlapScore = overlap / titleWords.size;
-            }
-            const lenScore = (sentWords.length >= 8 && sentWords.length <= 30) ? 1.0 : 0.5;
-            const score = freqScore * 0.3 + posScore * 0.3 + overlapScore * 0.25 + lenScore * 0.15;
-            scored.push({ score, idx: i, sentence: sentences[i] });
-        }
-
-        scored.sort((a, b) => b.score - a.score);
-        const selected = scored.slice(0, maxSentences).sort((a, b) => a.idx - b.idx);
-        return selected.map(s => s.sentence).join(' ');
-    }
-
-    let pdfjsReady = null;
-    function loadPdfJs() {
-        if (pdfjsReady) return pdfjsReady;
-        pdfjsReady = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
-            script.type = 'module';
-            // pdf.js v4 is an ES module; load it via dynamic import instead
-            import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs').then(pdfjs => {
-                pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
-                resolve(pdfjs);
-            }).catch(reject);
-        });
-        return pdfjsReady;
-    }
-
-    async function extractPdfText(url) {
-        const pdfjs = await loadPdfJs();
-        const pdf = await pdfjs.getDocument(url).promise;
-        const maxPages = Math.min(pdf.numPages, 30);
-        const parts = [];
-        let totalChars = 0;
-        for (let p = 1; p <= maxPages; p++) {
-            const page = await pdf.getPage(p);
-            const content = await page.getTextContent();
-            const text = content.items.map(item => item.str).join(' ').trim();
-            if (text) {
-                parts.push(text);
-                totalChars += text.length;
-                if (totalChars >= 15000) break;
-            }
-        }
-        return parts.join('\n\n').slice(0, 15000);
-    }
-
-    async function summarizeAttachments(item, itemEl, btn) {
-        const attachments = item.attachments || [];
-        const results = [];
-
-        for (const att of attachments.slice(0, 5)) {
-            try {
-                btn.textContent = `Summarizing ${results.length + 1}/${Math.min(attachments.length, 5)}...`;
-                const text = await extractPdfText(att.url);
-                if (!text.trim()) {
-                    results.push({ name: att.name, summary: null, error: 'PDF contained no extractable text' });
-                    continue;
-                }
-                const summary = extractSummary(text, item.title, 3);
-                results.push({ name: att.name, summary: summary, error: null });
-            } catch (err) {
-                results.push({ name: att.name, summary: null, error: 'Could not load or parse PDF' });
-            }
-        }
-
-        // Build results HTML
-        let html = '<div class="pdf-summaries"><div class="transcript-label">Attachment Summaries (AI-generated)</div>';
-        for (const r of results) {
-            if (r.summary) {
-                html += `<div class="pdf-summary-item">
-                    <strong class="pdf-summary-name">${escapeHtml(r.name)}</strong>
-                    <p class="pdf-summary-text">${escapeHtml(r.summary)}</p>
-                </div>`;
-            } else if (r.error) {
-                html += `<div class="pdf-summary-item pdf-summary-error">
-                    <strong class="pdf-summary-name">${escapeHtml(r.name)}</strong>
-                    <p class="pdf-summary-text">${escapeHtml(r.error)}</p>
-                </div>`;
-            }
-        }
-        html += '</div>';
-
-        btn.remove();
-        // Expand transcript if clamped so the user can see the summary
-        const transcript = itemEl.querySelector('.transcript-clamped');
-        if (transcript) transcript.classList.remove('transcript-clamped');
-        const insertPoint = itemEl.querySelector('.item-summary') || itemEl.querySelector('.item-badges') || itemEl.querySelector('.item-header');
-        insertPoint.insertAdjacentHTML('afterend', html);
-    }
-
     // Click to toggle clamp on overflowing transcripts
     document.getElementById('agenda-items').addEventListener('click', function(e) {
-        // Summarize PDFs button
-        const summarizeBtn = e.target.closest('.badge-summarize-pdf');
-        if (summarizeBtn) {
-            e.stopPropagation();
-            if (summarizeBtn.disabled) return;
-            summarizeBtn.disabled = true;
-            summarizeBtn.textContent = 'Summarizing...';
-            summarizeBtn.classList.add('badge-loading');
-            const itemEl = summarizeBtn.closest('.agenda-item');
-            const itemId = parseInt(itemEl.dataset.itemId, 10);
-            const item = currentItems.find(i => i.item_id === itemId);
-            if (item) {
-                summarizeAttachments(item, itemEl, summarizeBtn).catch(() => {
-                    summarizeBtn.textContent = 'Failed - click to retry';
-                    summarizeBtn.disabled = false;
-                    summarizeBtn.classList.remove('badge-loading');
-                });
-            }
-            return;
-        }
-
         // Attachments badge: expand the transcript to reveal attachment links
         const attachBadge = e.target.closest('.badge-attachments');
         if (attachBadge) {

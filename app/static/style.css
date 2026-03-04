@@ -545,71 +545,6 @@ main {
     background: #fde68a;
 }
 
-/* PDF Summarize button */
-.badge-summarize-pdf {
-    background: #e8f0fe;
-    color: #1a56db;
-    border: 1px solid #bbd0f7;
-    cursor: pointer;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
-    white-space: nowrap;
-    transition: background 0.15s;
-}
-
-.badge-summarize-pdf:hover {
-    background: #d0e2fc;
-}
-
-.badge-summarize-pdf:disabled {
-    opacity: 0.7;
-    cursor: wait;
-}
-
-.badge-loading {
-    animation: badge-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes badge-pulse {
-    0%, 100% { opacity: 0.7; }
-    50% { opacity: 1; }
-}
-
-/* PDF summary results */
-.pdf-summaries {
-    margin-top: 0.6rem;
-    padding: 0.75rem 1rem;
-    background: #f0f7ff;
-    border-left: 3px solid #4a90d9;
-    border-radius: var(--radius);
-}
-
-.pdf-summary-item {
-    margin-bottom: 0.5rem;
-}
-
-.pdf-summary-item:last-child {
-    margin-bottom: 0;
-}
-
-.pdf-summary-name {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-}
-
-.pdf-summary-text {
-    margin: 0.15rem 0 0 0;
-    font-size: 0.88rem;
-    line-height: 1.5;
-}
-
-.pdf-summary-error .pdf-summary-text {
-    color: #b91c1c;
-    font-style: italic;
-}
-
 .item-header {
     display: flex;
     align-items: flex-start;
@@ -1155,29 +1090,6 @@ footer a:hover {
 
     .badge-attachments:hover {
         background: #92400e;
-    }
-
-    .badge-summarize-pdf {
-        background: #1e3a5f;
-        color: #93bbec;
-        border-color: #2d5a8e;
-    }
-
-    .badge-summarize-pdf:hover {
-        background: #264a73;
-    }
-
-    .pdf-summaries {
-        background: #1a2332;
-        border-left-color: #4a7ab5;
-    }
-
-    .pdf-summary-name {
-        color: #aaa;
-    }
-
-    .pdf-summary-error .pdf-summary-text {
-        color: #f87171;
     }
 
     .badge-outcome-approved {
