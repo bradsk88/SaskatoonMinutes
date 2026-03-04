@@ -155,7 +155,7 @@
             </div>`;
         }
 
-        return `<div class="transcript-content transcript-clamped">${parts}</div>`;
+        return `<div class="transcript-content">${parts}</div>`;
     }
 
     function renderAgendaItems(items) {
@@ -190,6 +190,16 @@
                 ${transcriptHtml}
             `;
             container.appendChild(el);
+        });
+        applyTranscriptClamps();
+    }
+
+    function applyTranscriptClamps() {
+        const CLAMP_HEIGHT = 96; // ~6.2em at default font size
+        document.querySelectorAll('.transcript-content').forEach(el => {
+            if (el.scrollHeight > CLAMP_HEIGHT) {
+                el.classList.add('transcript-clamped');
+            }
         });
     }
 
