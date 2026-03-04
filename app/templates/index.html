@@ -370,23 +370,11 @@
                 }
             });
 
-            // Show/hide "no matches" message
-            let noMatch = topicsContainer.querySelector('.topics-no-match');
+            // Collapse cards with no matches, expand otherwise
             if (active && rows.length > 0 && visibleCount === 0) {
-                if (!noMatch) {
-                    noMatch = document.createElement('div');
-                    noMatch.className = 'topics-no-match';
-                    noMatch.textContent = 'No topics match the selected categories.';
-                    topicsContainer.appendChild(noMatch);
-                }
-                noMatch.style.display = '';
-                // Dim the table
-                const table = topicsContainer.querySelector('.topics-table');
-                if (table) table.style.display = 'none';
+                card.classList.add('meeting-card-collapsed');
             } else {
-                if (noMatch) noMatch.style.display = 'none';
-                const table = topicsContainer.querySelector('.topics-table');
-                if (table) table.style.display = '';
+                card.classList.remove('meeting-card-collapsed');
             }
         });
     }

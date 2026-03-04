@@ -128,10 +128,24 @@ nav {
 }
 
 .topics-no-match {
-    padding: 0.5rem;
-    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.75rem;
     color: var(--color-text-muted);
     font-style: italic;
+}
+
+/* Collapsed card when no topics match the active filter */
+.meeting-card-collapsed {
+    padding: 0.5rem 1.25rem;
+    opacity: 0.55;
+}
+
+.meeting-card-collapsed .meeting-topics {
+    display: none;
+}
+
+.meeting-card-collapsed .meeting-card-actions {
+    display: none;
 }
 
 /* === Main content === */
