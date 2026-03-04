@@ -390,12 +390,31 @@ main {
 }
 
 .transcript-clamped {
-    display: -webkit-box;
-    -webkit-line-clamp: 4;
-    -webkit-box-orient: vertical;
+    max-height: 6.2em;
     overflow: hidden;
     cursor: pointer;
     position: relative;
+}
+
+.transcript-clamped::after {
+    content: "Show more...";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2.4em;
+    background: linear-gradient(transparent, var(--color-bg) 60%);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--color-primary);
+    padding-bottom: 0.2rem;
+}
+
+.transcript-clamped:hover::after {
+    text-decoration: underline;
 }
 
 .transcript-block {
