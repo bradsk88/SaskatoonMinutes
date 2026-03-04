@@ -8,6 +8,14 @@
     <p>Browse recent council meetings and see what was discussed and decided.</p>
 </section>
 
+<section class="category-filter-bar" id="category-filter-bar">
+    <div class="filter-bar-inner">
+        <span class="filter-label">Filter:</span>
+        <div class="filter-chips" id="filter-chips"></div>
+        <button class="filter-clear" id="filter-clear" style="display:none;">Clear</button>
+    </div>
+</section>
+
 <section class="meetings-section">
     <h2>Recent Meetings</h2>
     <div id="meetings-list" class="meetings-grid"></div>
@@ -22,6 +30,25 @@
 <script>
     const API_PAGE_SIZE = 50;
     const ESCRIBEMEETINGS_BASE = 'https://pub-saskatoon.escribemeetings.com';
+
+    // All known categories with their badge slug (must match _TOPIC_CATEGORIES keys)
+    const ALL_CATEGORIES = [
+        { label: 'Homelessness', slug: 'cat-homelessness' },
+        { label: 'Housing', slug: 'cat-housing' },
+        { label: 'Zoning & Dev', slug: 'cat-zoning-dev' },
+        { label: 'Transit', slug: 'cat-transit' },
+        { label: 'Traffic', slug: 'cat-traffic' },
+        { label: 'Greenspace', slug: 'cat-greenspace' },
+        { label: 'Small Business', slug: 'cat-small-business' },
+        { label: 'Infrastructure', slug: 'cat-infrastructure' },
+        { label: 'Public Safety', slug: 'cat-public-safety' },
+        { label: 'Recreation', slug: 'cat-recreation' },
+        { label: 'Property Tax', slug: 'cat-property-tax' },
+        { label: 'Arts & Culture', slug: 'cat-arts-culture' },
+        { label: 'Environment', slug: 'cat-environment' },
+    ];
+
+    const selectedCategories = new Set();
 
     let apiPage = 1;
     let totalCount = 0;
@@ -85,6 +112,11 @@
             const tooltip = t.outcome_detail
                 ? ` data-tooltip="${escapeAttr(t.outcome_detail)}"` : '';
 
+            // Collect category slugs for this topic row
+            const catSlugs = (t.badges || [])
+                .filter(b => b.type.startsWith('cat-'))
+                .map(b => b.type);
+
             // Outcome badge (always first)
             let badgesHtml = `<span class="topic-badge badge-${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span>`;
 
@@ -95,7 +127,7 @@
                 });
             }
 
-            html += `<tr class="${rowClass}">`;
+            html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
             html += `<div class="topic-name">${escapeAttr(t.topic)}</div>`;
             html += `<div class="topic-badges">${badgesHtml}</div>`;
@@ -159,6 +191,7 @@
         if (preloadedEl) {
             const allTopics = JSON.parse(preloadedEl.textContent);
             renderTopicsInContainer(meetingId, allTopics[meetingId]);
+            if (selectedCategories.size > 0) applyFilters();
             return;
         }
 
@@ -175,6 +208,7 @@
             }
 
             renderTopicsInContainer(meetingId, data.topics);
+            if (selectedCategories.size > 0) applyFilters();
         } catch (err) {
             container.innerHTML = '<div class="topics-error">Failed to load topics.</div>';
         }
@@ -281,7 +315,84 @@
         observer.observe(sentinel);
     }
 
+    function initFilterBar() {
+        const chipsContainer = document.getElementById('filter-chips');
+        const clearBtn = document.getElementById('filter-clear');
+
+        ALL_CATEGORIES.forEach(cat => {
+            const chip = document.createElement('button');
+            chip.className = `filter-chip topic-badge badge-${cat.slug}`;
+            chip.textContent = cat.label;
+            chip.dataset.slug = cat.slug;
+            chip.addEventListener('click', () => {
+                if (selectedCategories.has(cat.slug)) {
+                    selectedCategories.delete(cat.slug);
+                    chip.classList.remove('filter-chip-active');
+                } else {
+                    selectedCategories.add(cat.slug);
+                    chip.classList.add('filter-chip-active');
+                }
+                clearBtn.style.display = selectedCategories.size > 0 ? '' : 'none';
+                applyFilters();
+            });
+            chipsContainer.appendChild(chip);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            selectedCategories.clear();
+            chipsContainer.querySelectorAll('.filter-chip-active').forEach(c =>
+                c.classList.remove('filter-chip-active'));
+            clearBtn.style.display = 'none';
+            applyFilters();
+        });
+    }
+
+    function applyFilters() {
+        const active = selectedCategories.size > 0;
+        document.querySelectorAll('.meeting-card').forEach(card => {
+            const topicsContainer = card.querySelector('[id^="topics-"]');
+            if (!topicsContainer) return;
+
+            const rows = topicsContainer.querySelectorAll('tr[data-categories]');
+            // Still loading — skip filtering for this card
+            if (rows.length === 0 && topicsContainer.querySelector('.skeleton-topics')) return;
+
+            let visibleCount = 0;
+            rows.forEach(row => {
+                if (!active) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    const rowCats = row.dataset.categories.split(' ').filter(Boolean);
+                    const match = rowCats.some(c => selectedCategories.has(c));
+                    row.style.display = match ? '' : 'none';
+                    if (match) visibleCount++;
+                }
+            });
+
+            // Show/hide "no matches" message
+            let noMatch = topicsContainer.querySelector('.topics-no-match');
+            if (active && rows.length > 0 && visibleCount === 0) {
+                if (!noMatch) {
+                    noMatch = document.createElement('div');
+                    noMatch.className = 'topics-no-match';
+                    noMatch.textContent = 'No topics match the selected categories.';
+                    topicsContainer.appendChild(noMatch);
+                }
+                noMatch.style.display = '';
+                // Dim the table
+                const table = topicsContainer.querySelector('.topics-table');
+                if (table) table.style.display = 'none';
+            } else {
+                if (noMatch) noMatch.style.display = 'none';
+                const table = topicsContainer.querySelector('.topics-table');
+                if (table) table.style.display = '';
+            }
+        });
+    }
+
     async function init() {
+        initFilterBar();
         const container = document.getElementById('meetings-list');
 
         // Static mode: use preloaded data if available
