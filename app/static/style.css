@@ -794,6 +794,15 @@ main {
     background: #fffbeb;
 }
 
+.topic-consent {
+    opacity: 0.45;
+    font-size: 0.85em;
+}
+
+.topic-consent:hover {
+    opacity: 0.75;
+}
+
 /* Tooltip on hover */
 [data-tooltip] {
     position: relative;
@@ -1051,6 +1060,10 @@ footer a:hover {
     /* Major decision row */
     .topic-major {
         background: #292317;
+    }
+
+    .topic-consent {
+        opacity: 0.4;
     }
 
     /* Buttons */
