@@ -380,6 +380,86 @@ main {
     line-height: 1.5;
 }
 
+/* === Transcript (meeting detail page) === */
+.transcript-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.6rem;
+    padding: 0.25rem 0.7rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.transcript-toggle:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.toggle-chevron {
+    font-size: 0.7rem;
+    transition: transform 0.2s;
+}
+
+.transcript-toggle[aria-expanded="true"] .toggle-chevron {
+    transform: rotate(180deg);
+}
+
+.transcript-content {
+    margin-top: 0.6rem;
+    padding: 0.75rem 1rem;
+    background: var(--color-bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border);
+}
+
+.transcript-block {
+    margin-bottom: 0.6rem;
+}
+
+.transcript-block:last-child {
+    margin-bottom: 0;
+}
+
+.transcript-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.2rem;
+}
+
+.transcript-text {
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: var(--color-text);
+}
+
+.transcript-vote {
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.vote-carried {
+    color: #166534;
+}
+
+.vote-contested {
+    color: #92400e;
+}
+
+.transcript-vote-detail {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    margin-top: 0.15rem;
+}
+
 /* === Meeting Topics (index page) === */
 .meeting-topics {
     margin-top: 0.75rem;
@@ -691,6 +771,15 @@ footer a:hover {
     .btn-topics:hover:not(:disabled) {
         background: #1f3a2b;
         border-color: var(--color-primary);
+    }
+
+    /* Transcript vote colors */
+    .vote-carried {
+        color: #6ee7b7;
+    }
+
+    .vote-contested {
+        color: #fcd34d;
     }
 
     /* Timestamp link */

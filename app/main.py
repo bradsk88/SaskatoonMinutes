@@ -56,7 +56,7 @@ def meeting_detail(meeting_id: str):
 def api_meeting_detail(meeting_id: str):
     """API endpoint to fetch meeting details with agenda items and timestamps."""
     try:
-        detail = fetch_meeting_detail(meeting_id)
+        detail = fetch_meeting_detail(meeting_id, include_votes=True)
         items = [item.to_dict() for item in detail["agenda_items"]]
 
         backend = get_backend()

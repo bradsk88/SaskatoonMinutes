@@ -108,6 +108,64 @@
         }
     }
 
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function decodeEntities(str) {
+        if (!str) return '';
+        return str.replace(/&#58;/g, ':').replace(/&#160;/g, ' ')
+                  .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+                  .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    }
+
+    function buildTranscriptHtml(item) {
+        const content = decodeEntities(item.content || '');
+        const rec = decodeEntities(item.recommendation || '');
+        const vote = item.vote_result || '';
+        const voteDetail = decodeEntities(item.vote_detail || '');
+
+        if (!content && !rec && !vote) return '';
+
+        let parts = '';
+
+        if (content) {
+            parts += `<div class="transcript-block">
+                <div class="transcript-label">Description</div>
+                <div class="transcript-text">${escapeHtml(content)}</div>
+            </div>`;
+        }
+
+        if (rec) {
+            parts += `<div class="transcript-block">
+                <div class="transcript-label">Recommendation</div>
+                <div class="transcript-text">${escapeHtml(rec)}</div>
+            </div>`;
+        }
+
+        if (vote) {
+            const contested = item.is_contested;
+            const voteClass = contested ? 'vote-contested' : 'vote-carried';
+            parts += `<div class="transcript-block">
+                <div class="transcript-label">Vote</div>
+                <div class="transcript-vote ${voteClass}">${escapeHtml(vote)}</div>
+                ${voteDetail ? `<div class="transcript-vote-detail">${escapeHtml(voteDetail)}</div>` : ''}
+            </div>`;
+        }
+
+        return `
+            <button class="transcript-toggle" aria-expanded="false">
+                Details
+                <span class="toggle-chevron">&#9662;</span>
+            </button>
+            <div class="transcript-content" hidden>
+                ${parts}
+            </div>
+        `;
+    }
+
     function renderAgendaItems(items) {
         const container = document.getElementById('agenda-items');
         container.innerHTML = '';
@@ -128,6 +186,8 @@
                 ? `<p class="item-summary">${item.summary}</p>`
                 : '';
 
+            const transcriptHtml = buildTranscriptHtml(item);
+
             el.innerHTML = `
                 <div class="item-header">
                     <span class="item-number">${item.section_number}</span>
@@ -135,10 +195,21 @@
                     ${timestampHtml}
                 </div>
                 ${summaryHtml}
+                ${transcriptHtml}
             `;
             container.appendChild(el);
         });
     }
+
+    // Delegate click on transcript toggle buttons
+    document.getElementById('agenda-items').addEventListener('click', function(e) {
+        const toggle = e.target.closest('.transcript-toggle');
+        if (!toggle) return;
+        const content = toggle.nextElementSibling;
+        const expanded = toggle.getAttribute('aria-expanded') === 'true';
+        toggle.setAttribute('aria-expanded', String(!expanded));
+        content.hidden = expanded;
+    });
 
     function seekVideo(timeMs) {
         const iframe = document.getElementById('video-frame');
