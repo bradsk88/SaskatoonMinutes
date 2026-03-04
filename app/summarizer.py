@@ -118,12 +118,16 @@ def _extract_badges(item: dict) -> list[dict]:
     title = item.get("title", "")
     rec = item.get("recommendation", "")
 
-    # Dollar amounts from title and recommendation
-    money_matches = re.findall(
-        r'\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion))?', title + " " + rec
-    )
-    for raw in money_matches[:2]:
-        badges.append({"type": "money", "label": _format_money(raw)})
+    # Dollar amounts with surrounding context for a verb
+    combined = title + " " + rec
+    for m in re.finditer(r'\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion))?', combined):
+        raw = m.group()
+        verb = _money_verb(combined, m.start())
+        formatted = _format_money(raw)
+        label = f"{formatted} {verb}" if verb else formatted
+        badges.append({"type": "money", "label": label})
+        if len([b for b in badges if b["type"] == "money"]) >= 2:
+            break
 
     # Councillor names from title
     councillor_matches = re.findall(
@@ -151,6 +155,42 @@ def _extract_badges(item: dict) -> list[dict]:
                 break
 
     return badges
+
+
+# Maps context keywords (found near a dollar amount) to short badge verbs.
+_MONEY_CONTEXT = [
+    # Multi-word / specific patterns first
+    (r'not.{0,10}exceed', 'max'),
+    (r'award', 'awarded'),
+    (r'approv', 'approved'),
+    (r'budget', 'budgeted'),
+    (r'fund(?:ing|ed)?', 'funded'),
+    (r'grant', 'granted'),
+    (r'contract', 'contract'),
+    (r'spend|expenditure|expend', 'spent'),
+    (r'allocat', 'allocated'),
+    (r'invest', 'invested'),
+    (r'lev(?:y|ied)', 'levied'),
+    (r'increas', 'increase'),
+    (r'reduc|decreas|sav', 'savings'),
+    (r'revenue', 'revenue'),
+    (r'fee|charge', 'fee'),
+    (r'salar|compensat|pay', 'salary'),
+    (r'donat', 'donated'),
+    (r'cost|estimat', 'estimated'),
+]
+
+
+def _money_verb(text: str, match_pos: int) -> str:
+    """Find a contextual verb for a dollar amount by scanning nearby text."""
+    # Look at ~80 chars before and ~30 chars after the dollar sign
+    start = max(0, match_pos - 80)
+    end = min(len(text), match_pos + 30)
+    window = text[start:end].lower()
+    for pattern, verb in _MONEY_CONTEXT:
+        if re.search(pattern, window):
+            return verb
+    return ""
 
 
 def _format_money(raw: str) -> str:
