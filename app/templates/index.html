@@ -118,9 +118,9 @@
                 .filter(b => b.type.startsWith('cat-'))
                 .map(b => b.type);
 
-            // Outcome badge (always first) — consent items get a distinct label
+            // Outcome badge (always first) — consent items get a plain-language label
             let badgesHtml = t.is_consent
-                ? `<span class="topic-badge badge-consent">Consent</span>`
+                ? `<span class="topic-badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`
                 : `<span class="topic-badge badge-${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span>`;
 
             // Extra extracted badges

@@ -195,7 +195,7 @@
         const hasTimestamp = item.time_start_ms !== null;
         let timestampHtml = '';
         if (isConsent) {
-            timestampHtml = `<span class="badge badge-consent">Consent agenda</span>`;
+            timestampHtml = `<span class="badge badge-consent" title="Approved as a group without individual discussion">Not discussed</span>`;
         } else if (hasTimestamp) {
             timestampHtml = `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
                  title="Jump to this item in the video">
