@@ -10,7 +10,7 @@ from flask import Flask, render_template, jsonify, request
 from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
 from app.scraper import fetch_past_meetings, fetch_meeting_detail
-from app.summarizer import summarize_agenda_items, extract_meeting_topics, extract_badges, get_backend
+from app.summarizer import summarize_agenda_items, extract_meeting_topics, extract_badges
 
 _CONNECTION_ERROR_MSG = (
     "Could not connect to the City of Saskatoon eSCRIBE server. "
@@ -62,8 +62,6 @@ def api_meeting_detail(meeting_id: str):
         for item in items:
             item["badges"] = extract_badges(item)
 
-        backend = get_backend()
-
         # Summarize if requested
         if request.args.get("summarize", "false").lower() == "true":
             title = request.args.get("title", "City Council Meeting")
@@ -72,7 +70,6 @@ def api_meeting_detail(meeting_id: str):
         return jsonify({
             "agenda_items": items,
             "video_url": detail["video_url"],
-            "summarizer_backend": backend,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

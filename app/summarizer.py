@@ -1,35 +1,19 @@
 """
-Summarizer module supporting multiple backends.
+Summarizer module for extractive summarization of council agenda items.
 
-Backends (set via SUMMARIZER_BACKEND env var):
-  - "extractive" (default) — Zero-dependency extractive summarization using
-    sentence scoring. No cloud calls, no ML frameworks needed.
-  - "local" — Local abstractive summarization using Hugging Face Transformers.
-    Requires: pip install transformers torch
+Zero-dependency extractive summarization using sentence scoring.
+No cloud calls, no ML frameworks needed.
 """
 
 import html as html_mod
-import os
 import re
 import math
 from collections import Counter
 
 
-def get_backend() -> str:
-    """Determine which summarization backend to use."""
-    backend = os.environ.get("SUMMARIZER_BACKEND", "").lower()
-    if backend in ("extractive", "local"):
-        return backend
-    return "extractive"
-
-
 def summarize_agenda_items(agenda_items: list[dict], meeting_title: str) -> list[dict]:
-    """Summarize agenda items using the configured backend."""
-    backend = get_backend()
-    if backend == "local":
-        return _summarize_local(agenda_items, meeting_title)
-    else:
-        return _summarize_extractive(agenda_items, meeting_title)
+    """Summarize agenda items using extractive summarization."""
+    return _summarize_extractive(agenda_items, meeting_title)
 
 
 def extract_meeting_topics(
@@ -568,57 +552,3 @@ _STOP_WORDS = {
     "those", "then", "how", "who", "where", "being", "does", "did",
     "very", "just", "over", "after", "before",
 }
-
-
-# ---------------------------------------------------------------------------
-# Local Transformers backend
-# ---------------------------------------------------------------------------
-
-_local_pipeline = None
-
-
-def _get_local_pipeline():
-    global _local_pipeline
-    if _local_pipeline is None:
-        from transformers import pipeline
-        model_name = os.environ.get(
-            "SUMMARIZER_MODEL", "sshleifer/distilbart-cnn-12-6"
-        )
-        _local_pipeline = pipeline("summarization", model=model_name)
-    return _local_pipeline
-
-
-def _summarize_local(agenda_items: list[dict], meeting_title: str) -> list[dict]:
-    """Summarize items using a local Hugging Face Transformers model."""
-    pipe = _get_local_pipeline()
-
-    for item in agenda_items:
-        title = item.get("title", "")
-        content = item.get("content", "")
-
-        if _is_procedural(title):
-            item["summary"] = "Procedural item."
-            continue
-
-        text = f"{title}. {content}".strip() if content else title
-
-        # Model needs reasonable input length
-        if len(text.split()) < 15:
-            item["summary"] = text
-            continue
-
-        # Truncate to model max input (~1024 tokens for distilbart)
-        truncated = " ".join(text.split()[:900])
-
-        try:
-            result = pipe(
-                truncated,
-                max_length=80,
-                min_length=20,
-                do_sample=False,
-            )
-            item["summary"] = result[0]["summary_text"]
-        except Exception:
-            item["summary"] = title
-
-    return agenda_items
