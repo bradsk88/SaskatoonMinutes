@@ -9,7 +9,7 @@ import re
 import json
 import urllib3
 import requests
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -46,6 +46,7 @@ class AgendaItem:
     vote_detail: str = ""
     is_contested: bool = False
     timestamp_inherited: bool = False
+    attachments: list = field(default_factory=list)
 
     @property
     def time_start_formatted(self) -> str | None:
@@ -141,6 +142,7 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
         # Extract recommendations and descriptions from the Agenda page
         recs = _extract_recommendations(html)
         descs = _extract_descriptions(html)
+        attachments = _extract_attachments(html)
         # Fetch vote results from the PostMinutes page
         votes = fetch_meeting_votes(meeting_id)
 
@@ -149,6 +151,8 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
                 item.recommendation = recs[item.item_id]
             if item.item_id in descs:
                 item.content = descs[item.item_id]
+            if item.item_id in attachments:
+                item.attachments = attachments[item.item_id]
             if item.item_id in votes:
                 v = votes[item.item_id]
                 item.vote_result = v["result"]
@@ -356,6 +360,33 @@ def _extract_descriptions(html: str) -> dict[int, str]:
             text = re.sub(r"\s+", " ", text).strip()
             if text:
                 results[item_id] = text
+    return results
+
+
+def _extract_attachments(html: str) -> dict[int, list[dict]]:
+    """Extract document attachment links per agenda item.
+
+    Returns {item_id: [{"name": str, "url": str}, ...]}.
+    """
+    results: dict[int, list[dict]] = {}
+    for item_id, block in _item_blocks(html).items():
+        seen_ids: set[str] = set()
+        attachments: list[dict] = []
+        for m in re.finditer(
+            r'<a\s[^>]*href="(filestream\.ashx\?DocumentId=(\d+))"[^>]*>(.*?)</a>',
+            block, re.DOTALL | re.IGNORECASE,
+        ):
+            doc_id = m.group(2)
+            if doc_id in seen_ids:
+                continue
+            seen_ids.add(doc_id)
+            name = _clean_html(m.group(3)).strip()
+            if not name:
+                continue
+            url = f"{BASE_URL}/{m.group(1)}"
+            attachments.append({"name": name, "url": url})
+        if attachments:
+            results[item_id] = attachments
     return results
 
 

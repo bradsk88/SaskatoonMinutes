@@ -184,6 +184,17 @@
             </div>`;
         }
 
+        const attachments = item.attachments || [];
+        if (attachments.length > 0) {
+            const links = attachments
+                .map(a => `<li><a class="attachment-link" href="${escapeHtml(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.name)}</a></li>`)
+                .join('');
+            parts += `<div class="transcript-block">
+                <div class="transcript-label">Attachments</div>
+                <ul class="attachment-list">${links}</ul>
+            </div>`;
+        }
+
         return `<div class="transcript-content">${parts}</div>`;
     }
 

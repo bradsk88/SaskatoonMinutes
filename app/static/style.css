@@ -687,6 +687,36 @@ main {
     margin-top: 0.15rem;
 }
 
+/* === Attachment Links === */
+.attachment-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.attachment-list li {
+    margin-bottom: 0.3rem;
+}
+
+.attachment-list li:last-child {
+    margin-bottom: 0;
+}
+
+.attachment-link {
+    font-size: 0.85rem;
+    color: var(--color-primary);
+    text-decoration: none;
+}
+
+.attachment-link::before {
+    content: "\1F4CE ";
+    font-size: 0.8rem;
+}
+
+.attachment-link:hover {
+    text-decoration: underline;
+}
+
 /* === Meeting Topics (index page) === */
 .meeting-topics {
     margin-top: 0.75rem;
