@@ -106,13 +106,13 @@
         return html;
     }
 
-    function buildCardHTML(m, dateStr, badges, openHref) {
+    function buildCardHTML(m, dateStr, openHref) {
         return `
             <div class="meeting-date">${dateStr}</div>
             <div class="meeting-title">${m.title}</div>
             <div class="meeting-meta">
                 ${m.start_time ? `<span>${m.start_time}</span>` : ''}
-                ${badges.join(' ')}
+                <span class="meeting-categories" id="cats-${m.meeting_id}"></span>
             </div>
             <div class="meeting-topics" id="topics-${m.meeting_id}">
                 ${topicsSkeleton()}
@@ -132,6 +132,22 @@
             return;
         }
         container.innerHTML = renderTopicsTable(topics);
+
+        // Collect distinct category badges and show them at the meeting level
+        const catContainer = document.getElementById(`cats-${meetingId}`);
+        if (catContainer) {
+            const seen = new Set();
+            let html = '';
+            topics.forEach(t => {
+                (t.badges || []).forEach(b => {
+                    if (b.type.startsWith('cat-') && !seen.has(b.type)) {
+                        seen.add(b.type);
+                        html += `<span class="topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span> `;
+                    }
+                });
+            });
+            catContainer.innerHTML = html;
+        }
     }
 
     async function loadTopics(meetingId, title) {
@@ -181,11 +197,7 @@
                 weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
             });
 
-            const badges = [];
-            if (m.has_video) badges.push('<span class="badge badge-video">Video</span>');
-            if (m.has_agenda) badges.push('<span class="badge badge-agenda">Agenda</span>');
-
-            card.innerHTML = buildCardHTML(m, dateStr, badges, openHref);
+            card.innerHTML = buildCardHTML(m, dateStr, openHref);
             targetGrid.appendChild(card);
         });
     }

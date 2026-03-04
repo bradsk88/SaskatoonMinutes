@@ -118,9 +118,10 @@ def _extract_badges(item: dict) -> list[dict]:
     title = item.get("title", "")
     rec = item.get("recommendation", "")
 
-    # Category badges first (most prominent)
+    # Category badges first (most prominent) – type slug enables per-category colors
     for cat in _categorize_topic(title, rec):
-        badges.append({"type": "category", "label": cat})
+        slug = cat.lower().replace(" & ", "-").replace(" ", "-")
+        badges.append({"type": f"cat-{slug}", "label": cat})
 
     # Dollar amounts with surrounding context for a verb and purpose
     combined = title + " " + rec
