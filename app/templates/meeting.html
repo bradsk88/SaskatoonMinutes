@@ -198,15 +198,16 @@
         const CLAMP_HEIGHT = 96; // ~6.2em at default font size
         document.querySelectorAll('.transcript-content').forEach(el => {
             if (el.scrollHeight > CLAMP_HEIGHT) {
-                el.classList.add('transcript-clamped');
+                el.classList.add('transcript-clamped', 'transcript-clampable');
             }
         });
     }
 
-    // Click clamped transcript to expand
+    // Click to toggle clamp on overflowing transcripts
     document.getElementById('agenda-items').addEventListener('click', function(e) {
-        const el = e.target.closest('.transcript-clamped');
-        if (el) el.classList.remove('transcript-clamped');
+        const el = e.target.closest('.transcript-clampable');
+        if (!el) return;
+        el.classList.toggle('transcript-clamped');
     });
 
     function seekVideo(timeMs) {

@@ -417,6 +417,24 @@ main {
     text-decoration: underline;
 }
 
+.transcript-clampable:not(.transcript-clamped) {
+    cursor: pointer;
+}
+
+.transcript-clampable:not(.transcript-clamped)::after {
+    content: "Show less";
+    display: block;
+    text-align: center;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--color-primary);
+    margin-top: 0.4rem;
+}
+
+.transcript-clampable:not(.transcript-clamped):hover::after {
+    text-decoration: underline;
+}
+
 .transcript-block {
     margin-bottom: 0.6rem;
 }
