@@ -109,6 +109,7 @@ def _format_topic(item: dict) -> dict:
         "is_major": is_major,
         "is_contested": contested,
         "badges": _extract_badges(item),
+        "time_start_ms": item.get("time_start_ms"),
     }
 
 

@@ -165,12 +165,13 @@
                 ${topicsSkeleton()}
             </div>
             <div class="meeting-card-actions">
+                <span id="play-${m.meeting_id}"></span>
                 <a href="${openHref}" class="btn btn-sm btn-open">Open</a>
             </div>
         `;
     }
 
-    function renderTopicsInContainer(meetingId, topics) {
+    function renderTopicsInContainer(meetingId, topics, openHref) {
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
 
@@ -195,17 +196,37 @@
             });
             catContainer.innerHTML = html;
         }
+
+        // Add Play button if any topic has a video timestamp
+        const playContainer = document.getElementById(`play-${meetingId}`);
+        if (playContainer && openHref) {
+            // Prefer first major topic with timestamp, else first with any timestamp
+            const majorWithTs = topics.find(t => t.is_major && t.time_start_ms != null);
+            const anyWithTs = topics.find(t => t.time_start_ms != null);
+            const best = majorWithTs || anyWithTs;
+            if (best) {
+                playContainer.innerHTML =
+                    `<a href="${openHref}?t=${best.time_start_ms}" class="btn btn-sm btn-play">&#9654; Play</a>`;
+            }
+        }
+    }
+
+    function meetingOpenHref(meetingId) {
+        const isStatic = !!document.getElementById('preloaded-meetings');
+        return isStatic ? `meeting/${meetingId}.html` : `/meeting/${meetingId}`;
     }
 
     async function loadTopics(meetingId, title) {
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
 
+        const openHref = meetingOpenHref(meetingId);
+
         // Static mode: use preloaded topics if available
         const preloadedEl = document.getElementById('preloaded-topics');
         if (preloadedEl) {
             const allTopics = JSON.parse(preloadedEl.textContent);
-            renderTopicsInContainer(meetingId, allTopics[meetingId]);
+            renderTopicsInContainer(meetingId, allTopics[meetingId], openHref);
             if (selectedCategories.size > 0) applyFilters();
             return;
         }
@@ -222,7 +243,7 @@
                 return;
             }
 
-            renderTopicsInContainer(meetingId, data.topics);
+            renderTopicsInContainer(meetingId, data.topics, openHref);
             if (selectedCategories.size > 0) applyFilters();
         } catch (err) {
             container.innerHTML = '<div class="topics-error">Failed to load topics.</div>';

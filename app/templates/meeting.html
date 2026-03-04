@@ -312,6 +312,12 @@
         renderAgendaItems(sortedItems(), true);
     });
 
-    loadMeeting();
+    loadMeeting().then(() => {
+        const params = new URLSearchParams(window.location.search);
+        const t = params.get('t');
+        if (t && videoUrl) {
+            seekVideo(parseInt(t, 10));
+        }
+    });
 </script>
 {% endblock %}

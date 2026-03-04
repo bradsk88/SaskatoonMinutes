@@ -296,6 +296,7 @@ main {
     margin-top: 0.75rem;
     display: flex;
     justify-content: flex-end;
+    gap: 0.5rem;
 }
 
 .btn-open {
@@ -308,6 +309,19 @@ main {
 
 .btn-open:hover {
     background: var(--color-primary);
+    color: white;
+}
+
+.btn-play {
+    background: #f3eaff;
+    color: var(--color-video);
+    border-color: transparent;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.btn-play:hover {
+    background: var(--color-video);
     color: white;
 }
 
@@ -1044,6 +1058,16 @@ footer a:hover {
 
     .btn-open:hover {
         background: var(--color-primary);
+        color: white;
+    }
+
+    .btn-play {
+        background: #2d1a4e;
+        color: #d8b4fe;
+    }
+
+    .btn-play:hover {
+        background: var(--color-video);
         color: white;
     }
 
