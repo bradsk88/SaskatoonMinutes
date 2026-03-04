@@ -413,20 +413,27 @@ main {
     left: auto;
     z-index: 100;
     margin-bottom: 0;
+    background: #000;
     border-radius: var(--radius);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-    background: #000;
-    /* width and transform-origin set by JS */
-    transform-origin: top right;
+    overflow: hidden;
+    /* width set by JS to the scaled-down size */
 }
 
-.video-section.sticky h2,
-.video-section.sticky .video-loading-bar {
+.video-section.sticky h2 {
     display: none;
 }
 
 .video-section.sticky .video-container {
-    border-radius: var(--radius);
+    /* JS sets width + transform on this element */
+    transform-origin: top left;
+    border-radius: 0;
+}
+
+.video-section.sticky .video-loading-bar {
+    border-radius: 0;
+    font-size: 0.75rem;
+    padding: 0.35rem 0.5rem;
 }
 
 .video-spacer {

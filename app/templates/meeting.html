@@ -297,10 +297,13 @@
     });
 
     function setupStickyVideo(videoSection) {
+        const container = videoSection.querySelector('.video-container');
         const sectionHeight = videoSection.offsetHeight;
-        const sectionWidth = videoSection.offsetWidth;
+        const containerWidth = container.offsetWidth;
+        const containerHeight = container.offsetHeight;
         const miniWidth = window.innerWidth <= 600 ? 200 : 320;
-        const scale = miniWidth / sectionWidth;
+        const scale = miniWidth / containerWidth;
+        const miniHeight = Math.round(containerHeight * scale);
 
         // Spacer preserves layout space when the video goes fixed.
         const spacer = document.createElement('div');
@@ -317,15 +320,20 @@
             const entry = entries[0];
             if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
                 spacer.style.display = 'block';
-                // Keep the iframe at full size so the embedded player
-                // renders at full dimensions — then scale down visually.
-                videoSection.style.width = sectionWidth + 'px';
-                videoSection.style.transform = 'scale(' + scale + ')';
+                // Scale only the video container so the iframe always
+                // renders at full size. The section is clipped to the
+                // mini-player dimensions.
+                videoSection.style.width = miniWidth + 'px';
+                videoSection.style.height = miniHeight + 'px';
+                container.style.width = containerWidth + 'px';
+                container.style.transform = 'scale(' + scale + ')';
                 videoSection.classList.add('sticky');
             } else if (entry.isIntersecting) {
                 videoSection.classList.remove('sticky');
                 videoSection.style.width = '';
-                videoSection.style.transform = '';
+                videoSection.style.height = '';
+                container.style.width = '';
+                container.style.transform = '';
                 spacer.style.display = 'none';
             }
         }, { threshold: 0 });
