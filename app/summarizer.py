@@ -118,23 +118,23 @@ def _extract_badges(item: dict) -> list[dict]:
     title = item.get("title", "")
     rec = item.get("recommendation", "")
 
-    # Dollar amounts with surrounding context for a verb
+    # Dollar amounts with surrounding context for a verb and purpose
     combined = title + " " + rec
-    seen_verbs: set[str] = set()
+    money_count = 0
     for m in re.finditer(r'\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion))?', combined):
         raw = m.group()
         verb = _money_verb(combined, m.start())
-        # Skip if we already have a badge with the same verb (e.g. two "allocated")
-        # or if this amount has no verb and we already have a money badge
-        if verb and verb in seen_verbs:
-            continue
-        if not verb and seen_verbs:
-            continue
-        seen_verbs.add(verb)
+        purpose = _money_purpose(combined, m.end())
         formatted = _format_money(raw)
-        label = f"{formatted} {verb}" if verb else formatted
+        if purpose:
+            label = f"{formatted} \u2192 {purpose}"
+        elif verb:
+            label = f"{formatted} {verb}"
+        else:
+            label = formatted
         badges.append({"type": "money", "label": label})
-        if len([b for b in badges if b["type"] == "money"]) >= 2:
+        money_count += 1
+        if money_count >= 4:
             break
 
     # Councillor names from title
@@ -198,6 +198,37 @@ def _money_verb(text: str, match_pos: int) -> str:
     for pattern, verb in _MONEY_CONTEXT:
         if re.search(pattern, window):
             return verb
+    return ""
+
+
+def _money_purpose(text: str, match_end: int) -> str:
+    """Extract a short purpose/destination label after a dollar amount.
+
+    Looks for patterns like "allocated to the Affordable Housing Reserve"
+    and returns a short label like "Housing".
+    """
+    # Look at text after the dollar amount, but only within the same clause
+    window = text[match_end:match_end + 200]
+    # Stop at clause boundaries (semicolons, periods, "and That")
+    for sep in (';', '. ', ' and That', ' That '):
+        cut = window.find(sep)
+        if cut != -1:
+            window = window[:cut]
+    # Match "to the [X] Reserve/Fund/Plan/Program" or "for [X]"
+    m = re.search(
+        r'(?:to\s+the|for\s+the|for)\s+((?:[A-Z][\w]*\s*){1,5}?)'
+        r'\s*(?:Reserve|Fund|Plan|Program|Account|Initiative)',
+        window,
+    )
+    if m:
+        words = m.group(1).strip().split()
+        # Pick the most descriptive word (skip generic ones)
+        skip = {'the', 'a', 'an', 'of', 'and', 'for', 'in', 'city',
+                'neighbourhood', 'land', 'development', 'municipal'}
+        meaningful = [w for w in words if w.lower() not in skip]
+        if meaningful:
+            # Return up to 2 words for brevity
+            return ' '.join(meaningful[:2])
     return ""
 
 
