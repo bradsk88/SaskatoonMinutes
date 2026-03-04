@@ -465,6 +465,24 @@ main {
     padding: 1rem 1.25rem;
 }
 
+.agenda-item-consent {
+    opacity: 0.5;
+    padding: 0.6rem 1.25rem;
+}
+
+.agenda-item-consent:hover {
+    opacity: 0.8;
+}
+
+.badge-consent {
+    background: #f3f4f6;
+    color: #6b7280;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
 .item-header {
     display: flex;
     align-items: flex-start;
@@ -954,6 +972,15 @@ footer a:hover {
     .badge-reorder {
         background: #431407;
         color: #fdba74;
+    }
+
+    .badge-consent {
+        background: #374151;
+        color: #9ca3af;
+    }
+
+    .agenda-item-consent {
+        opacity: 0.45;
     }
 
     .badge-outcome-approved {

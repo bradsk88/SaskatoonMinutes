@@ -189,13 +189,19 @@
         el.className = 'agenda-item';
         el.dataset.itemId = item.item_id;
 
+        const isConsent = item.timestamp_inherited === true;
+        if (isConsent) el.classList.add('agenda-item-consent');
+
         const hasTimestamp = item.time_start_ms !== null;
-        const timestampHtml = hasTimestamp
-            ? `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
+        let timestampHtml = '';
+        if (isConsent) {
+            timestampHtml = `<span class="badge badge-consent">Consent agenda</span>`;
+        } else if (hasTimestamp) {
+            timestampHtml = `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
                  title="Jump to this item in the video">
                  &#9654; ${item.time_start_formatted}
-               </button>`
-            : '';
+               </button>`;
+        }
 
         const ooo = outOfOrder.get(idx);
         const oooBadgeHtml = ooo
@@ -210,7 +216,7 @@
             ? `<p class="item-summary">${item.summary}</p>`
             : '';
 
-        const transcriptHtml = buildTranscriptHtml(item);
+        const transcriptHtml = isConsent ? '' : buildTranscriptHtml(item);
 
         el.innerHTML = `
             <div class="item-header">

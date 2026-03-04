@@ -45,6 +45,7 @@ class AgendaItem:
     vote_result: str = ""
     vote_detail: str = ""
     is_contested: bool = False
+    timestamp_inherited: bool = False
 
     @property
     def time_start_formatted(self) -> str | None:
@@ -62,6 +63,7 @@ class AgendaItem:
         d = asdict(self)
         d["time_start_formatted"] = self.time_start_formatted
         d["is_contested"] = self.is_contested
+        d["timestamp_inherited"] = self.timestamp_inherited
         return d
 
 
@@ -285,6 +287,7 @@ def _propagate_timestamps(items: list[AgendaItem]) -> None:
             if ancestor in ts_by_section:
                 item.time_start_ms = ts_by_section[ancestor][0]
                 item.time_end_ms = ts_by_section[ancestor][1]
+                item.timestamp_inherited = True
                 break
 
 
