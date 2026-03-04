@@ -104,7 +104,7 @@
         return 'outcome-neutral';
     }
 
-    function renderTopicsTable(topics) {
+    function renderTopicsTable(topics, openHref) {
         let html = '<table class="topics-table"><tbody>';
         topics.forEach(t => {
             const rowClass = t.is_major ? 'topic-major' : '';
@@ -127,9 +127,15 @@
                 });
             }
 
+            // Play button for topics with video timestamps
+            let playHtml = '';
+            if (openHref && t.time_start_ms != null) {
+                playHtml = `<a href="${openHref}?t=${t.time_start_ms}" class="topic-play-link" title="Play video at this topic">&#9654;</a>`;
+            }
+
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
-            html += `<div class="topic-name">${escapeAttr(t.topic)}</div>`;
+            html += `<div class="topic-name">${playHtml}${escapeAttr(t.topic)}</div>`;
             html += `<div class="topic-badges">${badgesHtml}</div>`;
             html += `</td>`;
             html += `</tr>`;
@@ -165,7 +171,6 @@
                 ${topicsSkeleton()}
             </div>
             <div class="meeting-card-actions">
-                <span id="play-${m.meeting_id}"></span>
                 <a href="${openHref}" class="btn btn-sm btn-open">Open</a>
             </div>
         `;
@@ -179,7 +184,7 @@
             container.innerHTML = '<div class="topics-empty">No substantive topics found.</div>';
             return;
         }
-        container.innerHTML = renderTopicsTable(topics);
+        container.innerHTML = renderTopicsTable(topics, openHref);
 
         // Collect distinct category badges and show them at the meeting level
         const catContainer = document.getElementById(`cats-${meetingId}`);
@@ -195,19 +200,6 @@
                 });
             });
             catContainer.innerHTML = html;
-        }
-
-        // Add Play button if any topic has a video timestamp
-        const playContainer = document.getElementById(`play-${meetingId}`);
-        if (playContainer && openHref) {
-            // Prefer first major topic with timestamp, else first with any timestamp
-            const majorWithTs = topics.find(t => t.is_major && t.time_start_ms != null);
-            const anyWithTs = topics.find(t => t.time_start_ms != null);
-            const best = majorWithTs || anyWithTs;
-            if (best) {
-                playContainer.innerHTML =
-                    `<a href="${openHref}?t=${best.time_start_ms}" class="btn btn-sm btn-play">&#9654; Play</a>`;
-            }
         }
     }
 

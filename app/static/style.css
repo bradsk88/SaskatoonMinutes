@@ -296,7 +296,6 @@ main {
     margin-top: 0.75rem;
     display: flex;
     justify-content: flex-end;
-    gap: 0.5rem;
 }
 
 .btn-open {
@@ -312,17 +311,17 @@ main {
     color: white;
 }
 
-.btn-play {
-    background: #f3eaff;
+.topic-play-link {
     color: var(--color-video);
-    border-color: transparent;
     text-decoration: none;
-    font-weight: 500;
+    margin-right: 0.35rem;
+    font-size: 0.7rem;
+    opacity: 0.6;
+    transition: opacity 0.15s;
 }
 
-.btn-play:hover {
-    background: var(--color-video);
-    color: white;
+.topic-play-link:hover {
+    opacity: 1;
 }
 
 /* === Scroll Sentinel / End Message === */
@@ -1061,14 +1060,8 @@ footer a:hover {
         color: white;
     }
 
-    .btn-play {
-        background: #2d1a4e;
+    .topic-play-link {
         color: #d8b4fe;
-    }
-
-    .btn-play:hover {
-        background: var(--color-video);
-        color: white;
     }
 
     /* Transcript vote colors */
