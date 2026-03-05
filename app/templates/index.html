@@ -152,7 +152,7 @@
                 t.badges.forEach(b => {
                     const icon = CATEGORY_ICONS[b.type];
                     if (icon) {
-                        primaryBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}" data-icon="${icon}" data-tooltip="${escapeAttr(b.label)}">${escapeAttr(b.label)}</span>`;
+                        primaryBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
                     } else {
                         detailBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
                     }
