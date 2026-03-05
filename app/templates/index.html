@@ -152,7 +152,7 @@
                 t.badges.forEach(b => {
                     const icon = CATEGORY_ICONS[b.type];
                     if (icon) {
-                        catBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}" data-icon="${icon}">${escapeAttr(b.label)}</span>`;
+                        catBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}" data-icon="${icon}" data-tooltip="${escapeAttr(b.label)}">${escapeAttr(b.label)}</span>`;
                     } else {
                         detailBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
                     }
@@ -230,7 +230,7 @@
                         seen.add(b.type);
                         const icon = CATEGORY_ICONS[b.type];
                         const iconAttr = icon ? ` data-icon="${icon}"` : '';
-                        html += `<span class="badge topic-badge badge-${escapeAttr(b.type)}"${iconAttr}>${escapeAttr(b.label)}</span> `;
+                        html += `<span class="badge topic-badge badge-${escapeAttr(b.type)}"${iconAttr} data-tooltip="${escapeAttr(b.label)}">${escapeAttr(b.label)}</span> `;
                     }
                 });
             });
@@ -472,13 +472,6 @@
         await renderBatch();
         setupInfiniteScroll();
     }
-
-    // Mobile: tap a compact category badge to reveal its label
-    document.addEventListener('click', e => {
-        const badge = e.target.closest('.badge[data-icon]');
-        if (!badge || !window.matchMedia('(max-width: 640px)').matches) return;
-        badge.classList.toggle('badge-expanded');
-    });
 
     init();
 </script>

@@ -1310,10 +1310,6 @@ footer a:hover {
         letter-spacing: 0;
     }
 
-    .badge[data-icon].badge-expanded::before {
-        margin-right: 0.25rem;
-    }
-
 }
 
 /* === Back to Top Button === */
