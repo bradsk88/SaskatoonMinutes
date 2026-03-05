@@ -452,19 +452,11 @@
         observer.observe(sentinel);
 
         // Recalculate on resize so breakpoint crossing updates sticky dimensions
-        var wasMobile = dims.isMobile;
         window.addEventListener('resize', function() {
             dims = calcDims();
             if (isSticky) {
-                if (wasMobile !== dims.isMobile) {
-                    // Breakpoint crossed — unstick, let observer re-evaluate
-                    isSticky = false;
-                    clearSticky();
-                } else {
-                    applySticky();
-                }
+                applySticky();
             }
-            wasMobile = dims.isMobile;
         });
     }
 
