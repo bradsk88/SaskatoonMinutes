@@ -125,7 +125,7 @@
     function renderTopicsTable(topics, openHref) {
         let html = '<table class="topics-table"><tbody>';
         topics.forEach(t => {
-            let rowClass = t.is_major ? 'topic-major' : '';
+            let rowClass = '';
             if (t.is_consent) rowClass += ' topic-consent';
             const oClass = outcomeClass(t);
             const tooltipText = t.outcome_detail

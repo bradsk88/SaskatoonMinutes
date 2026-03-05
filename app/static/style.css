@@ -906,11 +906,6 @@ main {
     color: #0c4a6e;
 }
 
-/* Major decision row highlight */
-.topic-major {
-    background: #fffbeb;
-}
-
 .topic-consent {
     font-size: 0.85em;
 }
@@ -1186,11 +1181,6 @@ footer a:hover {
     .badge-cat-environment {
         background: #164e63;
         color: #67e8f9;
-    }
-
-    /* Major decision row */
-    .topic-major {
-        background: #292317;
     }
 
     .topic-consent {
