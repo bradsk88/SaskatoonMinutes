@@ -910,6 +910,9 @@ main {
 [data-tooltip] {
     position: relative;
     cursor: help;
+}
+
+[data-tooltip]:not(.badge) {
     border-bottom: 1px dotted currentColor;
 }
 
