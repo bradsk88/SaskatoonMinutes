@@ -142,16 +142,20 @@
                 .map(b => b.type);
 
             // Outcome badge (always first) — consent items get a plain-language label
-            let badgesHtml = t.is_consent
+            let detailBadgesHtml = t.is_consent
                 ? `<span class="badge topic-badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`
                 : `<span class="badge topic-badge badge-${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span>`;
 
-            // Extra extracted badges
+            // Split badges: non-category (money, person, location) vs category
+            let catBadgesHtml = '';
             if (t.badges) {
                 t.badges.forEach(b => {
                     const icon = CATEGORY_ICONS[b.type];
-                    const iconAttr = icon ? ` data-icon="${icon}"` : '';
-                    badgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}"${iconAttr}>${escapeAttr(b.label)}</span>`;
+                    if (icon) {
+                        catBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}" data-icon="${icon}">${escapeAttr(b.label)}</span>`;
+                    } else {
+                        detailBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
+                    }
                 });
             }
 
@@ -164,7 +168,8 @@
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${playHtml}</div>`;
-            html += `<div class="topic-badges">${badgesHtml}</div>`;
+            html += `<div class="topic-badges">${detailBadgesHtml}</div>`;
+            if (catBadgesHtml) html += `<div class="topic-badges">${catBadgesHtml}</div>`;
             html += `</td>`;
             html += `</tr>`;
         });
