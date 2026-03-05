@@ -48,6 +48,23 @@
         { label: 'Environment', slug: 'cat-environment' },
     ];
 
+    // Icons shown inside compact mobile badges (tap to expand)
+    const CATEGORY_ICONS = {
+        'cat-homelessness': '\u2302',
+        'cat-housing': '\uD83C\uDFE0',
+        'cat-transit': '\uD83D\uDE8C',
+        'cat-traffic': '\uD83D\uDE97',
+        'cat-greenspace': '\uD83C\uDF3F',
+        'cat-small-business': '\uD83C\uDFEA',
+        'cat-infrastructure': '\uD83D\uDD27',
+        'cat-public-safety': '\uD83D\uDEE1\uFE0F',
+        'cat-recreation': '\u26BD',
+        'cat-zoning-dev': '\uD83D\uDCD0',
+        'cat-property-tax': '\uD83D\uDCB0',
+        'cat-arts-culture': '\uD83C\uDFAD',
+        'cat-environment': '\uD83C\uDF0D',
+    };
+
     const selectedCategories = new Set();
 
     let apiPage = 1;
@@ -132,7 +149,9 @@
             // Extra extracted badges
             if (t.badges) {
                 t.badges.forEach(b => {
-                    badgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
+                    const icon = CATEGORY_ICONS[b.type];
+                    const iconAttr = icon ? ` data-icon="${icon}"` : '';
+                    badgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}"${iconAttr}>${escapeAttr(b.label)}</span>`;
                 });
             }
 
@@ -204,7 +223,9 @@
                 (t.badges || []).forEach(b => {
                     if (b.type.startsWith('cat-') && !seen.has(b.type)) {
                         seen.add(b.type);
-                        html += `<span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span> `;
+                        const icon = CATEGORY_ICONS[b.type];
+                        const iconAttr = icon ? ` data-icon="${icon}"` : '';
+                        html += `<span class="badge topic-badge badge-${escapeAttr(b.type)}"${iconAttr}>${escapeAttr(b.label)}</span> `;
                     }
                 });
             });
@@ -446,6 +467,13 @@
         await renderBatch();
         setupInfiniteScroll();
     }
+
+    // Mobile: tap a compact category badge to reveal its label
+    document.addEventListener('click', e => {
+        const badge = e.target.closest('.badge[data-icon]');
+        if (!badge || !window.matchMedia('(max-width: 640px)').matches) return;
+        badge.classList.toggle('badge-expanded');
+    });
 
     init();
 </script>
