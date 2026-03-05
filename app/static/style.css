@@ -610,7 +610,7 @@ main {
 }
 
 .transcript-clamped {
-    max-height: 6.2em;
+    max-height: 7.6em;
     overflow: hidden;
     cursor: pointer;
     position: relative;
@@ -622,8 +622,8 @@ main {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 2.4em;
-    background: linear-gradient(transparent, var(--color-bg) 60%);
+    height: 3.6em;
+    background: linear-gradient(transparent, var(--color-bg) 45%, var(--color-bg) 100%);
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -1306,7 +1306,7 @@ footer a:hover {
 
     /* Full-width sticky video at top on mobile, below title bar */
     .video-section.sticky {
-        top: 64px;
+        top: 72px;
         bottom: auto;
         left: 0.5rem;
         right: 0.5rem;
@@ -1320,6 +1320,7 @@ footer a:hover {
         width: 100% !important;
         height: auto !important;
         padding-bottom: 56.25% !important;
+        overflow: visible;
     }
 
     /* Compact category badges — show initials only */
