@@ -311,8 +311,8 @@ main {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.45rem;
-    height: 1.45rem;
+    width: 1.75rem;
+    height: 1.75rem;
     border-radius: 50%;
     transition: background 0.15s;
 }
@@ -323,7 +323,7 @@ main {
     width: 0;
     height: 0;
     border-style: solid;
-    border-width: 0.3rem 0 0.3rem 0.5rem;
+    border-width: 0.35rem 0 0.35rem 0.6rem;
     border-color: transparent transparent transparent var(--color-video);
     margin-left: 0.1rem;
 }
@@ -764,6 +764,10 @@ main {
     padding: 0.5rem 0.5rem;
     border-bottom: 1px solid var(--color-border);
     vertical-align: top;
+}
+
+.topics-table tr:first-child td {
+    padding-top: 0;
 }
 
 .topics-table tr:last-child td {
