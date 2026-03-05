@@ -1306,13 +1306,13 @@ footer a:hover {
 
     /* Full-width sticky video at top on mobile, below title bar */
     .video-section.sticky {
-        top: 56px;
+        top: 64px;
         bottom: auto;
-        left: 0;
-        right: 0;
+        left: 0.5rem;
+        right: 0.5rem;
         width: auto !important;
-        border-radius: 0;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+        border-radius: var(--radius);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     }
 
     .video-section.sticky .video-container {
