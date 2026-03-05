@@ -1307,6 +1307,23 @@ footer a:hover {
         flex: 1 0 calc(100% - 3rem - 0.75rem);
     }
 
+    /* Full-width sticky video at bottom on mobile */
+    .video-section.sticky {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        border-radius: 0;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .video-section.sticky .video-container {
+        transform: none !important;
+        width: 100% !important;
+        height: auto !important;
+        padding-bottom: 56.25% !important;
+    }
+
     /* Compact category badges — show initials only */
     .badge[data-icon] {
         font-size: 0;

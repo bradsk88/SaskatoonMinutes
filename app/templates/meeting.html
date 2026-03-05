@@ -375,7 +375,8 @@
         const sectionHeight = videoSection.offsetHeight;
         const containerWidth = container.offsetWidth;
         const containerHeight = container.offsetHeight;
-        const miniWidth = window.innerWidth <= 600 ? 200 : 320;
+        const isMobile = window.innerWidth <= 640;
+        const miniWidth = isMobile ? containerWidth : 320;
         const scale = miniWidth / containerWidth;
         const miniHeight = Math.round(containerHeight * scale);
 
