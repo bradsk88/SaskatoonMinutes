@@ -526,7 +526,7 @@ main {
 }
 
 .badge-consent {
-    background: transparent;
+    background: #f3f4f6;
     color: #dc2626;
     white-space: nowrap;
 }
@@ -1075,7 +1075,7 @@ footer a:hover {
     }
 
     .badge-consent {
-        background: transparent;
+        background: #1f2937;
         color: #f87171;
     }
 
