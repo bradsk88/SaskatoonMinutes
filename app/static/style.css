@@ -1311,6 +1311,7 @@ footer a:hover {
         left: 0.5rem;
         right: 0.5rem;
         width: auto !important;
+        overflow: visible;
         border-radius: var(--radius);
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     }
