@@ -141,18 +141,18 @@
                 .filter(b => b.type.startsWith('cat-'))
                 .map(b => b.type);
 
-            // Outcome badge (always first) — consent items get a plain-language label
-            let detailBadgesHtml = t.is_consent
+            // Outcome + category badges on the first line
+            let primaryBadgesHtml = t.is_consent
                 ? `<span class="badge topic-badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`
                 : `<span class="badge topic-badge badge-${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span>`;
 
-            // Split badges: non-category (money, person, location) vs category
-            let catBadgesHtml = '';
+            // Detail badges (money, person, location) on a second line
+            let detailBadgesHtml = '';
             if (t.badges) {
                 t.badges.forEach(b => {
                     const icon = CATEGORY_ICONS[b.type];
                     if (icon) {
-                        catBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}" data-icon="${icon}" data-tooltip="${escapeAttr(b.label)}">${escapeAttr(b.label)}</span>`;
+                        primaryBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}" data-icon="${icon}" data-tooltip="${escapeAttr(b.label)}">${escapeAttr(b.label)}</span>`;
                     } else {
                         detailBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
                     }
@@ -168,8 +168,8 @@
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${playHtml}</div>`;
-            html += `<div class="topic-badges">${detailBadgesHtml}</div>`;
-            if (catBadgesHtml) html += `<div class="topic-badges">${catBadgesHtml}</div>`;
+            html += `<div class="topic-badges">${primaryBadgesHtml}</div>`;
+            if (detailBadgesHtml) html += `<div class="topic-badges">${detailBadgesHtml}</div>`;
             html += `</td>`;
             html += `</tr>`;
         });
