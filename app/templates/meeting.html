@@ -383,18 +383,12 @@
         const sectionHeight = videoSection.offsetHeight;
         const containerWidth = container.offsetWidth;
         const containerHeight = container.offsetHeight;
+        const isMobile = window.innerWidth <= 640;
         const aspectPct = (containerHeight / containerWidth * 100).toFixed(2);
         container.style.setProperty('--video-aspect', aspectPct + '%');
-
-        function calcDims() {
-            var mobile = window.innerWidth <= 640;
-            var mw = mobile ? containerWidth : 320;
-            var sc = mw / containerWidth;
-            var mh = Math.round(containerHeight * sc);
-            return { miniWidth: mw, scale: sc, miniHeight: mh, isMobile: mobile };
-        }
-
-        var dims = calcDims();
+        const miniWidth = isMobile ? containerWidth : 320;
+        const scale = miniWidth / containerWidth;
+        const miniHeight = Math.round(containerHeight * scale);
 
         // Spacer preserves layout space when the video goes fixed.
         const spacer = document.createElement('div');
@@ -414,50 +408,34 @@
 
         var isSticky = false;
 
-        function applySticky() {
-            spacer.style.display = 'block';
-            videoSection.style.width = dims.miniWidth + 'px';
-            videoSection.style.height = dims.miniHeight + 'px';
-            container.style.width = containerWidth + 'px';
-            container.style.height = containerHeight + 'px';
-            container.style.paddingBottom = '0';
-            container.style.transform = 'scale(' + dims.scale + ')';
-            videoSection.classList.add('sticky');
-        }
-
-        function clearSticky() {
-            videoSection.classList.remove('sticky');
-            videoSection.style.width = '';
-            videoSection.style.height = '';
-            container.style.width = '';
-            container.style.height = '';
-            container.style.paddingBottom = '';
-            container.style.transform = '';
-            spacer.style.display = 'none';
-        }
-
         var observer = new IntersectionObserver(function(entries) {
             var entry = entries[0];
             if (!entry.isIntersecting && entry.boundingClientRect.top < 0) {
                 if (isSticky) return;
                 isSticky = true;
-                applySticky();
+                spacer.style.display = 'block';
+                videoSection.style.width = miniWidth + 'px';
+                videoSection.style.height = miniHeight + 'px';
+                container.style.width = containerWidth + 'px';
+                container.style.height = containerHeight + 'px';
+                container.style.paddingBottom = '0';
+                container.style.transform = 'scale(' + scale + ')';
+                videoSection.classList.add('sticky');
             } else if (entry.isIntersecting) {
                 if (!isSticky) return;
                 isSticky = false;
-                clearSticky();
+                videoSection.classList.remove('sticky');
+                videoSection.style.width = '';
+                videoSection.style.height = '';
+                container.style.width = '';
+                container.style.height = '';
+                container.style.paddingBottom = '';
+                container.style.transform = '';
+                spacer.style.display = 'none';
             }
         }, { threshold: 0 });
 
         observer.observe(sentinel);
-
-        // Recalculate on resize so breakpoint crossing updates sticky dimensions
-        window.addEventListener('resize', function() {
-            dims = calcDims();
-            if (isSticky) {
-                applySticky();
-            }
-        });
     }
 
     function scrollToAgendaItem(timeMs) {
