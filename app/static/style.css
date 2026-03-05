@@ -630,15 +630,11 @@ main {
     font-size: 0.78rem;
     font-weight: 500;
     color: var(--color-primary);
-    padding-bottom: 0.2rem;
+    padding-bottom: 0.4rem;
 }
 
 .transcript-clamped:hover::after {
     text-decoration: underline;
-}
-
-.transcript-clampable:not(.transcript-clamped) {
-    cursor: pointer;
 }
 
 .transcript-clampable:not(.transcript-clamped)::after {
@@ -649,9 +645,10 @@ main {
     font-weight: 500;
     color: var(--color-primary);
     margin-top: 0.4rem;
+    cursor: pointer;
 }
 
-.transcript-clampable:not(.transcript-clamped):hover::after {
+.transcript-clampable:not(.transcript-clamped)::after:hover {
     text-decoration: underline;
 }
 

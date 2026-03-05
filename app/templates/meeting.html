@@ -367,6 +367,14 @@
         if (e.target.closest('a, button')) return;
         const el = e.target.closest('.transcript-clampable');
         if (!el) return;
+
+        // If expanded, only collapse when clicking the "Show less" area at the bottom
+        if (!el.classList.contains('transcript-clamped')) {
+            const rect = el.getBoundingClientRect();
+            const clickY = e.clientY - rect.top;
+            const showLessHeight = 30;
+            if (clickY < rect.height - showLessHeight) return;
+        }
         el.classList.toggle('transcript-clamped');
     });
 
