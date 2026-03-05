@@ -909,10 +909,10 @@ main {
 /* Tooltip on hover */
 [data-tooltip] {
     position: relative;
-    cursor: help;
 }
 
 [data-tooltip]:not(.badge) {
+    cursor: help;
     border-bottom: 1px dotted currentColor;
 }
 
@@ -1294,8 +1294,8 @@ footer a:hover {
         flex: 1 0 calc(100% - 3rem - 0.75rem);
     }
 
-    /* Compact category badges — tap to expand */
-    .badge[data-icon]:not(.badge-expanded) {
+    /* Compact category badges — show initials only */
+    .badge[data-icon] {
         font-size: 0;
         padding: 0;
         line-height: 1;
