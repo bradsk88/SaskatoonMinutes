@@ -1313,10 +1313,24 @@ footer a:hover {
         flex: 1 0 calc(100% - 3rem - 0.75rem);
     }
 
+    .item-header .badge-attachments,
     .item-header .timestamp-link {
         position: absolute;
         bottom: 0.6rem;
+    }
+
+    .item-header .timestamp-link {
         right: 0.75rem;
+    }
+
+    .item-header .badge-attachments {
+        right: 0.75rem;
+    }
+
+    /* When play button also exists, put attachments to its left */
+    .item-header .badge-attachments:has(~ .timestamp-link) {
+        right: auto;
+        left: 0.75rem;
     }
 
     /* Full-width sticky video at top on mobile, below title bar */
