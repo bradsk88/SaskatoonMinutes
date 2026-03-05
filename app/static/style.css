@@ -774,16 +774,20 @@ main {
     border-bottom: none;
 }
 
-.topic-name {
-    color: var(--color-text);
-    line-height: 1.4;
+.topic-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.topic-name > span {
+.topic-content {
     flex: 1;
+    min-width: 0;
+}
+
+.topic-name {
+    color: var(--color-text);
+    line-height: 1.4;
 }
 
 /* Topic badges row */

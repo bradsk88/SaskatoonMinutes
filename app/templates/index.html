@@ -167,9 +167,14 @@
 
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
-            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${playHtml}</div>`;
+            html += `<div class="topic-row">`;
+            html += `<div class="topic-content">`;
+            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span></div>`;
             html += `<div class="topic-badges">${primaryBadgesHtml}</div>`;
             if (detailBadgesHtml) html += `<div class="topic-badges">${detailBadgesHtml}</div>`;
+            html += `</div>`;
+            if (playHtml) html += playHtml;
+            html += `</div>`;
             html += `</td>`;
             html += `</tr>`;
         });
