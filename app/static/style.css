@@ -1324,6 +1324,18 @@ footer a:hover {
         overflow: visible;
     }
 
+    /* Prevent tooltips from overflowing off-screen */
+    [data-tooltip]:hover::after {
+        left: auto;
+        right: 0;
+        max-width: 80vw;
+    }
+
+    [data-tooltip]:hover::before {
+        left: auto;
+        right: 8px;
+    }
+
     /* Compact category badges — show initials only */
     .badge[data-icon] {
         font-size: 0;
