@@ -1308,15 +1308,16 @@ footer a:hover {
         flex: 1 0 calc(100% - 3rem - 0.75rem);
     }
 
-    /* Compact monochrome category badges — tap to expand */
+    /* Compact category badges — tap to expand */
     .badge[data-icon]:not(.badge-expanded) {
         font-size: 0;
-        padding: 0.2rem 0.35rem;
-        background: #e5e7eb;
-        color: #6b7280;
+        padding: 0;
         line-height: 1;
-        min-width: 1.5rem;
-        text-align: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
     }
 
     .badge[data-icon]::before {
@@ -1330,14 +1331,6 @@ footer a:hover {
         margin-right: 0.25rem;
     }
 
-}
-
-/* Compact mobile badges — dark mode override */
-@media (max-width: 640px) and (prefers-color-scheme: dark) {
-    .badge[data-icon]:not(.badge-expanded) {
-        background: #374151;
-        color: #9ca3af;
-    }
 }
 
 /* === Back to Top Button === */
