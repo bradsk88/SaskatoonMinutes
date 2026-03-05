@@ -906,10 +906,6 @@ main {
     color: #0c4a6e;
 }
 
-.topic-consent {
-    font-size: 0.85em;
-}
-
 /* Tooltip on hover */
 [data-tooltip] {
     position: relative;
@@ -1181,9 +1177,6 @@ footer a:hover {
     .badge-cat-environment {
         background: #164e63;
         color: #67e8f9;
-    }
-
-    .topic-consent {
     }
 
     /* Buttons */
