@@ -1089,109 +1089,109 @@ footer a:hover {
     }
 
     .badge-outcome-approved {
-        background: #064e3b;
-        color: #6ee7b7;
+        background: #1a2e24;
+        color: #8bbfa6;
     }
 
     .badge-outcome-defeated {
-        background: #7f1d1d;
-        color: #fca5a5;
+        background: #2a1a1a;
+        color: #c9908f;
     }
 
     .badge-outcome-contested {
-        background: #78350f;
-        color: #fcd34d;
+        background: #2a2118;
+        color: #c4a96e;
     }
 
     .badge-outcome-deferred {
-        background: #312e81;
-        color: #a5b4fc;
+        background: #1e1d33;
+        color: #9a9ec4;
     }
 
     .badge-outcome-neutral {
-        background: #374151;
-        color: #9ca3af;
+        background: #272a30;
+        color: #8b8f96;
     }
 
     .badge-money {
-        background: #1e3a5f;
-        color: #93c5fd;
+        background: #1a2636;
+        color: #8aabc4;
     }
 
     .badge-person {
-        background: #3b1f5e;
-        color: #c4b5fd;
+        background: #231c30;
+        color: #ab9ec4;
     }
 
     .badge-location {
-        background: #5b1a3a;
-        color: #f9a8d4;
+        background: #2a1a24;
+        color: #c49aad;
     }
 
     /* Per-category color-coded badges (dark) */
     .badge-cat-homelessness {
-        background: #7c2d12;
-        color: #fdba74;
+        background: #2a1f18;
+        color: #c4a080;
     }
 
     .badge-cat-housing {
-        background: #78350f;
-        color: #fcd34d;
+        background: #2a2318;
+        color: #c4a96e;
     }
 
     .badge-cat-transit {
-        background: #1e3a5f;
-        color: #93c5fd;
+        background: #1a2636;
+        color: #8aabc4;
     }
 
     .badge-cat-traffic {
-        background: #312e81;
-        color: #a5b4fc;
+        background: #1e1d33;
+        color: #9a9ec4;
     }
 
     .badge-cat-greenspace {
-        background: #064e3b;
-        color: #6ee7b7;
+        background: #1a2e24;
+        color: #8bbfa6;
     }
 
     .badge-cat-small-business {
-        background: #713f12;
-        color: #fde047;
+        background: #2a2518;
+        color: #b8a460;
     }
 
     .badge-cat-infrastructure {
-        background: #374151;
-        color: #9ca3af;
+        background: #272a30;
+        color: #8b8f96;
     }
 
     .badge-cat-public-safety {
-        background: #7f1d1d;
-        color: #fca5a5;
+        background: #2a1a1a;
+        color: #c9908f;
     }
 
     .badge-cat-recreation {
-        background: #3b1f5e;
-        color: #c4b5fd;
+        background: #231c30;
+        color: #ab9ec4;
     }
 
     .badge-cat-zoning-dev {
-        background: #701a75;
-        color: #f0abfc;
+        background: #2a1a2e;
+        color: #c090c4;
     }
 
     .badge-cat-property-tax {
-        background: #5b1a3a;
-        color: #f9a8d4;
+        background: #2a1a24;
+        color: #c49aad;
     }
 
     .badge-cat-arts-culture {
-        background: #4c1d95;
-        color: #d8b4fe;
+        background: #231c33;
+        color: #b0a0c9;
     }
 
     .badge-cat-environment {
-        background: #164e63;
-        color: #67e8f9;
+        background: #1a2630;
+        color: #8ab4be;
     }
 
     /* Buttons */
