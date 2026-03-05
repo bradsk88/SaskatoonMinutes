@@ -1321,7 +1321,9 @@ footer a:hover {
 
     .badge[data-icon]::before {
         content: attr(data-icon);
-        font-size: 0.85rem;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0;
     }
 
     .badge[data-icon].badge-expanded::before {
