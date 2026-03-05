@@ -384,6 +384,8 @@
         const containerWidth = container.offsetWidth;
         const containerHeight = container.offsetHeight;
         const isMobile = window.innerWidth <= 640;
+        const aspectPct = (containerHeight / containerWidth * 100).toFixed(2);
+        container.style.setProperty('--video-aspect', aspectPct + '%');
         const miniWidth = isMobile ? containerWidth : 320;
         const scale = miniWidth / containerWidth;
         const miniHeight = Math.round(containerHeight * scale);

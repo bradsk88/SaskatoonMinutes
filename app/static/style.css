@@ -1319,7 +1319,7 @@ footer a:hover {
         transform: none !important;
         width: 100% !important;
         height: auto !important;
-        padding-bottom: 56.25% !important;
+        padding-bottom: var(--video-aspect, 56.25%) !important;
         overflow: visible;
     }
 
