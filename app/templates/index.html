@@ -106,6 +106,22 @@
         }
     }
 
+    function latestDateForMeetings(meetings) {
+        if (!meetings || meetings.length === 0) return '';
+        return meetings[0].date;
+    }
+
+    function sortTabsByRecency(tabDateMap) {
+        const container = document.querySelector('.tabs-inner');
+        const tabs = Array.from(container.querySelectorAll('.meeting-tab'));
+        tabs.sort((a, b) => {
+            const dateA = tabDateMap[a.dataset.slug] || '';
+            const dateB = tabDateMap[b.dataset.slug] || '';
+            return dateB.localeCompare(dateA); // descending – most recent first
+        });
+        tabs.forEach(tab => container.appendChild(tab));
+    }
+
     function calcBatchSize() {
         const viewportH = window.innerHeight;
         // Deduct fixed chrome: header ~56px, hero ~80px, section header ~40px, padding ~32px
@@ -542,19 +558,44 @@
         // Static mode: use preloaded data if available
         const preloadedEl = document.getElementById('preloaded-meetings');
         if (preloadedEl) {
+            const allTabsEl = document.getElementById('preloaded-all-tabs');
+            if (allTabsEl) {
+                const allTabs = JSON.parse(allTabsEl.textContent);
+
+                // Sort tabs by most recent meeting date
+                const dateMap = {};
+                Object.keys(allTabs).forEach(slug => {
+                    dateMap[slug] = latestDateForMeetings(allTabs[slug].meetings);
+                    checkRecentForMeetings(slug, allTabs[slug].meetings);
+                });
+                sortTabsByRecency(dateMap);
+
+                // Activate the first tab (most recent)
+                const sortedTabs = document.querySelectorAll('.meeting-tab');
+                sortedTabs.forEach(t => t.classList.remove('meeting-tab-active'));
+                const firstSlug = sortedTabs[0]?.dataset.slug || 'council';
+                sortedTabs[0]?.classList.add('meeting-tab-active');
+                activeTypeSlug = firstSlug;
+
+                const tabData = allTabs[firstSlug];
+                totalCount = tabData ? tabData.total_count : 0;
+                const meetings = tabData ? tabData.meetings : [];
+
+                if (meetings.length === 0) {
+                    container.innerHTML = '<div class="empty">No meetings found.</div>';
+                    return;
+                }
+
+                renderMeetingCards(meetings, container, true);
+                meetings.forEach(m => loadTopics(m.meeting_id, m.title));
+                return;
+            }
+
+            // Fallback: single-tab preloaded data (legacy)
             const data = JSON.parse(preloadedEl.textContent);
             activeTypeSlug = data.active_type || 'council';
             totalCount = data.total_count;
             const meetings = data.meetings;
-
-            // Mark tabs that have recent meetings
-            const allTabsEl = document.getElementById('preloaded-all-tabs');
-            if (allTabsEl) {
-                const allTabs = JSON.parse(allTabsEl.textContent);
-                Object.keys(allTabs).forEach(slug => {
-                    checkRecentForMeetings(slug, allTabs[slug].meetings);
-                });
-            }
 
             if (meetings.length === 0) {
                 container.innerHTML = '<div class="empty">No meetings found.</div>';
@@ -566,30 +607,57 @@
             return;
         }
 
-        // Dynamic mode: show skeletons, fetch, render first batch
+        // Dynamic mode: fetch page 1 for all tabs in parallel to determine sort order
         const skeletonCount = calcBatchSize();
         container.innerHTML = skeletonCard().repeat(skeletonCount);
 
-        await fetchNextApiPage();
+        const allTabs = document.querySelectorAll('.meeting-tab');
+        const slugs = Array.from(allTabs).map(t => t.dataset.slug);
+
+        const results = await Promise.all(
+            slugs.map(slug =>
+                fetch(`/api/meetings?page=1&type=${encodeURIComponent(slug)}`)
+                    .then(r => r.json())
+                    .then(data => ({ slug, data, ok: !data.error }))
+                    .catch(() => ({ slug, data: { meetings: [], total_count: 0 }, ok: false }))
+            )
+        );
+
+        // Build date map and mark recent tabs
+        const dateMap = {};
+        const firstPageCache = {};
+        results.forEach(({ slug, data, ok }) => {
+            if (ok) {
+                dateMap[slug] = latestDateForMeetings(data.meetings);
+                checkRecentForMeetings(slug, data.meetings);
+                firstPageCache[slug] = data;
+            } else {
+                dateMap[slug] = '';
+            }
+        });
+
+        // Sort tabs and activate the first (most recent)
+        sortTabsByRecency(dateMap);
+        const sortedTabs = document.querySelectorAll('.meeting-tab');
+        sortedTabs.forEach(t => t.classList.remove('meeting-tab-active'));
+        const firstSlug = sortedTabs[0]?.dataset.slug || 'council';
+        sortedTabs[0]?.classList.add('meeting-tab-active');
+        activeTypeSlug = firstSlug;
+
+        // Use the cached first page for the active tab
+        const cached = firstPageCache[firstSlug];
+        if (cached) {
+            totalCount = cached.total_count;
+            buffer.push(...cached.meetings);
+            apiPage = 2;
+            if (API_PAGE_SIZE >= totalCount || cached.meetings.length === 0) {
+                allFetched = true;
+            }
+        }
+
         container.innerHTML = '';
         await renderBatch();
         setupInfiniteScroll();
-
-        // Check recency for all tabs in the background
-        checkAllTabsRecency();
-    }
-
-    function checkAllTabsRecency() {
-        const tabs = document.querySelectorAll('.meeting-tab');
-        tabs.forEach(tab => {
-            const slug = tab.dataset.slug;
-            fetch(`/api/meetings?page=1&type=${encodeURIComponent(slug)}`)
-                .then(r => r.json())
-                .then(data => {
-                    if (!data.error) checkRecentForMeetings(slug, data.meetings);
-                })
-                .catch(() => {});
-        });
     }
 
     init();
