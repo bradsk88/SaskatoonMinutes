@@ -8,6 +8,7 @@ from app.scraper import (
     _extract_votes,
     _extract_recommendations,
     _propagate_timestamps,
+    _mark_brief_items,
 )
 
 
@@ -168,6 +169,87 @@ class TestPropagateTimestamps:
         ]
         _propagate_timestamps(items)
         assert items[0].time_start_ms is None
+        assert items[0].timestamp_inherited is False
+
+
+# ── AgendaItem.time_start_formatted ──────────────────────────────────
+
+
+# ── _mark_brief_items ───────────────────────────────────────────────
+
+
+class TestMarkBriefItems:
+    """Items whose video bookmark covers only a trivial duration (e.g. ≤1 s)
+    were never actually discussed and should be flagged the same as consent
+    items so the UI shows "Not discussed".
+
+    Reproduces the Mar 3 2026 SPC-Transportation meeting where several items
+    had their own bookmark but the gap to the next item was ~1 second.
+    """
+
+    def test_brief_item_marked_as_inherited(self):
+        """An item with a 1-second bookmark should be treated as not-discussed."""
+        items = [
+            AgendaItem(item_id=1, title="Brief item", content="",
+                       section_number="3.1.",
+                       time_start_ms=100000, time_end_ms=101000),  # 1 s
+            AgendaItem(item_id=2, title="Next item", content="",
+                       section_number="3.2.",
+                       time_start_ms=101000, time_end_ms=500000),
+        ]
+        _mark_brief_items(items)
+        assert items[0].timestamp_inherited is True
+        assert items[1].timestamp_inherited is False
+
+    def test_real_discussion_not_marked(self):
+        """An item spanning several minutes should remain as discussed."""
+        items = [
+            AgendaItem(item_id=1, title="Long item", content="",
+                       section_number="4.1.",
+                       time_start_ms=100000, time_end_ms=400000),  # 5 min
+        ]
+        _mark_brief_items(items)
+        assert items[0].timestamp_inherited is False
+
+    def test_already_inherited_stays_inherited(self):
+        """Items already marked inherited should stay that way."""
+        items = [
+            AgendaItem(item_id=1, title="Consent sub", content="",
+                       section_number="8.1.",
+                       time_start_ms=50000, time_end_ms=60000,
+                       timestamp_inherited=True),
+        ]
+        _mark_brief_items(items)
+        assert items[0].timestamp_inherited is True
+
+    def test_no_end_timestamp_not_marked(self):
+        """Items without time_end_ms cannot be evaluated; leave them alone."""
+        items = [
+            AgendaItem(item_id=1, title="No end", content="",
+                       section_number="5.1.",
+                       time_start_ms=100000, time_end_ms=None),
+        ]
+        _mark_brief_items(items)
+        assert items[0].timestamp_inherited is False
+
+    def test_borderline_duration(self):
+        """An item just at the threshold should still be marked as brief."""
+        items = [
+            AgendaItem(item_id=1, title="Edge case", content="",
+                       section_number="6.1.",
+                       time_start_ms=100000, time_end_ms=160000),  # exactly 60 s
+        ]
+        _mark_brief_items(items)
+        assert items[0].timestamp_inherited is True
+
+    def test_just_above_threshold(self):
+        """An item just over the threshold should NOT be marked."""
+        items = [
+            AgendaItem(item_id=1, title="Just over", content="",
+                       section_number="6.2.",
+                       time_start_ms=100000, time_end_ms=160001),  # 60.001 s
+        ]
+        _mark_brief_items(items)
         assert items[0].timestamp_inherited is False
 
 

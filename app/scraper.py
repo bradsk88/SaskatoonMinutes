@@ -155,6 +155,7 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
     bookmarks = _extract_bookmarks(html)
     agenda_items = _extract_agenda_items(html, bookmarks)
     _propagate_timestamps(agenda_items)
+    _mark_brief_items(agenda_items)
     video_url = _build_video_url(meeting_id) if bookmarks else None
 
     if include_votes:
@@ -318,6 +319,30 @@ def _propagate_timestamps(items: list[AgendaItem]) -> None:
                 item.time_end_ms = ts_by_section[ancestor][1]
                 item.timestamp_inherited = True
                 break
+
+
+# Items whose video bookmark spans less than this are treated as not-discussed.
+# Consent-agenda items often get their own bookmark but the video only lingers
+# for a second or two before jumping to the next item.
+MIN_DISCUSSION_MS = 60_000  # 60 seconds
+
+
+def _mark_brief_items(items: list[AgendaItem]) -> None:
+    """Flag items whose bookmark duration is too short for real discussion.
+
+    Some agenda items receive their own video bookmark even though they were
+    approved as part of a consent block.  The bookmark covers only a trivial
+    duration (sometimes ≤ 1 second).  This marks them the same way as
+    inherited-timestamp items so the UI shows "Not discussed".
+    """
+    for item in items:
+        if item.timestamp_inherited:
+            continue
+        if item.time_start_ms is None or item.time_end_ms is None:
+            continue
+        duration = item.time_end_ms - item.time_start_ms
+        if duration <= MIN_DISCUSSION_MS:
+            item.timestamp_inherited = True
 
 
 def _clean_html(text: str) -> str:
