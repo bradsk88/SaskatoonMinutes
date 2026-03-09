@@ -8,6 +8,15 @@
     <p>Browse recent council meetings and see what was discussed and decided.</p>
 </section>
 
+<section class="meeting-type-tabs" id="meeting-type-tabs">
+    <div class="tabs-inner">
+        {% for tab in meeting_tabs %}
+        <button class="meeting-tab{% if loop.first %} meeting-tab-active{% endif %}"
+                data-slug="{{ tab.slug }}">{{ tab.label }}</button>
+        {% endfor %}
+    </div>
+</section>
+
 <section class="category-filter-bar" id="category-filter-bar">
     <div class="filter-bar-inner">
         <span class="filter-label">Filter:</span>
@@ -67,6 +76,7 @@
 
     const selectedCategories = new Set();
 
+    let activeTypeSlug = 'council';
     let apiPage = 1;
     let totalCount = 0;
     let buffer = [];
@@ -307,7 +317,7 @@
     async function fetchNextApiPage() {
         if (allFetched) return;
         try {
-            const resp = await fetch(`/api/meetings?page=${apiPage}`);
+            const resp = await fetch(`/api/meetings?page=${apiPage}&type=${encodeURIComponent(activeTypeSlug)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
 
@@ -447,14 +457,71 @@
         });
     }
 
+    function resetMeetingList() {
+        apiPage = 1;
+        totalCount = 0;
+        buffer = [];
+        allFetched = false;
+        rendering = false;
+        if (observer) { observer.disconnect(); observer = null; }
+        document.getElementById('end-message').style.display = 'none';
+    }
+
+    function initTabs() {
+        const tabs = document.querySelectorAll('.meeting-tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', async () => {
+                const slug = tab.dataset.slug;
+                if (slug === activeTypeSlug) return;
+
+                // Update active tab
+                tabs.forEach(t => t.classList.remove('meeting-tab-active'));
+                tab.classList.add('meeting-tab-active');
+                activeTypeSlug = slug;
+
+                // Reset and reload
+                resetMeetingList();
+                const container = document.getElementById('meetings-list');
+
+                // Static mode: use preloaded data for all tabs
+                const allTabsEl = document.getElementById('preloaded-all-tabs');
+                if (allTabsEl) {
+                    const allTabs = JSON.parse(allTabsEl.textContent);
+                    const tabData = allTabs[slug];
+                    if (!tabData || tabData.meetings.length === 0) {
+                        container.innerHTML = '<div class="empty">No meetings found.</div>';
+                        return;
+                    }
+                    totalCount = tabData.total_count;
+                    container.innerHTML = '';
+                    renderMeetingCards(tabData.meetings, container, true);
+                    tabData.meetings.forEach(m => loadTopics(m.meeting_id, m.title));
+                    if (selectedCategories.size > 0) applyFilters();
+                    return;
+                }
+
+                // Dynamic mode: fetch from API
+                const skeletonCount = calcBatchSize();
+                container.innerHTML = skeletonCard().repeat(skeletonCount);
+
+                await fetchNextApiPage();
+                container.innerHTML = '';
+                await renderBatch();
+                setupInfiniteScroll();
+            });
+        });
+    }
+
     async function init() {
         initFilterBar();
+        initTabs();
         const container = document.getElementById('meetings-list');
 
         // Static mode: use preloaded data if available
         const preloadedEl = document.getElementById('preloaded-meetings');
         if (preloadedEl) {
             const data = JSON.parse(preloadedEl.textContent);
+            activeTypeSlug = data.active_type || 'council';
             totalCount = data.total_count;
             const meetings = data.meetings;
 

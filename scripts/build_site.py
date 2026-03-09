@@ -20,7 +20,7 @@ import time
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from app.scraper import fetch_past_meetings, fetch_meeting_detail
+from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS
 from app.summarizer import extract_meeting_topics, extract_badges
 
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "_site")
@@ -55,13 +55,8 @@ def _extract_block(name, text):
     return text[after_open:end].strip()
 
 
-def fetch_all_data():
-    """Fetch meetings list and per-meeting topics from eSCRIBE."""
-    print("Fetching page-1 meetings...")
-    meetings, total_count = fetch_with_retry(fetch_past_meetings, page=1)
-    meetings_data = [m.to_dict() for m in meetings]
-    print(f"  Got {len(meetings_data)} meetings (total: {total_count})")
-
+def _fetch_topics_and_details(meetings):
+    """Fetch per-meeting topics and detail data for a list of Meeting objects."""
     topics_data: dict[str, list] = {}
     details_data: dict[str, dict] = {}
     for i, m in enumerate(meetings):
@@ -87,11 +82,40 @@ def fetch_all_data():
             print(f"    WARNING: Failed to get topics: {exc}")
             topics_data[mid] = []
             details_data[mid] = {"agenda_items": [], "video_url": None}
+    return topics_data, details_data
 
-    return meetings_data, total_count, topics_data, details_data
+
+def fetch_all_data():
+    """Fetch meetings list and per-meeting topics from eSCRIBE for all tabs."""
+    # Per-tab meeting lists keyed by slug
+    all_tabs_meetings: dict[str, dict] = {}
+    # Shared across all tabs (meeting IDs are globally unique)
+    all_topics: dict[str, list] = {}
+    all_details: dict[str, dict] = {}
+
+    for tab in MEETING_TABS:
+        slug = tab["slug"]
+        meeting_type = tab["type"]
+        print(f"\nFetching '{tab['label']}' meetings ({slug})...")
+        meetings, total_count = fetch_with_retry(
+            fetch_past_meetings, page=1, meeting_type=meeting_type,
+        )
+        meetings_data = [m.to_dict() for m in meetings]
+        print(f"  Got {len(meetings_data)} meetings (total: {total_count})")
+
+        all_tabs_meetings[slug] = {
+            "meetings": meetings_data,
+            "total_count": total_count,
+        }
+
+        topics, details = _fetch_topics_and_details(meetings)
+        all_topics.update(topics)
+        all_details.update(details)
+
+    return all_tabs_meetings, all_topics, all_details
 
 
-def render_index_html(meetings_data, total_count, topics_data):
+def render_index_html(all_tabs_meetings, topics_data):
     """Read the Jinja2 templates and produce a flat static HTML file.
 
     Manually flattens base.html + index.html by replacing the Jinja2 block
@@ -106,23 +130,52 @@ def render_index_html(meetings_data, total_count, topics_data):
     title_block = _extract_block("title", index) or "YXEMinutes"
     content_block = _extract_block("content", index)
 
+    # Expand Jinja2 {% for tab in meeting_tabs %} loop into static HTML
+    tab_buttons = []
+    for i, tab in enumerate(MEETING_TABS):
+        active = " meeting-tab-active" if i == 0 else ""
+        tab_buttons.append(
+            f'<button class="meeting-tab{active}" '
+            f'data-slug="{tab["slug"]}">{tab["label"]}</button>'
+        )
+    tab_html = "\n        ".join(tab_buttons)
+
+    # Replace the Jinja for-loop block with rendered HTML
+    import re as _re
+    content_block = _re.sub(
+        r'\{%\s*for tab in meeting_tabs\s*%\}.*?\{%\s*endfor\s*%\}',
+        tab_html,
+        content_block,
+        flags=_re.DOTALL,
+    )
+
     # Scripts block: need to be more careful since there may be multiple endblocks
     scripts_start = index.find("{% block scripts %}")
     scripts_end = index.rfind("{% endblock %}")
     scripts_block = index[scripts_start + len("{% block scripts %}"):scripts_end].strip() if scripts_start != -1 else ""
 
     # --- Build preloaded data script tags ---
+    # Default tab is the first one ("council")
+    default_slug = MEETING_TABS[0]["slug"]
+    default_data = all_tabs_meetings.get(default_slug, {"meetings": [], "total_count": 0})
+
     preloaded_meetings = json.dumps({
-        "meetings": meetings_data,
-        "total_count": total_count,
+        "meetings": default_data["meetings"],
+        "total_count": default_data["total_count"],
+        "active_type": default_slug,
         "page": 1,
     }, separators=(",", ":"))
+
+    # Preload all tabs' meeting lists so tab switching works without API
+    preloaded_all_tabs = json.dumps(all_tabs_meetings, separators=(",", ":"))
 
     preloaded_topics = json.dumps(topics_data, separators=(",", ":"))
 
     data_scripts = (
         f'<script type="application/json" id="preloaded-meetings">'
         f"{preloaded_meetings}</script>\n"
+        f'<script type="application/json" id="preloaded-all-tabs">'
+        f"{preloaded_all_tabs}</script>\n"
         f'<script type="application/json" id="preloaded-topics">'
         f"{preloaded_topics}</script>"
     )
@@ -214,10 +267,10 @@ def main():
         shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
 
-    meetings_data, total_count, topics_data, details_data = fetch_all_data()
+    all_tabs_meetings, topics_data, details_data = fetch_all_data()
 
     print("Rendering static index.html...")
-    html = render_index_html(meetings_data, total_count, topics_data)
+    html = render_index_html(all_tabs_meetings, topics_data)
 
     index_path = os.path.join(OUTPUT_DIR, "index.html")
     with open(index_path, "w") as f:

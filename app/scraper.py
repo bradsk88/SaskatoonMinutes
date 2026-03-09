@@ -32,6 +32,21 @@ _PAGE_HEADERS = {
 # eSCRIBE uses the meeting type display name (not a GUID) for filtering.
 MEETING_TYPE = "CITY COUNCIL AGENDA - REGULAR BUSINESS MEETING"
 
+# Named meeting type tabs shown in the UI.  Each entry maps a short slug to
+# the eSCRIBE "type" string used by the PastMeetings API.
+MEETING_TABS: list[dict] = [
+    {"slug": "council",        "label": "Council",              "type": "CITY COUNCIL AGENDA - REGULAR BUSINESS MEETING"},
+    {"slug": "public-hearing", "label": "Public Hearing",       "type": "CITY COUNCIL AGENDA - PUBLIC HEARING MEETING"},
+    {"slug": "budget",         "label": "Budget",               "type": "CITY COUNCIL AGENDA - BUDGET"},
+    {"slug": "governance",     "label": "Governance & Priorities", "type": "GOVERNANCE AND PRIORITIES COMMITTEE - PUBLIC"},
+    {"slug": "planning",       "label": "Planning & Dev",       "type": "SPC-PLANNING, DEVELOPMENT AND COMMUNITY SERVICES - PUBLIC"},
+    {"slug": "transportation", "label": "Transportation",       "type": "SPC-TRANSPORTATION - PUBLIC"},
+    {"slug": "environment",    "label": "Environment & Utilities", "type": "SPC-ENVIRONMENT, UTILITIES AND CORPORATE SERVICES - PUBLIC"},
+]
+
+# Quick lookup from slug → eSCRIBE type string.
+_SLUG_TO_TYPE = {tab["slug"]: tab["type"] for tab in MEETING_TABS}
+
 
 @dataclass
 class AgendaItem:
@@ -83,14 +98,18 @@ class Meeting:
         return asdict(self)
 
 
-def fetch_past_meetings(page: int = 1) -> tuple[list[Meeting], int]:
+def fetch_past_meetings(page: int = 1, meeting_type: str | None = None) -> tuple[list[Meeting], int]:
     """Fetch a page of past City Council meetings from eSCRIBE.
+
+    *meeting_type* is the eSCRIBE display-name string (e.g.
+    ``"CITY COUNCIL AGENDA - REGULAR BUSINESS MEETING"``).  When *None*
+    the default :data:`MEETING_TYPE` constant is used.
 
     Returns (meetings, total_count).
     """
     url = f"{BASE_URL}/MeetingsCalendarView.aspx/PastMeetings"
     payload = {
-        "type": MEETING_TYPE,
+        "type": meeting_type or MEETING_TYPE,
         "pageNumber": page,
     }
     resp = requests.post(url, json=payload, headers=_AJAX_HEADERS, timeout=30, verify=False)

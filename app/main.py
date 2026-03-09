@@ -9,7 +9,7 @@ import os
 from flask import Flask, render_template, jsonify, request
 from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
-from app.scraper import fetch_past_meetings, fetch_meeting_detail
+from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS, _SLUG_TO_TYPE
 from app.summarizer import summarize_agenda_items, extract_meeting_topics, extract_badges
 
 _CONNECTION_ERROR_MSG = (
@@ -26,15 +26,23 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-key-change-me")
 @app.route("/")
 def index():
     """Landing page showing recent City Council meetings."""
-    return render_template("index.html")
+    return render_template("index.html", meeting_tabs=MEETING_TABS)
 
 
 @app.route("/api/meetings")
 def api_meetings():
-    """API endpoint to fetch paginated list of past meetings."""
+    """API endpoint to fetch paginated list of past meetings.
+
+    Query params:
+        page  – page number (default 1)
+        type  – meeting-type slug (e.g. "council", "budget").  When omitted
+                the default regular-business type is used.
+    """
     page = request.args.get("page", 1, type=int)
+    slug = request.args.get("type", "")
+    meeting_type = _SLUG_TO_TYPE.get(slug)  # None → default
     try:
-        meetings, total_count = fetch_past_meetings(page)
+        meetings, total_count = fetch_past_meetings(page, meeting_type=meeting_type)
         return jsonify({
             "meetings": [m.to_dict() for m in meetings],
             "total_count": total_count,
