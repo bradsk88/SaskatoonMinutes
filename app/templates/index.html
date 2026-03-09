@@ -84,6 +84,28 @@
     let rendering = false;
     let observer = null;
 
+    const RECENT_DAYS = 3;
+
+    function isRecent(dateStr) {
+        const meetingDate = new Date(dateStr + 'T00:00:00');
+        const now = new Date();
+        const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - RECENT_DAYS);
+        return meetingDate >= cutoff;
+    }
+
+    function markTabRecent(slug) {
+        const tab = document.querySelector(`.meeting-tab[data-slug="${slug}"]`);
+        if (tab && !tab.classList.contains('meeting-tab-recent')) {
+            tab.classList.add('meeting-tab-recent');
+        }
+    }
+
+    function checkRecentForMeetings(slug, meetings) {
+        if (meetings && meetings.length > 0 && isRecent(meetings[0].date)) {
+            markTabRecent(slug);
+        }
+    }
+
     function calcBatchSize() {
         const viewportH = window.innerHeight;
         // Deduct fixed chrome: header ~56px, hero ~80px, section header ~40px, padding ~32px
@@ -525,6 +547,15 @@
             totalCount = data.total_count;
             const meetings = data.meetings;
 
+            // Mark tabs that have recent meetings
+            const allTabsEl = document.getElementById('preloaded-all-tabs');
+            if (allTabsEl) {
+                const allTabs = JSON.parse(allTabsEl.textContent);
+                Object.keys(allTabs).forEach(slug => {
+                    checkRecentForMeetings(slug, allTabs[slug].meetings);
+                });
+            }
+
             if (meetings.length === 0) {
                 container.innerHTML = '<div class="empty">No meetings found.</div>';
                 return;
@@ -543,6 +574,22 @@
         container.innerHTML = '';
         await renderBatch();
         setupInfiniteScroll();
+
+        // Check recency for all tabs in the background
+        checkAllTabsRecency();
+    }
+
+    function checkAllTabsRecency() {
+        const tabs = document.querySelectorAll('.meeting-tab');
+        tabs.forEach(tab => {
+            const slug = tab.dataset.slug;
+            fetch(`/api/meetings?page=1&type=${encodeURIComponent(slug)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.error) checkRecentForMeetings(slug, data.meetings);
+                })
+                .catch(() => {});
+        });
     }
 
     init();
