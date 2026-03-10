@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '0 */12 * * *'  # Every 12 hours to pick up new meetings
+    - cron: '0 */4 * * *'  # Every 4 hours to pick up new meetings
   workflow_dispatch:          # Manual trigger from GitHub UI
 
 concurrency:
