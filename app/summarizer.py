@@ -281,10 +281,14 @@ _TOPIC_CATEGORIES = {
         r"\btransit\b", r"bus rapid", r"\bBRT\b", r"grade.separation",
         r"rail\s+(grade|cross)", r"public\s+transport",
     ],
+    "Active Transport": [
+        r"active\s+transport", r"cycling", r"\bbike\b", r"bicycle",
+        r"bike\s+lane", r"protected.*\blane", r"multi.use\s+(path|trail)",
+        r"pedestrian", r"sidewalk", r"crosswalk", r"walkability",
+    ],
     "Traffic": [
         r"\btraffic\b", r"intersection", r"speed\s+limit",
-        r"road\s+(clos|safe|improv)", r"pedestrian", r"cycling",
-        r"sidewalk", r"crosswalk", r"active\s+transport",
+        r"road\s+(clos|safe|improv)", r"\btransportation\b",
     ],
     "Greenspace": [
         r"\bpark\b(?!ing)", r"\belm\b", r"urban\s+forest", r"tree\b",

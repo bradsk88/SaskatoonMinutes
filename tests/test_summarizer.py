@@ -183,6 +183,23 @@ class TestCategorizeTopic:
         cats = _categorize_topic("homeless shelter rezoning transit", "")
         assert len(cats) <= 2
 
+    def test_active_transport_cycling(self):
+        cats = _categorize_topic("Protected Bike Lane Network", "")
+        assert "Active Transport" in cats
+
+    def test_active_transport_plan(self):
+        cats = _categorize_topic("Active Transportation Plan Improvements", "")
+        assert "Active Transport" in cats
+
+    def test_active_transport_pedestrian(self):
+        cats = _categorize_topic("Pedestrian Crosswalk Upgrades", "")
+        assert "Active Transport" in cats
+
+    def test_traffic_still_matches_roads(self):
+        """Traffic category should still match road/intersection items."""
+        cats = _categorize_topic("Traffic Signal at Main Intersection", "")
+        assert "Traffic" in cats
+
 
 # ── _is_major_decision ──────────────────────────────────────────────
 
@@ -202,6 +219,58 @@ class TestIsMajorDecision:
 
 
 # ── _extract_badges ──────────────────────────────────────────────────
+
+
+class TestLongDiscussedBadgeCount:
+    """Items discussed for 30+ minutes should have at least 2 badges so
+    the index page conveys meaningful information beyond just the outcome.
+
+    Reproduces the Mar 3 2026 SPC-Transportation meeting where the active
+    transportation improvements item had ~1 hour of discussion but only
+    showed 'Approved' and 'Traffic'.
+    """
+
+    def test_active_transport_item_gets_enough_badges(self):
+        """An active-transportation item should match multiple categories."""
+        item = {
+            "title": "Active Transportation Plan Improvements",
+            "recommendation": "That the report be received.",
+            "content": "",
+            "time_start_ms": 0,
+            "time_end_ms": 3_600_000,  # 1 hour
+        }
+        badges = _extract_badges(item)
+        assert len(badges) >= 2, (
+            f"Expected >= 2 badges for a 1-hour discussion item, "
+            f"got {len(badges)}: {badges}"
+        )
+
+    def test_cycling_infrastructure_item(self):
+        """A cycling infrastructure item should get category + detail badges."""
+        item = {
+            "title": "Cycling Network - Protected Bike Lanes",
+            "recommendation": "That $2.5 million be approved for "
+                              "cycling infrastructure on 25th Street East.",
+            "content": "",
+            "time_start_ms": 0,
+            "time_end_ms": 2_400_000,  # 40 min
+        }
+        badges = _extract_badges(item)
+        assert len(badges) >= 2, (
+            f"Expected >= 2 badges, got {len(badges)}: {badges}"
+        )
+
+    def test_short_item_not_required(self):
+        """Short items are not subject to the same expectation."""
+        item = {
+            "title": "Approval of Minutes",
+            "recommendation": "",
+            "content": "",
+            "time_start_ms": 0,
+            "time_end_ms": 30_000,  # 30 seconds
+        }
+        badges = _extract_badges(item)
+        # No assertion on count — short items may have 0 badges
 
 
 class TestExtractBadges:

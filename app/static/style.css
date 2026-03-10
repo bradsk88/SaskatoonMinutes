@@ -929,6 +929,11 @@ main {
     color: #1e40af;
 }
 
+.badge-cat-active-transport {
+    background: #ccfbf1;
+    color: #115e59;
+}
+
 .badge-cat-traffic {
     background: #e0e7ff;
     color: #3730a3;
@@ -1203,6 +1208,11 @@ footer a:hover {
     .badge-cat-transit {
         background: #1a2636;
         color: #8aabc4;
+    }
+
+    .badge-cat-active-transport {
+        background: #132e2b;
+        color: #7ac4bc;
     }
 
     .badge-cat-traffic {
