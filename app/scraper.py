@@ -234,10 +234,22 @@ def _extract_bookmarks(html: str) -> dict[int, dict]:
         except json.JSONDecodeError:
             return {}
 
-    return {
-        b["AgendaItemId"]: {"TimeStart": b.get("TimeStart"), "TimeEnd": b.get("TimeEnd")}
-        for b in bookmark_list
-    }
+    bookmarks: dict[int, dict] = {}
+    for b in bookmark_list:
+        aid = b.get("AgendaItemId")
+        if aid is None:
+            continue
+        ts = b.get("TimeStart")
+        te = b.get("TimeEnd")
+        if aid in bookmarks:
+            existing = bookmarks[aid]
+            if ts is not None and (existing["TimeStart"] is None or ts < existing["TimeStart"]):
+                existing["TimeStart"] = ts
+            if te is not None and (existing["TimeEnd"] is None or te > existing["TimeEnd"]):
+                existing["TimeEnd"] = te
+        else:
+            bookmarks[aid] = {"TimeStart": ts, "TimeEnd": te}
+    return bookmarks
 
 
 def _extract_agenda_items(html: str, bookmarks: dict) -> list[AgendaItem]:

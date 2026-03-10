@@ -62,6 +62,17 @@ class TestExtractBookmarks:
         result = _extract_bookmarks(html)
         assert result[101] == {"TimeStart": 1000, "TimeEnd": 2000}
 
+    def test_duplicate_ids_merged(self):
+        """When an item has multiple bookmark segments, keep earliest start and latest end."""
+        html = (
+            'Bookmarks : ['
+            '{"AgendaItemId":18,"TimeStart":327729,"TimeEnd":327885},'
+            '{"AgendaItemId":18,"TimeStart":329353,"TimeEnd":4780221}'
+            ']'
+        )
+        result = _extract_bookmarks(html)
+        assert result[18] == {"TimeStart": 327729, "TimeEnd": 4780221}
+
 
 # ── _extract_votes (deferral bug — motion_text capture) ─────────────
 
