@@ -163,7 +163,56 @@ def _extract_badges(item: dict) -> list[dict]:
                 badges.append({"type": "location", "label": hood})
                 break
 
+    # Discussion topics from minutes text ("related to X, Y, and Z")
+    for topic in _extract_discussion_topics(content):
+        badges.append({"type": "topic", "label": topic})
+
     return badges
+
+
+def _extract_discussion_topics(content: str) -> list[str]:
+    """Extract key discussion topics from minutes text.
+
+    Minutes typically follow the pattern "responded to questions … related to
+    traffic volumes and demand, funding strategy, snow removal and winter
+    operations, project timing and consideration of development in area."
+
+    Returns up to 3 short topic labels.
+    """
+    if not content:
+        return []
+
+    # Match "related to …" or "regarding …" clauses up to the next period
+    m = re.search(
+        r"(?:related to|regarding|concerning)\s+(.+?)(?:\.|$)",
+        content, re.IGNORECASE,
+    )
+    if not m:
+        return []
+
+    raw = m.group(1).strip()
+
+    # Split on commas, extracting "and"-joined trailing items separately.
+    # e.g. "traffic volumes and demand, funding strategy, snow removal and
+    #        winter operations" → split on ", " first
+    parts = re.split(r",\s*", raw)
+
+    topics: list[str] = []
+    for part in parts:
+        part = part.strip()
+        # Strip leading "and " that follows the last comma
+        part = re.sub(r"^and\s+", "", part, flags=re.IGNORECASE)
+        if not part:
+            continue
+        # Capitalise first letter for badge display
+        label = part[0].upper() + part[1:] if len(part) > 1 else part.upper()
+        # Skip very short fragments or very long ones
+        if 3 <= len(label) <= 50:
+            topics.append(label)
+        if len(topics) >= 3:
+            break
+
+    return topics
 
 
 def extract_badges(item: dict) -> list[dict]:

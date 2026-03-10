@@ -8,6 +8,7 @@ from app.summarizer import (
     _categorize_topic,
     _is_major_decision,
     _extract_badges,
+    _extract_discussion_topics,
     _format_topic,
     _clean_entities,
 )
@@ -279,7 +280,33 @@ class TestLongDiscussedBadgeCount:
         assert "cat-active-transport" in types
         # Minutes content mentions $2.5 million → money badge
         assert "money" in types
-        assert len(badges) >= 3
+        # Discussion topics extracted from "related to ..." clause
+        assert "topic" in types
+        assert len(badges) >= 4
+
+    def test_real_transportation_minutes(self):
+        """Reproduces the Mar 3 2026 SPC-Transportation active transport item."""
+        item = {
+            "title": "Active Transportation Plan Improvements",
+            "recommendation": "That the report be received.",
+            "content": (
+                "Director of Transportation Magus presented the report "
+                "with a PowerPoint and responded to questions of Committee "
+                "related to traffic volumes and demand, funding strategy, "
+                "snow removal and winter operations, project timing and "
+                "consideration of development in area."
+            ),
+            "time_start_ms": 0,
+            "time_end_ms": 3_600_000,  # 1 hour
+        }
+        badges = _extract_badges(item)
+        types = {b["type"] for b in badges}
+        topic_labels = [b["label"] for b in badges if b["type"] == "topic"]
+        # Should have category badges + topic badges from minutes
+        assert "cat-active-transport" in types
+        assert "topic" in types
+        assert len(topic_labels) >= 2
+        assert len(badges) >= 4
 
     def test_short_item_not_required(self):
         """Short items are not subject to the same expectation."""
@@ -292,6 +319,45 @@ class TestLongDiscussedBadgeCount:
         }
         badges = _extract_badges(item)
         # No assertion on count — short items may have 0 badges
+
+
+class TestExtractDiscussionTopics:
+    def test_related_to_clause(self):
+        topics = _extract_discussion_topics(
+            "Director X responded to questions related to "
+            "traffic volumes and demand, funding strategy, "
+            "snow removal and winter operations."
+        )
+        assert len(topics) >= 2
+        assert "Traffic volumes and demand" in topics
+        assert "Funding strategy" in topics
+
+    def test_regarding_clause(self):
+        topics = _extract_discussion_topics(
+            "Staff responded to questions regarding cost recovery, "
+            "timing and scope of the review."
+        )
+        assert "Cost recovery" in topics
+
+    def test_empty_content(self):
+        assert _extract_discussion_topics("") == []
+
+    def test_no_clause(self):
+        assert _extract_discussion_topics("The meeting adjourned at 3:25 p.m.") == []
+
+    def test_max_three_topics(self):
+        topics = _extract_discussion_topics(
+            "Questions related to a, b, c, d, e."
+        )
+        assert len(topics) <= 3
+
+    def test_skips_tiny_fragments(self):
+        topics = _extract_discussion_topics(
+            "Questions related to a, real discussion topic."
+        )
+        # "a" is too short (< 3 chars) and should be skipped
+        labels = [t.lower() for t in topics]
+        assert "a" not in labels
 
 
 class TestExtractBadges:

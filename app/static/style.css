@@ -920,6 +920,13 @@ main {
     color: #9d174d;
 }
 
+.badge-topic {
+    background: #f0fdf4;
+    color: #166534;
+    text-transform: none;
+    font-weight: 500;
+}
+
 /* Per-category color-coded badges */
 .badge-cat-homelessness {
     background: #fff7ed;
@@ -1199,6 +1206,11 @@ footer a:hover {
     .badge-location {
         background: #2a1a24;
         color: #c49aad;
+    }
+
+    .badge-topic {
+        background: #132e1a;
+        color: #8cc49a;
     }
 
     /* Per-category color-coded badges (dark) */
