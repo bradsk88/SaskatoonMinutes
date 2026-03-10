@@ -164,13 +164,18 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
         descs = _extract_descriptions(html)
         attachments = _extract_attachments(html)
         _distribute_confirmation_attachments(agenda_items, attachments)
-        # Fetch vote results from the PostMinutes page
-        votes = fetch_meeting_votes(meeting_id)
+        # Fetch votes and discussion minutes from the PostMinutes page
+        post = fetch_post_minutes(meeting_id)
+        votes = post["votes"]
+        minutes = post["minutes"]
 
         for item in agenda_items:
             if item.item_id in recs:
                 item.recommendation = recs[item.item_id]
-            if item.item_id in descs:
+            # Prefer minutes text (richer discussion summary) over agenda description
+            if item.item_id in minutes:
+                item.content = minutes[item.item_id]
+            elif item.item_id in descs:
                 item.content = descs[item.item_id]
             if item.item_id in attachments:
                 item.attachments = attachments[item.item_id]
@@ -413,6 +418,29 @@ def _extract_descriptions(html: str) -> dict[int, str]:
     return results
 
 
+def _extract_minutes(html: str) -> dict[int, str]:
+    """Extract AgendaItemMinutes content per item from the PostMinutes page.
+
+    These are discussion summaries written into the official minutes —
+    e.g. "Director X presented the report and responded to questions
+    related to traffic volumes and funding strategy."
+
+    Returns {item_id: minutes_text}.
+    """
+    results: dict[int, str] = {}
+    for item_id, block in _item_blocks(html).items():
+        dm = re.search(
+            r"AgendaItemMinutes RichText.*?>(.*?)</DIV>",
+            block, re.DOTALL | re.IGNORECASE,
+        )
+        if dm:
+            text = _clean_html(dm.group(1))
+            text = re.sub(r"\s+", " ", text).strip()
+            if text:
+                results[item_id] = text
+    return results
+
+
 def _extract_attachments(html: str) -> dict[int, list[dict]]:
     """Extract document attachment links per agenda item.
 
@@ -612,10 +640,22 @@ def _distribute_confirmation_attachments(
 
 def fetch_meeting_votes(meeting_id: str) -> dict[int, dict]:
     """Fetch PostMinutes page and extract vote results per item."""
+    return fetch_post_minutes(meeting_id)["votes"]
+
+
+def fetch_post_minutes(meeting_id: str) -> dict:
+    """Fetch the PostMinutes page and extract votes + meeting minutes.
+
+    Returns ``{"votes": {item_id: vote_dict}, "minutes": {item_id: str}}``.
+    """
     url = f"{BASE_URL}/Meeting.aspx?Id={meeting_id}&Agenda=PostMinutes&lang=English"
     try:
         resp = requests.get(url, headers=_PAGE_HEADERS, timeout=30, verify=False)
         resp.raise_for_status()
     except Exception:
-        return {}
-    return _extract_votes(resp.text)
+        return {"votes": {}, "minutes": {}}
+    html = resp.text
+    return {
+        "votes": _extract_votes(html),
+        "minutes": _extract_minutes(html),
+    }

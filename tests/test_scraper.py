@@ -7,6 +7,7 @@ from app.scraper import (
     _extract_bookmarks,
     _extract_votes,
     _extract_recommendations,
+    _extract_minutes,
     _propagate_timestamps,
     _mark_brief_items,
 )
@@ -170,6 +171,32 @@ class TestPropagateTimestamps:
         _propagate_timestamps(items)
         assert items[0].time_start_ms is None
         assert items[0].timestamp_inherited is False
+
+
+# ── _extract_minutes ─────────────────────────────────────────────────
+
+
+class TestExtractMinutes:
+    def test_parses_minutes_block(self):
+        html = (
+            '<div>SelectItem(500);'
+            '<div class="AgendaItemMinutes RichText">'
+            '<div>Director X presented the report and responded to questions '
+            'related to <b>traffic volumes</b> and funding strategy.</div></div>'
+            '</div>'
+        )
+        result = _extract_minutes(html)
+        assert 500 in result
+        assert "traffic volumes" in result[500]
+        assert "funding strategy" in result[500]
+
+    def test_empty_minutes(self):
+        html = '<div>SelectItem(501);<div class="other">stuff</div></div>'
+        result = _extract_minutes(html)
+        assert 501 not in result
+
+    def test_no_minutes_in_html(self):
+        assert _extract_minutes("<html>nothing</html>") == {}
 
 
 # ── AgendaItem.time_start_formatted ──────────────────────────────────

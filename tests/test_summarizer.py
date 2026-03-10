@@ -260,6 +260,27 @@ class TestLongDiscussedBadgeCount:
             f"Expected >= 2 badges, got {len(badges)}: {badges}"
         )
 
+    def test_minutes_content_generates_extra_badges(self):
+        """Rich minutes text should produce badges even when title is sparse."""
+        item = {
+            "title": "Report on Transportation",
+            "recommendation": "That the report be received.",
+            "content": (
+                "Director of Transportation presented the report and "
+                "responded to questions related to cycling infrastructure, "
+                "$2.5 million funding strategy, and pedestrian safety."
+            ),
+            "time_start_ms": 0,
+            "time_end_ms": 2_400_000,  # 40 min
+        }
+        badges = _extract_badges(item)
+        types = {b["type"] for b in badges}
+        # Minutes content mentions cycling → Active Transport category
+        assert "cat-active-transport" in types
+        # Minutes content mentions $2.5 million → money badge
+        assert "money" in types
+        assert len(badges) >= 3
+
     def test_short_item_not_required(self):
         """Short items are not subject to the same expectation."""
         item = {

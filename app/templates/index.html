@@ -220,6 +220,7 @@
             html += `<div class="topic-row">`;
             html += `<div class="topic-content">`;
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span></div>`;
+            if (t.summary) html += `<div class="topic-summary">${escapeAttr(t.summary)}</div>`;
             html += `<div class="topic-badges">${primaryBadgesHtml}</div>`;
             if (detailBadgesHtml) html += `<div class="topic-badges">${detailBadgesHtml}</div>`;
             html += `</div>`;

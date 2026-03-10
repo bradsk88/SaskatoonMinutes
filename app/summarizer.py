@@ -85,10 +85,19 @@ def _format_topic(item: dict) -> dict:
     outcome = _format_outcome(vote, rec)
     is_major = _is_major_decision(title, rec, contested)
 
+    # Short summary from minutes text for the index page
+    content = item.get("content", "")
+    summary = ""
+    if content:
+        summary = _clean_entities(content)
+        if len(summary) > 120:
+            summary = summary[:117].rsplit(" ", 1)[0] + "..."
+
     return {
         "topic": _plainify(title),
         "outcome": outcome,
         "outcome_detail": _clean_entities(rec) if rec else "",
+        "summary": summary,
         "vote_result": vote,
         "is_major": is_major,
         "is_contested": contested,
@@ -105,12 +114,12 @@ def _extract_badges(item: dict) -> list[dict]:
     rec = item.get("recommendation", "")
 
     # Category badges first (most prominent) – type slug enables per-category colors
-    for cat in _categorize_topic(title, rec):
+    content = item.get("content", "")
+    for cat in _categorize_topic(title, rec, content):
         slug = cat.lower().replace(" & ", "-").replace(" ", "-")
         badges.append({"type": f"cat-{slug}", "label": cat})
 
     # Dollar amounts with surrounding context for a verb and purpose
-    content = item.get("content", "")
     combined = title + " " + rec + " " + content
     money_count = 0
     for m in re.finditer(r'\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion))?', combined):
@@ -328,9 +337,9 @@ _TOPIC_CATEGORIES = {
 }
 
 
-def _categorize_topic(title: str, recommendation: str) -> list[str]:
+def _categorize_topic(title: str, recommendation: str, content: str = "") -> list[str]:
     """Return up to 2 urban-development category labels for an agenda item."""
-    combined = title + " " + recommendation
+    combined = title + " " + recommendation + " " + content
     matches = []
     for category, patterns in _TOPIC_CATEGORIES.items():
         for pat in patterns:
