@@ -215,15 +215,25 @@
                 playHtml = `<a href="${openHref}?t=${t.time_start_ms}" class="topic-play-link" title="Play video at this topic" aria-label="Play"></a>`;
             }
 
+            // Link to the agenda item on the detail page
+            let detailHref = openHref || '';
+            if (detailHref && t.time_start_ms != null) {
+                detailHref += `?t=${t.time_start_ms}`;
+            }
+
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
             html += `<div class="topic-row">`;
-            html += `<div class="topic-content">`;
+            if (detailHref) {
+                html += `<a href="${detailHref}" class="topic-content topic-link">`;
+            } else {
+                html += `<div class="topic-content">`;
+            }
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span></div>`;
             if (t.summary) html += `<div class="topic-summary">${escapeAttr(t.summary)}</div>`;
             html += `<div class="topic-badges">${primaryBadgesHtml}</div>`;
             if (detailBadgesHtml) html += `<div class="topic-badges">${detailBadgesHtml}</div>`;
-            html += `</div>`;
+            html += detailHref ? `</a>` : `</div>`;
             if (playHtml) html += playHtml;
             html += `</div>`;
             html += `</td>`;
