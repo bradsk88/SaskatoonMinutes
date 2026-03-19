@@ -260,18 +260,23 @@
     function buildCardHTML(m, dateStr, openHref) {
         const cardTitle = formatCardTitle(m.title);
         const time = extractTime(m.start_time);
+        const cancelledBadge = m.is_cancelled
+            ? ' <span class="badge badge-cancelled">Cancelled</span>'
+            : '';
+        const topicsHtml = m.is_cancelled
+            ? ''
+            : `<div class="meeting-topics" id="topics-${m.meeting_id}">${topicsSkeleton()}</div>`;
+        const actionsHtml = m.is_cancelled
+            ? ''
+            : `<div class="meeting-card-actions"><a href="${openHref}" class="btn btn-sm btn-open">Open</a></div>`;
         return `
-            <div class="meeting-date">${dateStr}${time ? ` &middot; ${time}` : ''}</div>
+            <div class="meeting-date">${dateStr}${time ? ` &middot; ${time}` : ''}${cancelledBadge}</div>
             <div class="meeting-title">${cardTitle}</div>
             <div class="meeting-meta">
                 <span class="meeting-categories" id="cats-${m.meeting_id}"></span>
             </div>
-            <div class="meeting-topics" id="topics-${m.meeting_id}">
-                ${topicsSkeleton()}
-            </div>
-            <div class="meeting-card-actions">
-                <a href="${openHref}" class="btn btn-sm btn-open">Open</a>
-            </div>
+            ${topicsHtml}
+            ${actionsHtml}
         `;
     }
 
@@ -346,7 +351,7 @@
     function renderMeetingCards(meetings, targetGrid, isStatic) {
         meetings.forEach(m => {
             const card = document.createElement('div');
-            card.className = 'meeting-card';
+            card.className = 'meeting-card' + (m.is_cancelled ? ' meeting-card-cancelled' : '');
 
             let openHref;
             if (isStatic) {
@@ -416,8 +421,8 @@
 
         renderMeetingCards(batch, container, false);
 
-        // Auto-summarize all meetings in the batch
-        batch.forEach(m => loadTopics(m.meeting_id, m.title));
+        // Auto-summarize non-cancelled meetings in the batch
+        batch.filter(m => !m.is_cancelled).forEach(m => loadTopics(m.meeting_id, m.title));
 
         // Pre-fetch next API page if buffer is running low
         if (buffer.length === 0 && !allFetched) {
@@ -546,7 +551,7 @@
                     totalCount = tabData.total_count;
                     container.innerHTML = '';
                     renderMeetingCards(tabData.meetings, container, true);
-                    tabData.meetings.forEach(m => loadTopics(m.meeting_id, m.title));
+                    tabData.meetings.filter(m => !m.is_cancelled).forEach(m => loadTopics(m.meeting_id, m.title));
                     if (selectedCategories.size > 0) applyFilters();
                     return;
                 }
@@ -600,7 +605,7 @@
                 }
 
                 renderMeetingCards(meetings, container, true);
-                meetings.forEach(m => loadTopics(m.meeting_id, m.title));
+                meetings.filter(m => !m.is_cancelled).forEach(m => loadTopics(m.meeting_id, m.title));
                 return;
             }
 
@@ -616,7 +621,7 @@
             }
 
             renderMeetingCards(meetings, container, true);
-            meetings.forEach(m => loadTopics(m.meeting_id, m.title));
+            meetings.filter(m => !m.is_cancelled).forEach(m => loadTopics(m.meeting_id, m.title));
             return;
         }
 

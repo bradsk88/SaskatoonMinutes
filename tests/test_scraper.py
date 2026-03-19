@@ -2,6 +2,7 @@ import pytest
 
 from app.scraper import (
     AgendaItem,
+    Meeting,
     _parse_escribemeetings_date,
     _clean_html,
     _extract_bookmarks,
@@ -308,3 +309,32 @@ class TestTimeStartFormatted:
         item = AgendaItem(item_id=1, title="", content="", section_number="1.",
                           time_start_ms=3661000)
         assert item.time_start_formatted == "1:01:01"
+
+
+# ── Meeting.is_cancelled ────────────────────────────────────────────
+
+
+class TestMeetingIsCancelled:
+    def test_defaults_to_false(self):
+        m = Meeting(
+            meeting_id="abc", title="Test", date="2026-01-01",
+            start_time="", location="", has_video=False, has_agenda=False,
+        )
+        assert m.is_cancelled is False
+
+    def test_cancelled_in_dict(self):
+        m = Meeting(
+            meeting_id="abc", title="Test", date="2026-01-01",
+            start_time="", location="", has_video=False, has_agenda=False,
+            is_cancelled=True,
+        )
+        d = m.to_dict()
+        assert d["is_cancelled"] is True
+
+    def test_not_cancelled_in_dict(self):
+        m = Meeting(
+            meeting_id="abc", title="Test", date="2026-01-01",
+            start_time="", location="", has_video=False, has_agenda=False,
+        )
+        d = m.to_dict()
+        assert d["is_cancelled"] is False

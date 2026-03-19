@@ -208,6 +208,23 @@ nav {
     display: none;
 }
 
+/* Cancelled meeting card */
+.meeting-card-cancelled {
+    opacity: 0.6;
+}
+
+.meeting-card-cancelled .meeting-title {
+    text-decoration: line-through;
+    text-decoration-color: var(--color-text-muted);
+}
+
+.badge-cancelled {
+    background: #fee2e2;
+    color: #991b1b;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
 /* === Main content === */
 main {
     flex: 1;
@@ -1167,6 +1184,11 @@ footer a:hover {
     .badge-reorder {
         background: #431407;
         color: #fdba74;
+    }
+
+    .badge-cancelled {
+        background: #2a1a1a;
+        color: #fca5a5;
     }
 
     .badge-consent {

@@ -93,6 +93,7 @@ class Meeting:
     has_video: bool
     has_agenda: bool
     video_url: str | None = None
+    is_cancelled: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -123,6 +124,10 @@ def fetch_past_meetings(page: int = 1, meeting_type: str | None = None) -> tuple
     for m in raw_meetings:
         meeting_id = m.get("Id", "")
         has_video = m.get("HasVideo", False)
+        is_cancelled = m.get("Cancelled", False) or any(
+            "cancel" in link.get("Title", "").lower()
+            for link in m.get("MeetingLinks", [])
+        )
 
         meeting = Meeting(
             meeting_id=meeting_id,
@@ -133,6 +138,7 @@ def fetch_past_meetings(page: int = 1, meeting_type: str | None = None) -> tuple
             has_video=has_video,
             has_agenda=m.get("HasAgenda", False),
             video_url=_build_video_url(meeting_id) if has_video else None,
+            is_cancelled=is_cancelled,
         )
         meetings.append(meeting)
 
