@@ -4,8 +4,8 @@
 
 {% block content %}
 <section class="hero">
-    <h1>Saskatoon City Council Meetings</h1>
-    <p>Browse recent council meetings and see what was discussed and decided.</p>
+    <h1>Saskatoon Council & Committee Meetings</h1>
+    <p>Browse recent meetings and see what was discussed and decided.</p>
 </section>
 
 <section class="meeting-type-tabs" id="meeting-type-tabs">
@@ -244,10 +244,12 @@
     }
 
     function formatCardTitle(title) {
-        // Strip the generic prefix that every meeting shares
+        // Simplify long eSCRIBE meeting type names for card display
         return title
             .replace(/^CITY COUNCIL AGENDA\s*[-–—]\s*/i, '')
             .replace(/\bMEETING\b/i, '')
+            .replace(/\s*[-–—]\s*PUBLIC\s*$/i, '')
+            .replace(/\s*[-–—]\s*SPECIAL\s*$/i, ' (Special)')
             .trim() || title;
     }
 
