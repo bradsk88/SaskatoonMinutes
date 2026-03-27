@@ -1,0 +1,70 @@
+name: Transcribe Meeting Videos
+
+on:
+  # Run after deploy finishes (new meetings may have been picked up)
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Whisper model size'
+        required: false
+        default: 'base'
+        type: choice
+        options: [tiny, base, small]
+      tabs:
+        description: 'Tab slugs to process (space-separated, empty = all)'
+        required: false
+        default: ''
+      limit:
+        description: 'Max meetings per tab'
+        required: false
+        default: '3'
+
+concurrency:
+  group: transcribe
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # push to transcripts branch
+
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300   # 5 hours max
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need full history for orphan branch ops
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install faster-whisper
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Transcribe meetings
+        run: |
+          MODEL="${{ inputs.model || 'base' }}"
+          LIMIT="${{ inputs.limit || '3' }}"
+          TABS="${{ inputs.tabs || '' }}"
+
+          ARGS="--model $MODEL --limit $LIMIT"
+          if [ -n "$TABS" ]; then
+            ARGS="$ARGS --tabs $TABS"
+          fi
+
+          python scripts/transcribe_meetings.py $ARGS
