@@ -23,7 +23,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Fetch transcripts branch
-        run: git fetch origin transcripts || echo "No transcripts branch yet"
+        run: |
+          git fetch origin transcripts:refs/remotes/origin/transcripts || echo "No transcripts branch yet"
+          git show origin/transcripts:transcripts/ 2>/dev/null && echo "Transcripts branch loaded" || echo "No transcripts available"
 
       - uses: actions/setup-python@v5
         with:
