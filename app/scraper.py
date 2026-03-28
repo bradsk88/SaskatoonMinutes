@@ -378,8 +378,12 @@ def _mark_brief_items(items: list[AgendaItem]) -> None:
 
 
 def _clean_html(text: str) -> str:
-    """Remove HTML tags from a string."""
-    return re.sub(r"<[^>]+>", "", text).strip()
+    """Remove HTML tags from a string, preserving word boundaries."""
+    # Block-level closing tags get a space to avoid running words together
+    text = re.sub(r"</(?:div|td|tr|th|p|li|br)[^>]*>", " ", text, flags=re.IGNORECASE)
+    # All other tags are stripped without adding space
+    text = re.sub(r"<[^>]+>", "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _item_blocks(html: str) -> dict[int, str]:
