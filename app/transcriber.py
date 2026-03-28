@@ -208,14 +208,18 @@ def _git(*args: str, cwd: str | None = None) -> str:
 def load_cached_transcript(meeting_id: str) -> list[dict] | None:
     """Try to load a transcript from the orphan branch without checking it out.
 
-    Uses `git show` to read from the branch directly.
+    Uses `git show` to read from the branch directly.  Tries the local
+    branch first, then falls back to origin/ (for CI where the branch
+    may not be checked out locally).
     """
-    blob_path = f"{TRANSCRIPT_BRANCH}:{TRANSCRIPT_DIR}/{meeting_id}.json"
-    try:
-        raw = _git("show", blob_path)
-        return json.loads(raw)
-    except (RuntimeError, json.JSONDecodeError):
-        return None
+    for ref in [TRANSCRIPT_BRANCH, f"origin/{TRANSCRIPT_BRANCH}"]:
+        blob_path = f"{ref}:{TRANSCRIPT_DIR}/{meeting_id}.json"
+        try:
+            raw = _git("show", blob_path)
+            return json.loads(raw)
+        except (RuntimeError, json.JSONDecodeError):
+            continue
+    return None
 
 
 def save_transcript(meeting_id: str, segments: list[dict]) -> None:
