@@ -70,6 +70,7 @@ class AgendaItem:
     vote_detail: str = ""
     is_contested: bool = False
     timestamp_inherited: bool = False
+    is_recess: bool = False
     attachments: list = field(default_factory=list)
 
     @property
@@ -89,6 +90,7 @@ class AgendaItem:
         d["time_start_formatted"] = self.time_start_formatted
         d["is_contested"] = self.is_contested
         d["timestamp_inherited"] = self.timestamp_inherited
+        d["is_recess"] = self.is_recess
         return d
 
 
@@ -171,6 +173,7 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
     agenda_items = _extract_agenda_items(html, bookmarks)
     _propagate_timestamps(agenda_items)
     _mark_brief_items(agenda_items)
+    agenda_items = _insert_recesses(agenda_items)
     video_url = _build_video_url(meeting_id) if bookmarks else None
 
     if include_votes:
@@ -375,6 +378,76 @@ def _mark_brief_items(items: list[AgendaItem]) -> None:
         duration = item.time_end_ms - item.time_start_ms
         if duration <= MIN_DISCUSSION_MS:
             item.timestamp_inherited = True
+
+
+# Gaps longer than this between consecutive bookmarks are treated as recesses.
+MIN_RECESS_MS = 300_000  # 5 minutes
+
+
+def _insert_recesses(items: list[AgendaItem]) -> list[AgendaItem]:
+    """Insert synthetic Recess items into gaps between agenda items.
+
+    Scans items with their own (non-inherited) timestamps in video order,
+    and inserts a Recess item wherever there is a gap longer than
+    MIN_RECESS_MS between one item's end and the next item's start.
+    """
+    if not items:
+        return []
+
+    # Collect items with their own timestamps, sorted by start time
+    timed = sorted(
+        [i for i in items if i.time_start_ms is not None and not i.timestamp_inherited],
+        key=lambda i: i.time_start_ms,
+    )
+
+    # Detect recess gaps
+    recesses: list[AgendaItem] = []
+    for i in range(1, len(timed)):
+        prev_end = timed[i - 1].time_end_ms
+        curr_start = timed[i].time_start_ms
+        if prev_end is None or curr_start is None:
+            continue
+        gap = curr_start - prev_end
+        if gap >= MIN_RECESS_MS:
+            recesses.append(AgendaItem(
+                item_id=-1,
+                title="Recess",
+                content="",
+                section_number="",
+                time_start_ms=prev_end,
+                time_end_ms=curr_start,
+                is_recess=True,
+            ))
+
+    if not recesses:
+        return items
+
+    # Insert recesses into the original item list at the right positions.
+    # Each recess goes after the last item whose start time <= recess start.
+    result: list[AgendaItem] = []
+    recess_iter = iter(sorted(recesses, key=lambda r: r.time_start_ms))
+    next_recess = next(recess_iter, None)
+
+    for item in items:
+        result.append(item)
+        # After appending this item, check if a recess belongs here
+        while (
+            next_recess is not None
+            and item.time_start_ms is not None
+            and not item.timestamp_inherited
+            and item.time_end_ms is not None
+            and item.time_end_ms <= next_recess.time_start_ms
+        ):
+            # Only insert if the next non-inherited item starts after the recess
+            result.append(next_recess)
+            next_recess = next(recess_iter, None)
+
+    # Append any remaining recesses (shouldn't happen normally)
+    while next_recess is not None:
+        result.append(next_recess)
+        next_recess = next(recess_iter, None)
+
+    return result
 
 
 def _clean_html(text: str) -> str:

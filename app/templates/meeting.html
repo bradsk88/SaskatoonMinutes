@@ -251,7 +251,48 @@
         return result;
     }
 
+    function formatDuration(ms) {
+        const totalMin = Math.round(ms / 60000);
+        if (totalMin >= 60) {
+            const h = Math.floor(totalMin / 60);
+            const m = totalMin % 60;
+            return m > 0 ? `${h}h ${m}min` : `${h}h`;
+        }
+        return `${totalMin}min`;
+    }
+
+    function formatTimestamp(ms) {
+        const totalSec = Math.floor(ms / 1000);
+        const h = Math.floor(totalSec / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const s = totalSec % 60;
+        return h > 0
+            ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+            : `${m}:${String(s).padStart(2,'0')}`;
+    }
+
+    function buildRecessEl(item) {
+        const el = document.createElement('div');
+        el.className = 'agenda-item recess-item';
+        if (item.time_start_ms !== null) el.dataset.timeMs = item.time_start_ms;
+        const duration = item.time_end_ms - item.time_start_ms;
+        el.innerHTML = `
+            <div class="item-header recess-header">
+                <span class="recess-icon">&#9208;</span>
+                <span class="item-title recess-title">Recess</span>
+                <span class="recess-duration">${formatDuration(duration)}</span>
+                <button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
+                    data-tooltip="Jump to recess start in video">
+                    ${formatTimestamp(item.time_start_ms)} &ndash; ${formatTimestamp(item.time_end_ms)}
+                </button>
+            </div>
+        `;
+        return el;
+    }
+
     function buildItemEl(item, outOfOrder, idx) {
+        if (item.is_recess) return buildRecessEl(item);
+
         const el = document.createElement('div');
         el.className = 'agenda-item';
         el.dataset.itemId = item.item_id;

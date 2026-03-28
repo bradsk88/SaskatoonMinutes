@@ -606,6 +606,33 @@ main {
     padding: 0.6rem 1.25rem;
 }
 
+.recess-item {
+    background: var(--color-bg);
+    border: 1px dashed var(--color-border);
+    padding: 0.6rem 1.25rem;
+}
+
+.recess-header {
+    align-items: center;
+}
+
+.recess-icon {
+    font-size: 1rem;
+    opacity: 0.5;
+    margin-right: 0.25rem;
+}
+
+.recess-title {
+    color: var(--color-muted);
+    font-style: italic;
+}
+
+.recess-duration {
+    color: var(--color-muted);
+    font-size: 0.85rem;
+    margin-left: 0.5rem;
+}
+
 .badge-consent {
     background: #f3f4f6;
     color: #991b1b;

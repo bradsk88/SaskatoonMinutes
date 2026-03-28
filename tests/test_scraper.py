@@ -11,6 +11,7 @@ from app.scraper import (
     _extract_minutes,
     _propagate_timestamps,
     _mark_brief_items,
+    _insert_recesses,
 )
 
 
@@ -349,3 +350,85 @@ class TestMeetingIsCancelled:
         )
         d = m.to_dict()
         assert d["is_cancelled"] is False
+
+
+# ── _insert_recesses ────────────────────────────────────────────────
+
+
+def _item(num, title, start_ms, end_ms, inherited=False):
+    """Helper to create AgendaItem with timestamps."""
+    return AgendaItem(
+        item_id=0, title=title, content="",
+        section_number=num,
+        time_start_ms=start_ms, time_end_ms=end_ms,
+        timestamp_inherited=inherited,
+    )
+
+
+class TestInsertRecesses:
+    def test_detects_recess_in_gap(self):
+        items = [
+            _item("1.", "Call to Order", 0, 600_000),
+            _item("2.", "Reports", 600_000, 3_600_000),
+            # 2-hour gap (recess)
+            _item("3.", "New Business", 10_800_000, 14_400_000),
+        ]
+        result = _insert_recesses(items)
+        recesses = [i for i in result if i.title == "Recess"]
+        assert len(recesses) == 1
+        assert recesses[0].time_start_ms == 3_600_000
+        assert recesses[0].time_end_ms == 10_800_000
+
+    def test_no_recess_for_small_gap(self):
+        items = [
+            _item("1.", "Call to Order", 0, 600_000),
+            # 3-minute gap - not a recess
+            _item("2.", "Reports", 780_000, 1_200_000),
+        ]
+        result = _insert_recesses(items)
+        recesses = [i for i in result if i.title == "Recess"]
+        assert len(recesses) == 0
+
+    def test_recess_ordered_between_items(self):
+        items = [
+            _item("1.", "Before", 0, 100_000),
+            _item("2.", "After", 1_000_000, 1_500_000),
+        ]
+        result = _insert_recesses(items)
+        titles = [i.title for i in result]
+        assert titles == ["Before", "Recess", "After"]
+
+    def test_multiple_recesses(self):
+        items = [
+            _item("1.", "A", 0, 100_000),
+            _item("2.", "B", 1_000_000, 1_100_000),
+            _item("3.", "C", 2_500_000, 2_600_000),
+        ]
+        result = _insert_recesses(items)
+        recesses = [i for i in result if i.title == "Recess"]
+        assert len(recesses) == 2
+
+    def test_skips_inherited_items(self):
+        items = [
+            _item("1.", "Parent", 0, 600_000),
+            _item("1.1", "Child", 0, 600_000, inherited=True),
+            _item("2.", "Next", 1_500_000, 2_000_000),
+        ]
+        result = _insert_recesses(items)
+        recesses = [i for i in result if i.title == "Recess"]
+        assert len(recesses) == 1
+        # Recess should be between Parent and Next
+        assert recesses[0].time_start_ms == 600_000
+
+    def test_no_items_returns_empty(self):
+        assert _insert_recesses([]) == []
+
+    def test_recess_has_is_recess_flag(self):
+        items = [
+            _item("1.", "Before", 0, 100_000),
+            _item("2.", "After", 1_000_000, 1_500_000),
+        ]
+        result = _insert_recesses(items)
+        recess = [i for i in result if i.title == "Recess"][0]
+        d = recess.to_dict()
+        assert d.get("is_recess") is True
