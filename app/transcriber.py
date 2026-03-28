@@ -219,32 +219,34 @@ def load_cached_transcript(meeting_id: str) -> list[dict] | None:
 
 
 def save_transcript(meeting_id: str, segments: list[dict]) -> None:
-    """Save a transcript JSON to the orphan branch and push.
+    """Save a transcript JSON to the orphan branch.
 
-    Creates the orphan branch if it doesn't exist yet.
+    Creates the orphan branch if it doesn't exist yet.  All operations
+    use a temporary worktree so the main working tree is never touched.
     """
     repo_root = _git("rev-parse", "--show-toplevel")
 
-    # Ensure the orphan branch exists locally
+    # Check if the branch exists locally
+    branch_exists = True
     try:
         _git("rev-parse", "--verify", TRANSCRIPT_BRANCH)
     except RuntimeError:
-        # Create orphan branch with an empty initial commit
-        _git("checkout", "--orphan", TRANSCRIPT_BRANCH)
-        _git("rm", "-rf", ".", cwd=repo_root)
-        os.makedirs(os.path.join(repo_root, TRANSCRIPT_DIR), exist_ok=True)
-        readme = os.path.join(repo_root, TRANSCRIPT_DIR, ".gitkeep")
-        with open(readme, "w") as f:
-            f.write("")
-        _git("add", TRANSCRIPT_DIR, cwd=repo_root)
-        _git("commit", "-m", "Initialize transcripts branch", cwd=repo_root)
-        # Return to previous branch
-        _git("checkout", "-", cwd=repo_root)
+        branch_exists = False
 
-    # Use a worktree to commit to the orphan branch without switching
     with tempfile.TemporaryDirectory() as tmpdir:
         worktree_path = os.path.join(tmpdir, "wt")
-        _git("worktree", "add", worktree_path, TRANSCRIPT_BRANCH)
+
+        if branch_exists:
+            _git("worktree", "add", worktree_path, TRANSCRIPT_BRANCH)
+        else:
+            # Create orphan branch directly via worktree
+            _git(
+                "worktree", "add", "--detach", worktree_path,
+            )
+            # Inside the worktree, create the orphan branch
+            _git("checkout", "--orphan", TRANSCRIPT_BRANCH, cwd=worktree_path)
+            _git("rm", "-rf", ".", cwd=worktree_path)
+
         try:
             transcript_dir = os.path.join(worktree_path, TRANSCRIPT_DIR)
             os.makedirs(transcript_dir, exist_ok=True)
@@ -260,7 +262,7 @@ def save_transcript(meeting_id: str, segments: list[dict]) -> None:
                 cwd=worktree_path,
             )
         finally:
-            _git("worktree", "remove", worktree_path)
+            _git("worktree", "remove", "--force", worktree_path)
 
 
 def get_or_transcribe(meeting_id: str, model_size: str = "base") -> list[dict]:
