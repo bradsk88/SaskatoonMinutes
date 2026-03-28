@@ -10,7 +10,7 @@ on:
       model:
         description: 'Whisper model size'
         required: false
-        default: 'base'
+        default: 'tiny'
         type: choice
         options: [tiny, base, small]
       tabs:
@@ -51,6 +51,25 @@ jobs:
           pip install -r requirements.txt
           pip install faster-whisper
 
+      - name: Pre-download Whisper model
+        run: |
+          MODEL="${{ inputs.model || 'tiny' }}"
+          python -c "
+          from faster_whisper import WhisperModel
+          print('Downloading ${MODEL} model...')
+          model = WhisperModel('${MODEL}', device='cpu', compute_type='int8')
+          print('Model loaded successfully')
+          "
+
+      - name: Check runner resources
+        run: |
+          echo "=== Memory ==="
+          free -h
+          echo "=== Disk ==="
+          df -h /
+          echo "=== CPUs ==="
+          nproc
+
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
@@ -58,7 +77,7 @@ jobs:
 
       - name: Transcribe meetings
         run: |
-          MODEL="${{ inputs.model || 'base' }}"
+          MODEL="${{ inputs.model || 'tiny' }}"
           LIMIT="${{ inputs.limit || '1' }}"
           TABS="${{ inputs.tabs || 'council' }}"
 
