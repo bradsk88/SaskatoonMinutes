@@ -76,15 +76,41 @@ def _extract_audio(video_url: str, output_path: str) -> None:
         raise RuntimeError(f"ffmpeg failed: {result.stderr[-500:]}")
 
 
-def _transcribe_audio(audio_path: str, model_size: str = "base") -> list[dict]:
-    """Transcribe audio file using faster-whisper.
+def _split_audio(input_path: str, output_dir: str, chunk_minutes: int = 30) -> list[str]:
+    """Split an audio file into fixed-length chunks.
+
+    Returns list of chunk file paths in order.  Each chunk is named
+    chunk_0000.ogg, chunk_0001.ogg, etc.
+    """
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", input_path,
+        "-f", "segment",
+        "-segment_time", str(chunk_minutes * 60),
+        "-c:a", "libopus",
+        "-b:a", "32k",
+        "-ar", "16000",
+        "-ac", "1",
+        os.path.join(output_dir, "chunk_%04d.ogg"),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg split failed: {result.stderr[-500:]}")
+
+    chunks = sorted(
+        os.path.join(output_dir, f)
+        for f in os.listdir(output_dir)
+        if f.startswith("chunk_") and f.endswith(".ogg")
+    )
+    return chunks
+
+
+def _transcribe_audio(audio_path: str, model: "WhisperModel") -> list[dict]:
+    """Transcribe a single audio file using an already-loaded model.
 
     Returns a list of segment dicts with keys:
         start_ms, end_ms, text
     """
-    from faster_whisper import WhisperModel
-
-    model = WhisperModel(model_size, device="cpu", compute_type="int8")
     segments, _info = model.transcribe(
         audio_path,
         language="en",
@@ -104,28 +130,60 @@ def _transcribe_audio(audio_path: str, model_size: str = "base") -> list[dict]:
     return result
 
 
-def transcribe_meeting(meeting_id: str, model_size: str = "base") -> list[dict]:
-    """Full pipeline: extract video URL, download audio, transcribe.
+def transcribe_meeting(meeting_id: str, model_size: str = "tiny") -> list[dict]:
+    """Full pipeline: extract video URL, download audio, transcribe in chunks.
 
+    Splits audio into 30-minute chunks to keep memory usage bounded.
     Returns list of transcript segments [{start_ms, end_ms, text}, ...].
     """
+    from faster_whisper import WhisperModel
+
     mp4_url = _extract_video_mp4_url(meeting_id)
     if not mp4_url:
         raise ValueError(f"Could not find MP4 URL for meeting {meeting_id}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        audio_path = os.path.join(tmpdir, "audio.ogg")
+        audio_path = os.path.join(tmpdir, "full_audio.ogg")
         print(f"  Extracting audio from {mp4_url}...", flush=True)
         _extract_audio(mp4_url, audio_path)
 
         audio_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
         print(f"  Audio extracted: {audio_size_mb:.0f} MB", flush=True)
 
-        print(f"  Transcribing with faster-whisper ({model_size})...", flush=True)
-        segments = _transcribe_audio(audio_path, model_size)
-        print(f"  Got {len(segments)} transcript segments", flush=True)
+        # Split into chunks
+        chunks_dir = os.path.join(tmpdir, "chunks")
+        os.makedirs(chunks_dir)
+        chunks = _split_audio(audio_path, chunks_dir, chunk_minutes=30)
+        print(f"  Split into {len(chunks)} chunks", flush=True)
 
-    return segments
+        # Delete full audio to free disk
+        os.remove(audio_path)
+
+        # Load model once
+        print(f"  Loading faster-whisper ({model_size})...", flush=True)
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+
+        # Transcribe each chunk
+        all_segments: list[dict] = []
+        chunk_duration_ms = 30 * 60 * 1000  # 30 minutes
+
+        for i, chunk_path in enumerate(chunks):
+            offset_ms = i * chunk_duration_ms
+            print(f"  Transcribing chunk {i + 1}/{len(chunks)}...", flush=True)
+            chunk_segments = _transcribe_audio(chunk_path, model)
+
+            # Adjust timestamps by chunk offset
+            for seg in chunk_segments:
+                seg["start_ms"] += offset_ms
+                seg["end_ms"] += offset_ms
+            all_segments.extend(chunk_segments)
+
+            # Delete chunk after processing
+            os.remove(chunk_path)
+
+        print(f"  Got {len(all_segments)} transcript segments", flush=True)
+
+    return all_segments
 
 
 # ---------------------------------------------------------------------------
