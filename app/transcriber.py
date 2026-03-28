@@ -24,10 +24,10 @@ _PAGE_HEADERS = {
 def _extract_video_mp4_url(meeting_id: str) -> str | None:
     """Fetch the eSCRIBE player page and extract the direct MP4 URL.
 
-    The player page contains an element like:
-        <div id="isi_player" data-client_id="saskatoon"
-             data-stream_name="Council Chambers_TYPE_DATE.mp4" ...>
-    The full URL is https://video.isilive.ca/{client_id}/{stream_name}
+    The standalone player page uses ``data-file_name`` while the embedded
+    player on Meeting.aspx uses ``data-stream_name``.  We try both.
+
+    The full URL is ``https://video.isilive.ca/{client_id}/{file_name}``.
     """
     url = (
         f"{BASE_URL}/Players/ISIStandAlonePlayer.aspx?Id={meeting_id}"
@@ -38,17 +38,20 @@ def _extract_video_mp4_url(meeting_id: str) -> str | None:
     client_match = re.search(
         r'data-client_id="([^"]+)"', resp.text, re.IGNORECASE,
     )
-    stream_match = re.search(
+    # Try data-file_name first (standalone player), then data-stream_name
+    file_match = re.search(
+        r'data-file_name="([^"]+)"', resp.text, re.IGNORECASE,
+    ) or re.search(
         r'data-stream_name="([^"]+)"', resp.text, re.IGNORECASE,
     )
-    if not client_match or not stream_match:
+    if not client_match or not file_match:
         return None
 
     client_id = client_match.group(1)
-    stream_name = stream_match.group(1)
-    # URL-encode spaces in the stream name
-    stream_name_encoded = stream_name.replace(" ", "%20")
-    return f"https://video.isilive.ca/{client_id}/{stream_name_encoded}"
+    file_name = file_match.group(1)
+    # URL-encode spaces in the file name
+    file_name_encoded = file_name.replace(" ", "%20")
+    return f"https://video.isilive.ca/{client_id}/{file_name_encoded}"
 
 
 def _extract_audio(video_url: str, output_path: str) -> None:

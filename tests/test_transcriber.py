@@ -15,7 +15,15 @@ from app.transcriber import (
 class TestExtractVideoMp4Url:
     """Test MP4 URL extraction from the eSCRIBE player page."""
 
-    PLAYER_HTML = """
+    PLAYER_HTML_FILE_NAME = """
+    <div id="isi_player" data-start-time="0" data-size="inherit"
+         data-auto_play="false" style="height: 100%;"
+         data-client_id="saskatoon"
+         data-file_name="Council Chambers_CITY COUNCIL_2026-03-25.mp4">
+    </div>
+    """
+
+    PLAYER_HTML_STREAM_NAME = """
     <div id="isi_player"
          data-client_id="saskatoon"
          data-stream_name="Council Chambers_CITY COUNCIL_2026-03-25.mp4"
@@ -24,9 +32,21 @@ class TestExtractVideoMp4Url:
     """
 
     @patch("app.transcriber.requests.get")
-    def test_extracts_url(self, mock_get):
+    def test_extracts_url_from_file_name(self, mock_get):
         mock_resp = MagicMock()
-        mock_resp.text = self.PLAYER_HTML
+        mock_resp.text = self.PLAYER_HTML_FILE_NAME
+        mock_get.return_value = mock_resp
+
+        url = _extract_video_mp4_url("abc-123")
+        assert url == (
+            "https://video.isilive.ca/saskatoon/"
+            "Council%20Chambers_CITY%20COUNCIL_2026-03-25.mp4"
+        )
+
+    @patch("app.transcriber.requests.get")
+    def test_extracts_url_from_stream_name(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.text = self.PLAYER_HTML_STREAM_NAME
         mock_get.return_value = mock_resp
 
         url = _extract_video_mp4_url("abc-123")
