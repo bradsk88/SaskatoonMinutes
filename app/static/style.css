@@ -639,18 +639,20 @@ main {
     white-space: nowrap;
 }
 
-.badge-attachments {
-    background: #fef3c7;
-    color: #92400e;
+.item-attach-count {
+    color: var(--color-muted);
+    font-size: 0.8rem;
+    background: none;
     border: none;
     white-space: nowrap;
     cursor: pointer;
-    transition: background 0.15s;
+    padding: 0;
+    flex-shrink: 0;
 }
 
-
-.badge-attachments:hover {
-    background: #fde68a;
+.item-attach-count:hover {
+    color: var(--color-text);
+    text-decoration: underline;
 }
 
 .item-header {
@@ -1230,13 +1232,12 @@ footer a:hover {
         color: #fca5a5;
     }
 
-    .badge-attachments {
-        background: #78350f;
-        color: #fcd34d;
+    .item-attach-count {
+        color: #9ca3af;
     }
 
-    .badge-attachments:hover {
-        background: #92400e;
+    .item-attach-count:hover {
+        color: #e5e7eb;
     }
 
     .badge-outcome-approved {
