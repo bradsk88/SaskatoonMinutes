@@ -14,13 +14,13 @@ on:
         type: choice
         options: [tiny, base, small]
       tabs:
-        description: 'Tab slugs to process (space-separated, empty = all)'
+        description: 'Tab slugs to process (space-separated, empty = council only)'
         required: false
-        default: ''
+        default: 'council'
       limit:
         description: 'Max meetings per tab'
         required: false
-        default: '3'
+        default: '1'
 
 concurrency:
   group: transcribe
@@ -59,8 +59,8 @@ jobs:
       - name: Transcribe meetings
         run: |
           MODEL="${{ inputs.model || 'base' }}"
-          LIMIT="${{ inputs.limit || '3' }}"
-          TABS="${{ inputs.tabs || '' }}"
+          LIMIT="${{ inputs.limit || '1' }}"
+          TABS="${{ inputs.tabs || 'council' }}"
 
           ARGS="--model $MODEL --limit $LIMIT"
           if [ -n "$TABS" ]; then

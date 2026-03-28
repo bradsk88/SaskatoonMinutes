@@ -13,6 +13,10 @@ import argparse
 import os
 import sys
 import time
+import traceback
+
+# Ensure print output appears immediately in CI logs
+os.environ.setdefault("PYTHONUNBUFFERED", "1")
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
@@ -102,14 +106,15 @@ def main():
                 skipped += 1
                 continue
 
-            print(f"  [{m.date}] {mid[:8]}... transcribing...")
+            print(f"  [{m.date}] {mid[:8]}... transcribing...", flush=True)
             try:
                 segments = transcribe_meeting(mid, model_size=args.model)
                 save_transcript(mid, segments)
                 transcribed += 1
-                print(f"  Done: {len(segments)} segments")
+                print(f"  Done: {len(segments)} segments", flush=True)
             except Exception as exc:
-                print(f"  ERROR: {exc}")
+                print(f"  ERROR: {exc}", flush=True)
+                traceback.print_exc()
 
     if transcribed > 0:
         print(f"\nPushing {transcribed} new transcript(s)...")

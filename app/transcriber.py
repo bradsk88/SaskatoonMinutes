@@ -55,10 +55,11 @@ def _extract_video_mp4_url(meeting_id: str) -> str | None:
 
 
 def _extract_audio(video_url: str, output_path: str) -> None:
-    """Download and extract mono 16kHz WAV audio from a video URL via ffmpeg.
+    """Download and extract mono 16kHz OGG/Opus audio from a video URL.
 
-    Uses ffmpeg's ability to stream from HTTP URLs, so we never download
-    the full video file to disk.
+    Uses OGG/Opus instead of WAV to keep file size manageable (~30MB vs
+    ~900MB for a full council meeting).  faster-whisper can read OGG
+    directly via ffmpeg/libav.
     """
     cmd = [
         "ffmpeg", "-y",
@@ -66,10 +67,13 @@ def _extract_audio(video_url: str, output_path: str) -> None:
         "-vn",                  # no video
         "-ac", "1",             # mono
         "-ar", "16000",         # 16kHz (what Whisper expects)
-        "-c:a", "pcm_s16le",   # 16-bit PCM WAV
+        "-c:a", "libopus",     # Opus codec in OGG container
+        "-b:a", "32k",         # 32kbps is plenty for speech
         output_path,
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {result.stderr[-500:]}")
 
 
 def _transcribe_audio(audio_path: str, model_size: str = "base") -> list[dict]:
@@ -110,16 +114,16 @@ def transcribe_meeting(meeting_id: str, model_size: str = "base") -> list[dict]:
         raise ValueError(f"Could not find MP4 URL for meeting {meeting_id}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        audio_path = os.path.join(tmpdir, "audio.wav")
-        print(f"  Extracting audio from {mp4_url}...")
+        audio_path = os.path.join(tmpdir, "audio.ogg")
+        print(f"  Extracting audio from {mp4_url}...", flush=True)
         _extract_audio(mp4_url, audio_path)
 
         audio_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-        print(f"  Audio extracted: {audio_size_mb:.0f} MB")
+        print(f"  Audio extracted: {audio_size_mb:.0f} MB", flush=True)
 
-        print(f"  Transcribing with faster-whisper ({model_size})...")
+        print(f"  Transcribing with faster-whisper ({model_size})...", flush=True)
         segments = _transcribe_audio(audio_path, model_size)
-        print(f"  Got {len(segments)} transcript segments")
+        print(f"  Got {len(segments)} transcript segments", flush=True)
 
     return segments
 
