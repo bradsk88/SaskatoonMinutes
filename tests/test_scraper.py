@@ -41,6 +41,17 @@ class TestCleanHtml:
     def test_div_with_class(self):
         assert _clean_html("<DIV class='foo'>text</DIV>") == "text"
 
+    def test_table_cells_get_spaces(self):
+        html = (
+            "<TD class='VoterVote'>In Favour: (5)</TD>"
+            "<TD class='VotesUsers'>Councillor A, and Councillor B</TD>"
+            "</TR><TR><TD class='VoterVote'>Against: (4)</TD>"
+            "<TD class='VotesUsers'>Councillor C, and Councillor D</TD>"
+        )
+        result = _clean_html(html)
+        assert "(5) Councillor A" in result
+        assert "B Against:" in result
+
 
 # ── _extract_bookmarks ──────────────────────────────────────────────
 
