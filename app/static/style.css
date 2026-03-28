@@ -691,6 +691,13 @@ main {
     background: #ddd6fe;
 }
 
+.item-duration {
+    color: var(--color-muted);
+    font-size: 0.8rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 .item-badges {
     display: flex;
     flex-wrap: wrap;

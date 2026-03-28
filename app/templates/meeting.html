@@ -306,10 +306,13 @@
         if (isConsent) {
             timestampHtml = `<span class="badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`;
         } else if (hasTimestamp) {
+            const durationHtml = (item.time_end_ms !== null && item.time_end_ms > item.time_start_ms)
+                ? `<span class="item-duration">${formatDuration(item.time_end_ms - item.time_start_ms)}</span>`
+                : '';
             timestampHtml = `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
                  data-tooltip="Jump to this item in the video">
                  &#9654; ${item.time_start_formatted}
-               </button>`;
+               </button>${durationHtml}`;
         }
 
         const ooo = outOfOrder.get(idx);
