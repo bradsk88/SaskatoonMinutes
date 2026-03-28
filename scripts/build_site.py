@@ -22,6 +22,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS
 from app.summarizer import extract_meeting_topics, extract_badges
+from app.transcriber import load_cached_transcript, correct_timestamps
 
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "_site")
 TEMPLATE_DIR = os.path.join(PROJECT_ROOT, "app", "templates")
@@ -67,6 +68,12 @@ def _fetch_topics_and_details(meetings):
                 fetch_meeting_detail, mid, include_votes=True,
             )
             items = [item.to_dict() for item in detail["agenda_items"]]
+
+            # Correct timestamps using cached transcript if available
+            transcript = load_cached_transcript(mid)
+            if transcript:
+                print(f"    Applying transcript timestamps ({len(transcript)} segments)")
+                items = correct_timestamps(items, transcript)
 
             # Attach badges to each item (same as /api/meeting/<id>)
             for item in items:

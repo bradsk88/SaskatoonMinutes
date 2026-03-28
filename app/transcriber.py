@@ -209,3 +209,206 @@ def get_or_transcribe(meeting_id: str, model_size: str = "base") -> list[dict]:
     segments = transcribe_meeting(meeting_id, model_size)
     save_transcript(meeting_id, segments)
     return segments
+
+
+# ---------------------------------------------------------------------------
+# Transcript-based timestamp correction
+# ---------------------------------------------------------------------------
+
+# Words that are too common to be useful for matching
+_STOP_WORDS = frozenset(
+    "a an and are as at be by for from has have in is it its of on or that "
+    "the to was were will with this their them they these those which who "
+    "city council committee public report recommendation standing policy "
+    "agenda item section update overview".split()
+)
+
+
+def _extract_keywords(title: str) -> list[str]:
+    """Pull distinctive keywords from an agenda item title.
+
+    Strips reference codes like [GPC2024-0603] and common filler words,
+    returning lowercase keywords sorted longest-first (more specific first).
+    """
+    # Remove bracketed reference codes
+    cleaned = re.sub(r"\[.*?\]", "", title)
+    # Remove punctuation except hyphens within words
+    cleaned = re.sub(r"[^\w\s-]", " ", cleaned)
+    words = []
+    for w in cleaned.lower().split():
+        # Keep words that are distinctive (not stop words, not too short)
+        if len(w) >= 3 and w not in _STOP_WORDS:
+            words.append(w)
+    # Longer words are more distinctive
+    words.sort(key=len, reverse=True)
+    return words
+
+
+def _section_number_patterns(section_number: str) -> list[re.Pattern]:
+    """Build regex patterns that match how a chair might say a section number.
+
+    "9.2.1" could be spoken as:
+      - "9.2.1" (verbatim in transcript)
+      - "nine two one" or "nine point two point one"
+      - "item 9.2.1"
+    """
+    clean = section_number.rstrip(".")
+    if not clean:
+        return []
+
+    # Exact digits with optional separators: "9.2.1", "9 2 1"
+    digits = clean.split(".")
+    sep = r"[\s.,]+"
+    digit_pattern = sep.join(re.escape(d) for d in digits)
+
+    patterns = [
+        # "item 9.2.1" or "item nine two one"
+        re.compile(r"\bitem\s+" + digit_pattern, re.IGNORECASE),
+        # Just the number at a word boundary
+        re.compile(r"\b" + digit_pattern + r"\b", re.IGNORECASE),
+    ]
+
+    # Also try matching spoken numbers for single-digit parts
+    _SPOKEN = {
+        "1": "one", "2": "two", "3": "three", "4": "four", "5": "five",
+        "6": "six", "7": "seven", "8": "eight", "9": "nine", "10": "ten",
+        "11": "eleven", "12": "twelve", "13": "thirteen", "14": "fourteen",
+        "15": "fifteen",
+    }
+    spoken_parts = [_SPOKEN.get(d, d) for d in digits]
+    spoken_pattern = r"\s+".join(spoken_parts)
+    patterns.append(re.compile(r"\b" + spoken_pattern + r"\b", re.IGNORECASE))
+
+    return patterns
+
+
+def _find_in_transcript(
+    segments: list[dict],
+    section_number: str,
+    title: str,
+    escribemeetings_start_ms: int | None,
+) -> int | None:
+    """Find the best transcript timestamp for an agenda item.
+
+    Strategy (in priority order):
+    1. Look for the section number being spoken near the eSCRIBE timestamp
+    2. Look for distinctive title keywords near the eSCRIBE timestamp
+    3. Fall back to the eSCRIBE timestamp if no transcript match found
+
+    Returns the corrected start time in ms, or None if no match.
+    """
+    if not segments:
+        return None
+
+    # Build a combined text index for searching: list of (start_ms, text)
+    # Combine nearby segments into larger windows for better matching
+    WINDOW_MS = 30_000  # 30-second windows
+    windows: list[tuple[int, str]] = []
+    current_start = segments[0]["start_ms"]
+    current_texts: list[str] = []
+
+    for seg in segments:
+        if seg["start_ms"] - current_start > WINDOW_MS and current_texts:
+            windows.append((current_start, " ".join(current_texts)))
+            current_start = seg["start_ms"]
+            current_texts = []
+        current_texts.append(seg["text"])
+    if current_texts:
+        windows.append((current_start, " ".join(current_texts)))
+
+    # If we have an eSCRIBE timestamp, search in a window around it first,
+    # then expand. If no eSCRIBE timestamp, search everywhere.
+    NEARBY_MS = 300_000  # 5 minutes
+
+    def _score_window(win_start_ms: int, text: str) -> tuple[int, int]:
+        """Score a window for matching. Returns (priority, -distance).
+
+        Higher priority = better match. Among equal priorities, prefer
+        the one closest to the eSCRIBE timestamp.
+        """
+        score = 0
+
+        # Check section number patterns
+        for pat in _section_number_patterns(section_number):
+            if pat.search(text):
+                score = max(score, 3)
+                break
+
+        # Check title keywords (need at least 2 matches for confidence)
+        keywords = _extract_keywords(title)
+        if keywords:
+            matched = sum(1 for kw in keywords if kw in text.lower())
+            if matched >= 2:
+                score = max(score, 2)
+            elif matched == 1 and len(keywords) == 1:
+                score = max(score, 1)
+
+        if score == 0:
+            return (0, 0)
+
+        # Distance penalty (prefer matches near the eSCRIBE timestamp)
+        if escribemeetings_start_ms is not None:
+            distance = abs(win_start_ms - escribemeetings_start_ms)
+        else:
+            distance = 0
+
+        return (score, -distance)
+
+    best_score = (0, 0)
+    best_start_ms: int | None = None
+
+    for win_start, text in windows:
+        # If we have an eSCRIBE hint, skip windows that are very far away
+        # unless we haven't found anything nearby
+        score = _score_window(win_start, text)
+        if score[0] > best_score[0] or (
+            score[0] == best_score[0] and score[0] > 0 and score[1] > best_score[1]
+        ):
+            best_score = score
+            best_start_ms = win_start
+
+    return best_start_ms
+
+
+def correct_timestamps(
+    agenda_items: list[dict],
+    transcript: list[dict],
+) -> list[dict]:
+    """Apply transcript-based timestamp corrections to agenda items.
+
+    Takes agenda items (as dicts from AgendaItem.to_dict()) and a transcript
+    (list of {start_ms, end_ms, text} segments). Returns the same items list
+    with corrected timestamps where transcript matches were found.
+
+    Only corrects items that have their own bookmark (not inherited).
+    """
+    if not transcript:
+        return agenda_items
+
+    for item in agenda_items:
+        # Skip items without their own timestamp or consent-agenda items
+        if item.get("timestamp_inherited", False):
+            continue
+        if item.get("time_start_ms") is None:
+            continue
+
+        match_ms = _find_in_transcript(
+            transcript,
+            item.get("section_number", ""),
+            item.get("title", ""),
+            item.get("time_start_ms"),
+        )
+
+        if match_ms is not None:
+            item["time_start_ms"] = match_ms
+            # Recalculate formatted time
+            total_seconds = match_ms // 1000
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            seconds = total_seconds % 60
+            if hours > 0:
+                item["time_start_formatted"] = f"{hours}:{minutes:02d}:{seconds:02d}"
+            else:
+                item["time_start_formatted"] = f"{minutes}:{seconds:02d}"
+
+    return agenda_items
