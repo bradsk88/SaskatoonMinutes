@@ -95,16 +95,17 @@
         return meetingDate >= cutoff;
     }
 
-    function markTabRecent(slug) {
+    function markTabRecent(slug, hasVideo) {
         const tab = document.querySelector(`.meeting-tab[data-slug="${slug}"]`);
         if (tab && !tab.classList.contains('meeting-tab-recent')) {
             tab.classList.add('meeting-tab-recent');
+            if (!hasVideo) tab.classList.add('meeting-tab-no-video');
         }
     }
 
     function checkRecentForMeetings(slug, meetings) {
         if (meetings && meetings.length > 0 && isRecent(meetings[0].date)) {
-            markTabRecent(slug);
+            markTabRecent(slug, meetings[0].has_video);
         }
     }
 
@@ -265,6 +266,9 @@
         const cancelledBadge = m.is_cancelled
             ? ' <span class="badge badge-cancelled">Cancelled</span>'
             : '';
+        const noVideoBadge = (!m.is_cancelled && !m.has_video)
+            ? ' <span class="badge badge-no-video">No recording</span>'
+            : '';
         const topicsHtml = m.is_cancelled
             ? ''
             : `<div class="meeting-topics" id="topics-${m.meeting_id}">${topicsSkeleton()}</div>`;
@@ -272,7 +276,7 @@
             ? ''
             : `<div class="meeting-card-actions"><a href="${openHref}" class="btn btn-sm btn-open">Open</a></div>`;
         return `
-            <div class="meeting-date">${dateStr}${time ? ` &middot; ${time}` : ''}${cancelledBadge}</div>
+            <div class="meeting-date">${dateStr}${time ? ` &middot; ${time}` : ''}${cancelledBadge}${noVideoBadge}</div>
             <div class="meeting-title">${cardTitle}</div>
             <div class="meeting-meta">
                 <span class="meeting-categories" id="cats-${m.meeting_id}"></span>

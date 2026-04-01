@@ -120,6 +120,11 @@ nav {
     animation: tab-dot-pulse 2s ease-in-out 3;
 }
 
+.meeting-tab-no-video::after {
+    background: #9ca3af;
+    animation: none;
+}
+
 @keyframes tab-dot-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
@@ -222,6 +227,12 @@ nav {
     background: #fee2e2;
     color: #991b1b;
     font-weight: 600;
+    vertical-align: middle;
+}
+
+.badge-no-video {
+    background: #f3f4f6;
+    color: #6b7280;
     vertical-align: middle;
 }
 
@@ -1225,6 +1236,11 @@ footer a:hover {
     .badge-cancelled {
         background: #2a1a1a;
         color: #fca5a5;
+    }
+
+    .badge-no-video {
+        background: #1f2937;
+        color: #9ca3af;
     }
 
     .badge-consent {

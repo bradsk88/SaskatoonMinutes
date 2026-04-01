@@ -462,10 +462,14 @@ def _clean_entities(text: str) -> str:
 _PROCEDURAL_KEYWORDS = {
     "call to order", "adjournment", "roll call", "adoption of agenda",
     "confirmation of agenda", "confirmation of minutes", "adoption of minutes",
-    "declarations of conflict", "communications to council", "o canada",
+    "declarations of conflict", "declaration of conflict",
+    "communications to council", "o canada",
     "consent agenda", "public acknowledgments", "public acknowledgements",
     "question period", "inquiries", "in camera session", "urgent business",
     "committee reports (not on consent",
+    "unfinished business", "giving notice", "motions (notice",
+    "legislative reports", "administrative reports", "other reports",
+    "in remembrance", "council members",
 }
 
 

@@ -160,6 +160,36 @@ class TestIsProcedural:
     def test_non_procedural(self):
         assert _is_procedural("Rezoning Application - 123 Main Street") is False
 
+    def test_declaration_of_conflict(self):
+        assert _is_procedural("DECLARATION OF CONFLICT OF INTEREST") is True
+
+    def test_unfinished_business(self):
+        assert _is_procedural("UNFINISHED BUSINESS") is True
+
+    def test_giving_notice(self):
+        assert _is_procedural("GIVING NOTICE") is True
+
+    def test_motions_notice(self):
+        assert _is_procedural("MOTIONS (NOTICE PREVIOUSLY GIVEN)") is True
+
+    def test_legislative_reports_header(self):
+        assert _is_procedural("LEGISLATIVE REPORTS") is True
+
+    def test_administrative_reports_header(self):
+        assert _is_procedural("ADMINISTRATIVE REPORTS") is True
+
+    def test_other_reports_header(self):
+        assert _is_procedural("OTHER REPORTS") is True
+
+    def test_committee_reports_header(self):
+        assert _is_procedural("COMMITTEE REPORTS (not on Consent Agenda)") is True
+
+    def test_in_remembrance(self):
+        assert _is_procedural("In Remembrance - Hal Lam") is True
+
+    def test_council_members(self):
+        assert _is_procedural("Council Members") is True
+
 
 # ── _categorize_topic ────────────────────────────────────────────────
 
