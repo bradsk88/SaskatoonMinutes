@@ -69,7 +69,7 @@
                 videoSection.style.display = 'block';
                 const tParam = new URLSearchParams(window.location.search).get('t');
                 if (tParam) {
-                    const seekSeconds = Math.floor(parseInt(tParam, 10) / 1000);
+                    const seekSeconds = Math.max(0, Math.floor(parseInt(tParam, 10) / 1000) - 15);
                     const bar = document.getElementById('video-loading');
                     const iframe = document.getElementById('video-frame');
                     bar.style.display = 'block';
@@ -507,7 +507,7 @@
         const iframe = document.getElementById('video-frame');
         const bar = document.getElementById('video-loading');
         if (videoUrl) {
-            const seekSeconds = Math.floor(timeMs / 1000);
+            const seekSeconds = Math.max(0, Math.floor(timeMs / 1000) - 15);
             bar.style.display = 'block';
             iframe.src = videoUrl + `&initial_seek=${seekSeconds}&auto_play=true`;
             iframe.onload = function() {
