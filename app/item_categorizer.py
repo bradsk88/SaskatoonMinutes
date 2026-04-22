@@ -110,8 +110,43 @@ SEMANTIC_QUERIES: dict[str, str] = {
     "Promise Made": "a public commitment or promise from council or staff",
 }
 
-# Below this cosine similarity we assume the category did not really appear.
-_SEMANTIC_THRESHOLD = 0.50
+# Per-category cosine thresholds.  Categories that false-positive on surface
+# words (e.g. "question" matching "Unanswered Question") need a higher bar.
+_SEMANTIC_THRESHOLDS: dict[str, float] = {
+    "In Plain Terms": 0.50,
+    "Debate Highlight": 0.55,
+    "Who's Affected": 0.50,
+    "Staff vs. Council": 0.60,
+    "Precedent Set": 0.55,
+    "Unanswered Question": 0.60,
+    "Public Sentiment": 0.55,
+    "Dissenting View": 0.55,
+    "Legal Risk Flagged": 0.55,
+    "Equity Impact": 0.55,
+    "Environmental Impact": 0.55,
+    "Promise Made": 0.55,
+}
+_DEFAULT_THRESHOLD = 0.55
+
+# Regex patterns that disqualify a sentence for a given category even when
+# the cosine similarity is above threshold.
+_SEMANTIC_DISQUALIFIERS: dict[str, list[re.Pattern]] = {
+    "Unanswered Question": [
+        re.compile(r"\bto clarify\b", re.I),
+        re.compile(r"\bto answer\b", re.I),
+        re.compile(r"\bin response\b", re.I),
+    ],
+    "Staff vs. Council": [
+        re.compile(r"\bto clarify\b", re.I),
+        re.compile(r"\bmixed some\b", re.I),
+    ],
+    "Environmental Impact": [
+        re.compile(r"^we want to\b", re.I),
+    ],
+    "Promise Made": [
+        re.compile(r"^we want to\b", re.I),
+    ],
+}
 
 
 # ── Transcript slicing ──────────────────────────────────────────────────────
@@ -295,19 +330,23 @@ def _extract_delegation(transcript_text: str) -> list[dict]:
     return [{"category": "Delegation", "text": _trim_to_chip(m.group(0))}]
 
 
-_NEXT_STEP_RE = re.compile(
-    r"[^.!?]*\b(?:report back|bring (?:this |it )?back|return to council|"
-    r"next meeting|next year|by (?:Q[1-4]|\d{4}|the end of))\b[^.!?]*",
+_NEXT_STEP_KW_RE = re.compile(
+    r"\b(report back|bring (?:this |it )?back|return to council|"
+    r"next meeting|next year|by (?:Q[1-4]|\d{4}|the end of))\b",
     re.IGNORECASE,
 )
 
 
 def _extract_next_step(transcript_text: str) -> list[dict]:
-    for m in _NEXT_STEP_RE.finditer(transcript_text):
-        text = m.group(0).strip()
-        if re.match(r"^if\b", text, re.IGNORECASE):
+    for m in _NEXT_STEP_KW_RE.finditer(transcript_text):
+        before = transcript_text[max(0, m.start() - 80): m.start()]
+        if re.search(r"\bif\b", before, re.IGNORECASE):
             continue
-        return [{"category": "Next Step", "text": _trim_to_chip(text)}]
+        if re.search(r"\bpreviously\b", before, re.IGNORECASE):
+            continue
+        after = transcript_text[m.end(): m.end() + 60]
+        snippet = (before.split(".")[-1] + m.group(0) + after.split(".")[0]).strip()
+        return [{"category": "Next Step", "text": _trim_to_chip(snippet)}]
     return []
 
 
@@ -454,9 +493,13 @@ def _extract_semantic(
     results: list[dict] = []
     used_sentences: set[str] = set()
     for cat, score, sent in cat_best:
-        if score < _SEMANTIC_THRESHOLD or not sent:
+        threshold = _SEMANTIC_THRESHOLDS.get(cat, _DEFAULT_THRESHOLD)
+        if score < threshold or not sent:
             continue
         if sent in used_sentences:
+            continue
+        disqualifiers = _SEMANTIC_DISQUALIFIERS.get(cat, [])
+        if any(p.search(sent) for p in disqualifiers):
             continue
         chip = _trim_to_chip(sent)
         if len(chip) < _MIN_SEMANTIC_CHIP_LEN:

@@ -339,10 +339,25 @@ class TestNextStepConditional:
         out = _extract_next_step(text)
         assert out and "next year" in out[0]["text"]
 
+    def test_if_mid_sentence_skipped(self):
+        text = "I wonder if Council wanted to see a report back on this."
+        out = _extract_next_step(text)
+        assert out == []
+
+    def test_previously_skipped(self):
+        text = "We previously landed the world juniors and they want to come back next year."
+        out = _extract_next_step(text)
+        assert out == []
+
     def test_regular_next_step_kept(self):
         text = "Administration will report back at the next meeting."
         out = _extract_next_step(text)
         assert out and out[0]["category"] == "Next Step"
+
+    def test_keyword_in_chip_text(self):
+        text = "Some long preamble about various topics discussed at length. Staff committed to report back by Q2."
+        out = _extract_next_step(text)
+        assert out and "report back" in out[0]["text"]
 
 
 # ── Unanimous vote suppresses Dissenting View ──────────────────────────────
@@ -425,3 +440,29 @@ class TestSemanticQualityGate:
         )
         from app.item_categorizer import _TRAILING_JUNK_RE
         assert _TRAILING_JUNK_RE.search(chip)
+
+
+class TestSemanticDisqualifiers:
+    def test_clarify_disqualifies_unanswered_question(self):
+        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
+        pats = _SEMANTIC_DISQUALIFIERS["Unanswered Question"]
+        text = "Just to clarify your question, Councillor Park."
+        assert any(p.search(text) for p in pats)
+
+    def test_clarify_disqualifies_staff_vs_council(self):
+        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
+        pats = _SEMANTIC_DISQUALIFIERS["Staff vs. Council"]
+        text = "I want to clarify for the public watching, what city council does."
+        assert any(p.search(text) for p in pats)
+
+    def test_we_want_to_disqualifies_env_impact(self):
+        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
+        pats = _SEMANTIC_DISQUALIFIERS["Environmental Impact"]
+        text = "We want to look at sustainability."
+        assert any(p.search(text) for p in pats)
+
+    def test_normal_sentence_not_disqualified(self):
+        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
+        pats = _SEMANTIC_DISQUALIFIERS.get("Unanswered Question", [])
+        text = "What happens to the funding if the project is delayed?"
+        assert not any(p.search(text) for p in pats)
