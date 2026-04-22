@@ -71,6 +71,8 @@ class TestTrimToChip:
     def test_strips_filler_leads(self):
         assert _trim_to_chip("I think the budget is fine") == "the budget is fine"
         assert _trim_to_chip("Um, we need to vote") == "we need to vote"
+        assert _trim_to_chip("Yeah, the city will also act") == "the city will also act"
+        assert _trim_to_chip("Yep, staff confirmed") == "staff confirmed"
 
     def test_strips_html_entities(self):
         assert "&amp;" not in _trim_to_chip("Parks &amp; Recreation funded")
@@ -139,6 +141,10 @@ class TestAmendment:
         out = _extract_amendment(item)
         assert len(out) == 1
         assert out[0]["category"] == "Amendment Made"
+
+    def test_bare_amended_word_dropped(self):
+        item = {"motion_text": "", "vote_result": "Carried as amended.", "recommendation": ""}
+        assert _extract_amendment(item) == []
 
     def test_no_amendment(self):
         item = {"motion_text": "That the report be received."}
@@ -414,6 +420,25 @@ class TestUnanimousSuppression:
         extract_item_summaries(item, segments, gemini_extractor=stub)
         assert "Dissenting View" not in captured["allowed_cats"]
 
+    def test_zero_for_defeat_suppresses_dissent(self):
+        captured: dict = {}
+        item = {
+            "item_id": 12,
+            "title": "Policy Update",
+            "recommendation": "",
+            "motion_text": "",
+            "vote_result": "DEFEATED (0 to 9)",
+            "vote_detail": "",
+            "content": "",
+            "section_number": "5.",
+            "time_start_ms": 0,
+            "time_end_ms": 600_000,
+        }
+        segments = [_seg(0, "Plenty of discussion happened across the room here.")]
+        stub = _stub_extractor([], captured=captured)
+        extract_item_summaries(item, segments, gemini_extractor=stub)
+        assert "Dissenting View" not in captured["allowed_cats"]
+
 
 # ── Chip sanitization ──────────────────────────────────────────────────────
 
@@ -454,12 +479,12 @@ class TestSanitizeChips:
         )
         assert out == []
 
-    def test_drops_medium_usefulness(self):
+    def test_keeps_medium_usefulness(self):
         out = _sanitize_chips(
             [{"category": "Promise Made", "text": "Decent", "usefulness": "medium"}],
             allowed_cats=["Promise Made"],
         )
-        assert out == []
+        assert len(out) == 1
 
     def test_drops_low_usefulness(self):
         out = _sanitize_chips(
@@ -525,10 +550,15 @@ class TestMoneyMinimum:
         texts = [o["text"] for o in out]
         assert not any("$3" in t and "million" not in t.lower() for t in texts)
 
-    def test_hundreds_kept(self):
-        item = {"title": "", "recommendation": "Permit fee is $500 per application.", "content": "", "motion_text": ""}
+    def test_hundreds_with_purpose_kept(self):
+        item = {"title": "", "recommendation": "Set aside $500 for permit admin fees.", "content": "", "motion_text": ""}
         out = _extract_cost_funding(item, "")
         assert out and any("500" in o["text"] for o in out)
+
+    def test_bare_amount_without_purpose_dropped(self):
+        item = {"title": "", "recommendation": "The budget is $500,000.", "content": "", "motion_text": ""}
+        out = _extract_cost_funding(item, "")
+        assert out == []
 
     def test_suffix_keeps_small_value(self):
         item = {"title": "", "recommendation": "Allocate $2 million for snow removal.", "content": "", "motion_text": ""}

@@ -169,7 +169,8 @@ def _split_sentences(text: str) -> list[str]:
 
 _FILLER_LEADS = re.compile(
     r"^(?:um+,?\s+|uh+,?\s+|well,?\s+|so,?\s+|i think\s+|you know,?\s+|"
-    r"and\s+|but\s+|okay,?\s+|right,?\s+)+",
+    r"and\s+|but\s+|okay,?\s+|ok,?\s+|right,?\s+|yeah,?\s+|yep,?\s+|"
+    r"actually,?\s+|basically,?\s+)+",
     re.IGNORECASE,
 )
 
@@ -245,8 +246,17 @@ def _extract_amendment(item: dict) -> list[dict]:
     if not re.search(r"\bamend(?:ed|ment|ing)?\b", combined, re.IGNORECASE):
         return []
     m = _AMENDMENT_RE.search(combined)
-    text = m.group(0).strip() if m else "Amended at the meeting"
-    return [{"category": "Amendment Made", "text": _trim_to_chip(text)}]
+    if not m:
+        return []
+    text = m.group(0).strip()
+    # Require real content beyond the amendment keyword itself.
+    tail = re.sub(r"^amend(?:ed|ment|ing)?\b[\s,.:;-]*", "", text, flags=re.IGNORECASE)
+    if len(tail.split()) < 3:
+        return []
+    chip = _trim_to_chip(text)
+    if not chip:
+        return []
+    return [{"category": "Amendment Made", "text": chip}]
 
 
 _MONEY_RE = re.compile(
@@ -267,12 +277,13 @@ def _extract_cost_funding(item: dict, transcript_text: str) -> list[dict]:
         if _money_too_small(raw):
             continue
         formatted = _format_money(raw)
-        # Extract a tiny purpose snippet: 3-6 words after the amount
         tail = combined[m.end(): m.end() + 80]
         purpose = _money_purpose_snippet(tail)
-        label = f"{formatted} {purpose}".strip() if purpose else formatted
-        label = _trim_to_chip(label)
-        if label in seen:
+        # Require contextual words — a bare amount is not a useful chip.
+        if not purpose:
+            continue
+        label = _trim_to_chip(f"{formatted} {purpose}".strip())
+        if not label or label in seen:
             continue
         seen.add(label)
         results.append({"category": "Cost & Funding", "text": label})
@@ -480,6 +491,9 @@ class GeminiExtractor:
 
 USEFULNESS_LEVELS: list[str] = ["high", "medium", "low"]
 
+# Chips must clear this bar to survive sanitization.
+ACCEPTED_USEFULNESS: set[str] = {"high", "medium"}
+
 
 def _chip_list_schema(allowed_cats: list[str]) -> dict:
     return {
@@ -513,16 +527,17 @@ def _build_prompt(
         "if the transcript doesn't clearly support a chip, omit it.",
         "",
         "Rate each chip's `usefulness`:",
-        "- \"high\": a resident learns something concrete from this chip that "
-        "they could NOT infer from the item title alone — a specific number, "
-        "a named commitment, an identified impact, a real disagreement, a "
-        "concrete next step, or a pointed quote.",
-        "- \"medium\": accurate but mostly restates the obvious, or adds only "
-        "mild colour.",
-        "- \"low\": vague, procedural filler, or could apply to any meeting.",
+        "- \"high\": adds a specific, concrete fact — a number, a named "
+        "commitment, an identified impact, a real disagreement, a concrete "
+        "next step, or a pointed quote.",
+        "- \"medium\": accurate and relevant, but softer — explains what the "
+        "item is about, notes a group that spoke, or summarises a line of "
+        "debate.",
+        "- \"low\": vague, procedural filler, truisms, or phrasing that "
+        "could apply to any meeting.",
         "",
-        "Only include chips you would rate \"high\". If no high-value chip "
-        "fits a category, skip that category.",
+        "Include \"high\" and \"medium\" chips. Omit anything you would rate "
+        "\"low\" — skip the category rather than emit a weak chip.",
         "",
         "Categories:",
     ]
@@ -553,7 +568,7 @@ def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
         usefulness = entry.get("usefulness")
         if cat not in allowed or not isinstance(text, str) or not text.strip():
             continue
-        if usefulness != "high":
+        if usefulness not in ACCEPTED_USEFULNESS:
             continue
         chip = _trim_to_chip(text)
         if not chip or chip in seen_texts:
@@ -567,14 +582,14 @@ def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
 
 
 def _is_unanimous_tally(item: dict) -> bool:
-    """True when vote detail or result shows 0 dissenting votes."""
+    """True when the vote has no dissenting side (either all for or all against)."""
     detail = item.get("vote_detail") or ""
     m = _VOTE_TALLY_RE.search(detail)
-    if m and int(m.group(2)) == 0:
+    if m and (int(m.group(1)) == 0 or int(m.group(2)) == 0):
         return True
     vote = item.get("vote_result") or ""
     m2 = re.search(r"\((\d+)\s*(?:to|-)\s*(\d+)\)", vote)
-    if m2 and int(m2.group(2)) == 0:
+    if m2 and (int(m2.group(1)) == 0 or int(m2.group(2)) == 0):
         return True
     return False
 
