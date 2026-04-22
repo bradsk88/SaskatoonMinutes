@@ -110,6 +110,7 @@ def main() -> None:
 
     summarized = 0
     skipped = 0
+    errors = 0
 
     for tab in tabs:
         slug = tab["slug"]
@@ -148,6 +149,7 @@ def main() -> None:
                     flush=True,
                 )
             except Exception as exc:
+                errors += 1
                 print(f"    ERROR: {exc}", flush=True)
                 traceback.print_exc()
 
@@ -155,7 +157,12 @@ def main() -> None:
         print(f"\nPushing {summarized} new summary file(s)...")
         push_summaries_branch()
 
-    print(f"\nFinished: {summarized} summarized, {skipped} already cached")
+    print(
+        f"\nFinished: {summarized} summarized, {skipped} already cached, "
+        f"{errors} errors"
+    )
+    if errors > 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
