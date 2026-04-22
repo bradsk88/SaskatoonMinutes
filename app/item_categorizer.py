@@ -361,7 +361,12 @@ def _extract_next_step(transcript_text: str) -> list[dict]:
             continue
         if re.search(r"\bpreviously\b", sentence, re.IGNORECASE):
             continue
-        return [{"category": "Next Step", "text": _trim_to_chip(sentence)}]
+        chip = _trim_to_chip(sentence)
+        # The matched keyword must survive trimming; otherwise we trimmed
+        # to a useless fragment.
+        if not chip or not re.search(re.escape(m.group(0)), chip, re.IGNORECASE):
+            continue
+        return [{"category": "Next Step", "text": chip}]
     return []
 
 
@@ -391,8 +396,13 @@ def _extract_related_deferred(item: dict, transcript_text: str) -> list[dict]:
         if ref == own:
             continue
         sentence = _sentence_around(transcript_text, m.start(), m.end())
+        if re.search(r"\b(recuse|conflict of interest)\b", sentence, re.IGNORECASE):
+            continue
+        chip = _trim_to_chip(sentence)
+        if not chip:
+            continue
         results.append(
-            {"category": "Related Item", "text": _trim_to_chip(sentence)}
+            {"category": "Related Item", "text": chip}
         )
         break
     return results
@@ -502,7 +512,7 @@ def _chip_list_schema(allowed_cats: list[str]) -> dict:
             "type": "object",
             "properties": {
                 "category": {"type": "string", "enum": allowed_cats},
-                "text": {"type": "string", "maxLength": MAX_SUMMARY_CHARS},
+                "text": {"type": "string"},
                 "usefulness": {"type": "string", "enum": USEFULNESS_LEVELS},
             },
             "required": ["category", "text", "usefulness"],

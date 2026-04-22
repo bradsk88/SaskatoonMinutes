@@ -206,6 +206,12 @@ class TestRelatedDeferred:
         assert "Related Item" in cats
         assert all("10.3.2" in o["text"] or o["category"] != "Related Item" for o in out)
 
+    def test_recusal_not_treated_as_related(self):
+        text = "I'd like to recuse myself from item 10.1.1 for reasons stated earlier."
+        out = _extract_related_deferred({"section_number": "9.2"}, text)
+        cats = [o["category"] for o in out]
+        assert "Related Item" not in cats
+
 
 class TestProceduralNote:
     def test_procedural_title(self):
@@ -376,6 +382,16 @@ class TestNextStepConditional:
         text = "Some long preamble about various topics discussed at length. Staff committed to report back by Q2."
         out = _extract_next_step(text)
         assert out and "report back" in out[0]["text"]
+
+    def test_keyword_trimmed_away_drops_chip(self):
+        text = (
+            "the city will also have, though, any lead on the cost "
+            "estimates and everything, plus report back to council "
+            "about the current status of the full redesign plans"
+        )
+        out = _extract_next_step(text)
+        if out:
+            assert "report back" in out[0]["text"]
 
 
 # ── Unanimous vote suppresses Dissenting View ──────────────────────────────
@@ -568,7 +584,7 @@ class TestMoneyMinimum:
 
 class TestRelatedItemSliceQuality:
     def test_no_midword_start(self):
-        text = "I'd like to recuse myself from item 10.1.1 for reasons stated earlier."
+        text = "She noted item 10.1.1 is closely related to the cycling plan."
         item = {"section_number": "9.2"}
         out = _extract_related_deferred(item, text)
         rel = [o for o in out if o["category"] == "Related Item"]
