@@ -5,6 +5,10 @@ on:
     branches: [main]
   schedule:
     - cron: '0 */4 * * *'  # Every 4 hours to pick up new meetings
+  workflow_run:
+    # Redeploy as soon as fresh summaries land on the summaries branch.
+    workflows: ["Summarize Meeting Items"]
+    types: [completed]
   workflow_dispatch:          # Manual trigger from GitHub UI
 
 concurrency:
