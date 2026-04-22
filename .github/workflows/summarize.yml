@@ -57,7 +57,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           LIMIT="${{ inputs.limit || '2' }}"
-          TABS="${{ inputs.tabs || '' }}"
+          TABS="${{ inputs.tabs || 'council' }}"
 
           ARGS="--limit $LIMIT"
           if [ -n "$TABS" ]; then
