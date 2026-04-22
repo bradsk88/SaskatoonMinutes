@@ -241,12 +241,19 @@ class TestDataCited:
 import json
 
 
-def _stub_extractor(response: list[dict], captured: dict | None = None):
+def _stub_extractor(
+    response: list[dict],
+    captured: dict | None = None,
+    clean_response: str | None = None,
+):
     """Build a GeminiExtractor whose generate() returns *response* as JSON.
 
     Any chip in ``response`` without an explicit ``usefulness`` field is
-    treated as ``"high"`` for convenience.  If ``captured`` is provided, the
-    extractor records the allowed_cats and prompt passed to generate().
+    treated as ``"high"`` for convenience.  If ``captured`` is provided,
+    the extractor records the allowed_cats, prompt, and (when cleanup
+    runs) the cleaned-text input.  Pass ``clean_response`` to make the
+    cleanup pass return that string; otherwise cleanup is a no-op
+    (returns the input verbatim).
     """
     filled = [
         {"usefulness": "high", **r} if "usefulness" not in r else r
@@ -258,7 +265,15 @@ def _stub_extractor(response: list[dict], captured: dict | None = None):
             captured["allowed_cats"] = list(allowed_cats)
             captured["prompt"] = prompt
         return json.dumps(filled)
-    return GeminiExtractor(api_key=None, generate=_generate)
+
+    def _clean(text):
+        if captured is not None:
+            captured["clean_input"] = text
+        return clean_response if clean_response is not None else text
+
+    return GeminiExtractor(
+        api_key=None, generate=_generate, clean_generate=_clean,
+    )
 
 
 class TestExtractItemSummariesSemantic:
@@ -558,6 +573,73 @@ class TestGeminiExtractorState:
     def test_empty_transcript_returns_empty(self):
         ex = _stub_extractor([{"category": "Promise Made", "text": "hi"}])
         assert ex.extract({"title": "X"}, "   ", exclude=set()) == []
+
+
+class TestCleanupPass:
+    def test_clean_noop_without_api_key(self, monkeypatch):
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        ex = GeminiExtractor()
+        text = "um, like, the city, you know, will do something."
+        assert ex.clean(text) == text
+
+    def test_clean_uses_stub_when_provided(self):
+        ex = GeminiExtractor(
+            api_key=None,
+            generate=lambda p, c: "[]",
+            clean_generate=lambda t: "Cleaned: " + t,
+        )
+        assert ex.clean("rambling text") == "Cleaned: rambling text"
+
+    def test_clean_returns_input_when_blank(self):
+        ex = _stub_extractor([], clean_response="should not be used")
+        assert ex.clean("   ") == "   "
+
+    def test_extract_summaries_uses_cleaned_text_for_extractors(self):
+        captured: dict = {}
+        item = {
+            "item_id": 99,
+            "title": "Funding Decision",
+            "recommendation": "",
+            "motion_text": "",
+            "vote_result": "",
+            "vote_detail": "",
+            "content": "",
+            "section_number": "1.",
+            "time_start_ms": 0,
+            "time_end_ms": 600_000,
+        }
+        # Raw transcript: rambling, no clear money mention.
+        raw = "um yeah so we, you know, talked about funding stuff."
+        # Cleaned transcript: introduces a clean dollar amount.
+        cleaned = "Council allocated $750,000 for snow removal."
+        segments = [_seg(0, raw)]
+        stub = _stub_extractor([], captured=captured, clean_response=cleaned)
+        out = extract_item_summaries(item, segments, gemini_extractor=stub)
+        # The cleanup hook saw the raw text.
+        assert captured["clean_input"] == raw
+        # The Cost & Funding deterministic extractor only finds the
+        # amount because it ran against the cleaned text.
+        assert any(o["category"] == "Cost & Funding" for o in out)
+
+    def test_extract_summaries_passes_cleaned_text_to_gemini(self):
+        captured: dict = {}
+        item = {
+            "item_id": 100,
+            "title": "Discussion",
+            "recommendation": "",
+            "motion_text": "",
+            "vote_result": "",
+            "vote_detail": "",
+            "content": "",
+            "section_number": "1.",
+            "time_start_ms": 0,
+            "time_end_ms": 600_000,
+        }
+        cleaned = "The council unanimously supported the proposal."
+        segments = [_seg(0, "um yeah they all liked it ok")]
+        stub = _stub_extractor([], captured=captured, clean_response=cleaned)
+        extract_item_summaries(item, segments, gemini_extractor=stub)
+        assert cleaned in captured["prompt"]
 
 
 class TestNextStepSliceQuality:

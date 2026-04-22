@@ -2,22 +2,30 @@
 Hybrid extractor that turns an agenda item + its transcript slice into a
 list of short category-chip summaries.
 
-Categories are a closed list of 23 labels.  Extraction runs in two passes:
+Categories are a closed list of 23 labels.  Extraction runs in three
+passes when Gemini is enabled (cleanup + deterministic + LLM); just the
+deterministic pass otherwise.
 
-  1. Deterministic pass — regex and heuristics over the item's metadata and
-     transcript text.  Covers Outcome, Vote Breakdown, Cost & Funding,
-     Amendment Made, Procedural Note, Delegation, Next Step, Related Item,
-     Deferred From, Declared Conflict, Data Cited.
+  0. Cleanup pass — a single Gemini call that normalizes the rambling,
+     filler-laden automatic transcription into well-punctuated sentences
+     while preserving every fact, name, number, and quote.
+
+  1. Deterministic pass — regex and heuristics over the item's metadata
+     and the cleaned transcript text. Covers Outcome, Vote Breakdown,
+     Cost & Funding, Amendment Made, Procedural Note, Delegation, Next
+     Step, Related Item, Deferred From, Declared Conflict, Data Cited.
 
   2. LLM pass — a single Gemini 2.5 Flash call per item, constrained to a
-     JSON schema of ``{category, text}`` for the 12 remaining "soft"
-     categories.  Runs only when ``GEMINI_API_KEY`` is set; otherwise only
-     deterministic chips are emitted.
+     JSON schema of ``{category, text, usefulness}`` for the 12 remaining
+     "soft" categories.
 
-All summaries are trimmed to <=60 characters at a word boundary.
+When ``GEMINI_API_KEY`` is unset the cleanup and LLM passes are skipped
+and only deterministic chips are emitted.
 
-Tests can inject a stub extractor via the ``gemini_extractor`` parameter of
-``extract_item_summaries``.
+All summaries are trimmed to <=100 characters at a natural clause break.
+
+Tests can inject a stub extractor via the ``gemini_extractor`` parameter
+of ``extract_item_summaries``.
 """
 
 from __future__ import annotations
@@ -447,18 +455,21 @@ GEMINI_MODEL = "gemini-2.5-flash"
 
 
 class GeminiExtractor:
-    """Calls Gemini to extract the 12 semantic categories for one item.
+    """Calls Gemini for transcript cleanup and semantic chip extraction.
 
-    Tests can substitute a stub by providing a custom ``generate`` callable.
+    Tests can substitute stubs by providing custom ``generate`` and
+    ``clean_generate`` callables.
     """
 
     def __init__(
         self,
         api_key: str | None = None,
         generate=None,
+        clean_generate=None,
     ):
         self._api_key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY")
         self._generate = generate
+        self._clean_generate = clean_generate
         self._client = None
 
     @property
@@ -487,6 +498,32 @@ class GeminiExtractor:
         )
         return response.text or "[]"
 
+    def clean(self, transcript_text: str) -> str:
+        """Normalize a rambling transcript slice into well-punctuated sentences.
+
+        Returns the input unchanged when no cleanup hook is wired and no
+        API key is configured (so tests using a stub extractor that only
+        mocks ``generate`` see the raw text).
+        """
+        if not transcript_text.strip():
+            return transcript_text
+        if self._clean_generate is not None:
+            return self._clean_generate(transcript_text)
+        if not self._api_key:
+            return transcript_text
+        prompt = _build_cleanup_prompt(transcript_text)
+        try:
+            client = self._get_client()
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config={"temperature": 0.0},
+            )
+            return (response.text or "").strip() or transcript_text
+        except Exception as exc:
+            print(f"    Gemini cleanup failed, using raw transcript: {exc}")
+            return transcript_text
+
     def extract(
         self, item: dict, transcript_text: str, exclude: set[str],
     ) -> list[dict]:
@@ -503,6 +540,33 @@ class GeminiExtractor:
             print(f"    Gemini call failed: {exc}")
             return []
         return _sanitize_chips(parsed, allowed)
+
+
+def _build_cleanup_prompt(transcript_text: str) -> str:
+    return (
+        "You are normalizing the raw automatic transcription of one segment "
+        "of a Saskatoon city council meeting into well-punctuated, coherent "
+        "English sentences for downstream summarisation.\n"
+        "\n"
+        "Hard rules:\n"
+        "- Restructure ONLY. Do not add facts, opinions, or details that "
+        "aren't in the input.\n"
+        "- Do not omit substantive content: every name, number, dollar "
+        "amount, agenda item reference, and direct quote must survive.\n"
+        "- You MAY remove fillers (um, uh, like, you know, yeah, yep, "
+        "I mean), false starts, and word-level stutters.\n"
+        "- You MAY merge run-on conversational chunks into proper sentences "
+        "and add periods, commas, and question marks where they belong.\n"
+        "- Preserve speaker attributions when present (e.g. \"Councillor "
+        "Pierce said\").\n"
+        "- Output PLAIN TEXT only — no headers, no commentary, no JSON, no "
+        "speaker labels you didn't see in the input.\n"
+        "\n"
+        "Raw transcript:\n"
+        f"{transcript_text}\n"
+        "\n"
+        "Cleaned transcript:"
+    )
 
 
 USEFULNESS_LEVELS: list[str] = ["high", "medium", "low"]
@@ -643,6 +707,15 @@ def extract_item_summaries(
     slice_segments = _slice_transcript(transcript_segments, item)
     transcript_text = " ".join(s.get("text", "") for s in slice_segments)
 
+    extractor = gemini_extractor if gemini_extractor is not None else GeminiExtractor()
+
+    # Pre-process: turn raw automatic-transcription rambling into clean
+    # sentences so both the regex extractors and the semantic pass have
+    # well-punctuated input. Falls back to the raw text if cleanup fails
+    # or the extractor isn't enabled.
+    if extractor.enabled and transcript_text.strip():
+        transcript_text = extractor.clean(transcript_text)
+
     results: list[dict] = []
     results.extend(_extract_outcome(item))
     results.extend(_extract_vote_breakdown(item))
@@ -664,7 +737,6 @@ def extract_item_summaries(
     if "UNANIM" in vote or _is_unanimous_tally(item):
         covered.add("Dissenting View")
 
-    extractor = gemini_extractor if gemini_extractor is not None else GeminiExtractor()
     if extractor.enabled and transcript_text.strip():
         results.extend(extractor.extract(item, transcript_text, exclude=covered))
 
