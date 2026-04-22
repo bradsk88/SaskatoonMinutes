@@ -16,6 +16,7 @@ from app.item_categorizer import (
     _extract_outcome,
     _extract_procedural_note,
     _extract_related_deferred,
+    _extract_semantic,
     _extract_vote_breakdown,
     _slice_transcript,
     _split_sentences,
@@ -221,7 +222,7 @@ class StubEncoder(Encoder):
     """Returns deterministic vectors keyed on text content.
 
     We rig the similarities so the sentence containing ``CYCLING`` scores
-    above the 0.40 threshold against the ``Environmental Impact`` query and
+    above the 0.50 threshold against the ``Environmental Impact`` query and
     nothing else does.
     """
 
@@ -327,3 +328,100 @@ class TestIsEligible:
         item = {"title": "Recess", "is_recess": True,
                 "time_start_ms": 0, "time_end_ms": 600_000}
         assert is_eligible_for_summary(item) is False
+
+
+# ── Next Step conditional filter ───────────────────────────────────────────
+
+
+class TestNextStepConditional:
+    def test_if_clause_skipped(self):
+        text = "if Council wanted to see a report back on this item. Administration will report back next year."
+        out = _extract_next_step(text)
+        assert out and "next year" in out[0]["text"]
+
+    def test_regular_next_step_kept(self):
+        text = "Administration will report back at the next meeting."
+        out = _extract_next_step(text)
+        assert out and out[0]["category"] == "Next Step"
+
+
+# ── Unanimous vote suppresses Dissenting View ──────────────────────────────
+
+
+class TestUnanimousSuppression:
+    def test_unanimous_text_suppresses_dissent(self):
+        item = {
+            "item_id": 10,
+            "title": "Policy Update",
+            "recommendation": "",
+            "motion_text": "",
+            "vote_result": "CARRIED UNANIMOUSLY",
+            "vote_detail": "",
+            "content": "",
+            "section_number": "5.",
+            "time_start_ms": 0,
+            "time_end_ms": 600_000,
+        }
+        segments = [_seg(0, "Cycling commuting reduces city emissions significantly over time.")]
+        out = extract_item_summaries(item, segments, encoder=StubEncoder())
+        cats = [o["category"] for o in out]
+        assert "Dissenting View" not in cats
+
+    def test_zero_against_suppresses_dissent(self):
+        item = {
+            "item_id": 11,
+            "title": "Policy Update",
+            "recommendation": "",
+            "motion_text": "",
+            "vote_result": "CARRIED (10 to 0)",
+            "vote_detail": "",
+            "content": "",
+            "section_number": "5.",
+            "time_start_ms": 0,
+            "time_end_ms": 600_000,
+        }
+        segments = [_seg(0, "Cycling commuting reduces city emissions significantly over time.")]
+        out = extract_item_summaries(item, segments, encoder=StubEncoder())
+        cats = [o["category"] for o in out]
+        assert "Dissenting View" not in cats
+
+
+# ── Sentence deduplication in semantic pass ────────────────────────────────
+
+
+class DedupeStubEncoder(Encoder):
+    """All queries and all sentences get the same high-similarity vector,
+    forcing the same sentence to be the 'best' for every category.
+    Deduplication should prevent it from appearing more than once.
+    """
+
+    def encode(self, texts):
+        return [[1.0, 0.0, 0.0]] * len(texts)
+
+
+class TestSemanticDedup:
+    def test_same_sentence_not_reused(self):
+        sentences = ["This single sentence is long enough for a chip summary surely."]
+        out = _extract_semantic(sentences, DedupeStubEncoder(), exclude=set())
+        assert len(out) == 1
+
+    def test_no_duplicate_texts_in_output(self):
+        sentences = [
+            "This single sentence is long enough for a chip summary surely.",
+            "Another decent sentence that also has enough length here.",
+        ]
+        out = _extract_semantic(sentences, DedupeStubEncoder(), exclude=set())
+        texts = [o["text"] for o in out]
+        assert len(texts) == len(set(texts))
+
+
+# ── Quality gate on semantic results ───────────────────────────────────────
+
+
+class TestSemanticQualityGate:
+    def test_trailing_junk_filtered(self):
+        chip = _trim_to_chip(
+            "They reduce flood risk, moderate urban heat and support by additional means"
+        )
+        from app.item_categorizer import _TRAILING_JUNK_RE
+        assert _TRAILING_JUNK_RE.search(chip)

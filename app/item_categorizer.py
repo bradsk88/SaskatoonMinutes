@@ -111,7 +111,7 @@ SEMANTIC_QUERIES: dict[str, str] = {
 }
 
 # Below this cosine similarity we assume the category did not really appear.
-_SEMANTIC_THRESHOLD = 0.40
+_SEMANTIC_THRESHOLD = 0.50
 
 
 # ── Transcript slicing ──────────────────────────────────────────────────────
@@ -303,10 +303,12 @@ _NEXT_STEP_RE = re.compile(
 
 
 def _extract_next_step(transcript_text: str) -> list[dict]:
-    m = _NEXT_STEP_RE.search(transcript_text)
-    if not m:
-        return []
-    return [{"category": "Next Step", "text": _trim_to_chip(m.group(0))}]
+    for m in _NEXT_STEP_RE.finditer(transcript_text):
+        text = m.group(0).strip()
+        if re.match(r"^if\b", text, re.IGNORECASE):
+            continue
+        return [{"category": "Next Step", "text": _trim_to_chip(text)}]
+    return []
 
 
 def _extract_related_deferred(item: dict, transcript_text: str) -> list[dict]:
@@ -409,6 +411,15 @@ class MiniLMEncoder(Encoder):
         return [list(map(float, row)) for row in arr]
 
 
+_TRAILING_JUNK_RE = re.compile(
+    r"\s+(?:by|and|the|to|for|of|in|a|an|that|which|with|from|on|or|but|as|"
+    r"their|our|its|is|are|was|were|has|have|had|this|it|we|they|some|"
+    r"about|into|over|at|than|not|all|no)…$"
+)
+
+_MIN_SEMANTIC_CHIP_LEN = 25
+
+
 def _extract_semantic(
     sentences: list[str], encoder: Encoder, exclude: set[str],
 ) -> list[dict]:
@@ -425,7 +436,8 @@ def _extract_semantic(
     query_vecs = vectors[: len(queries)]
     sent_vecs = vectors[len(queries):]
 
-    results: list[dict] = []
+    # Build scored list per category, then pick best without reusing sentences.
+    cat_best: list[tuple[str, float, str]] = []
     for cat, qv in zip(target_cats, query_vecs):
         best_score = 0.0
         best_sentence = ""
@@ -434,14 +446,42 @@ def _extract_semantic(
             if score > best_score:
                 best_score = score
                 best_sentence = sent
-        if best_score >= _SEMANTIC_THRESHOLD and best_sentence:
-            results.append(
-                {"category": cat, "text": _trim_to_chip(best_sentence)}
-            )
+        cat_best.append((cat, best_score, best_sentence))
+
+    # Sort by score descending so higher-confidence categories claim first.
+    cat_best.sort(key=lambda t: t[1], reverse=True)
+
+    results: list[dict] = []
+    used_sentences: set[str] = set()
+    for cat, score, sent in cat_best:
+        if score < _SEMANTIC_THRESHOLD or not sent:
+            continue
+        if sent in used_sentences:
+            continue
+        chip = _trim_to_chip(sent)
+        if len(chip) < _MIN_SEMANTIC_CHIP_LEN:
+            continue
+        if _TRAILING_JUNK_RE.search(chip):
+            continue
+        used_sentences.add(sent)
+        results.append({"category": cat, "text": chip})
     return results
 
 
 # ── Public API ──────────────────────────────────────────────────────────────
+
+
+def _is_unanimous_tally(item: dict) -> bool:
+    """True when vote detail or result shows 0 dissenting votes."""
+    detail = item.get("vote_detail") or ""
+    m = _VOTE_TALLY_RE.search(detail)
+    if m and int(m.group(2)) == 0:
+        return True
+    vote = item.get("vote_result") or ""
+    m2 = re.search(r"\((\d+)\s*(?:to|-)\s*(\d+)\)", vote)
+    if m2 and int(m2.group(2)) == 0:
+        return True
+    return False
 
 
 def is_eligible_for_summary(item: dict) -> bool:
@@ -489,6 +529,12 @@ def extract_item_summaries(
     results.extend(_extract_data_cited(transcript_text))
 
     covered = {r["category"] for r in results}
+
+    # Suppress logically impossible semantic categories.
+    vote = (item.get("vote_result") or "").upper()
+    if "UNANIM" in vote or _is_unanimous_tally(item):
+        covered.add("Dissenting View")
+
     sentences = _split_sentences(transcript_text)
     if sentences:
         enc = encoder or MiniLMEncoder()
