@@ -95,7 +95,10 @@ def main():
             print(f"  Failed to fetch meetings: {exc}")
             continue
 
-        for m in meetings[: args.limit]:
+        processed_this_tab = 0
+        for m in meetings:
+            if processed_this_tab >= args.limit:
+                break
             if not m.has_video:
                 continue
 
@@ -111,14 +114,13 @@ def main():
                 segments = transcribe_meeting(mid, model_size=args.model)
                 save_transcript(mid, segments)
                 transcribed += 1
+                processed_this_tab += 1
                 print(f"  Done: {len(segments)} segments", flush=True)
+                # Push incrementally so a timeout doesn't lose completed work.
+                push_transcript_branch()
             except Exception as exc:
                 print(f"  ERROR: {exc}", flush=True)
                 traceback.print_exc()
-
-    if transcribed > 0:
-        print(f"\nPushing {transcribed} new transcript(s)...")
-        push_transcript_branch()
 
     print(f"\nFinished: {transcribed} transcribed, {skipped} already cached")
 
