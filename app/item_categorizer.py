@@ -98,7 +98,7 @@ MAX_SUMMARY_CHARS = 100
 # definition that is included verbatim in the Gemini prompt.
 SEMANTIC_DEFINITIONS: dict[str, str] = {
     "In Plain Terms": "a 1-sentence plain-language explanation of what this item actually does, written so a busy resident understands it",
-    "Debate Highlight": "a sharp or notable moment of debate — a memorable quote or a pointed exchange",
+    "Debate Highlight": "a sharp or notable moment of debate — a memorable quote, a pointed exchange, or a striking argument from a named speaker. Do NOT use this category to restate the vote outcome (e.g. 'council unanimously opposed the proposal' belongs to Outcome, not here).",
     "Who's Affected": "which specific residents, neighbourhoods, businesses, or groups are directly affected",
     "Staff vs. Council": "a real disagreement between city administration and elected councillors (not just a clarifying question)",
     "Precedent Set": "a first-of-its-kind decision that will be referenced in future cases",
@@ -365,6 +365,12 @@ def _extract_next_step(transcript_text: str) -> list[dict]:
         # The matched keyword must survive trimming; otherwise we trimmed
         # to a useless fragment.
         if not chip or not re.search(re.escape(m.group(0)), chip, re.IGNORECASE):
+            continue
+        # Questions are not commitments.
+        if chip.rstrip().endswith("?"):
+            continue
+        # Rambling conversational speech tends to pile up commas.
+        if chip.count(",") >= 3:
             continue
         return [{"category": "Next Step", "text": chip}]
     return []

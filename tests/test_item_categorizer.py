@@ -393,6 +393,21 @@ class TestNextStepConditional:
         if out:
             assert "report back" in out[0]["text"]
 
+    def test_question_dropped(self):
+        text = "For example, could it possibly in your mind be done by the end of 2026?"
+        out = _extract_next_step(text)
+        assert out == []
+
+    def test_rambling_speech_dropped(self):
+        text = "this is, again, I'll bring it back to the, the diligence and pre-opening stages."
+        out = _extract_next_step(text)
+        assert out == []
+
+    def test_clean_two_comma_chip_kept(self):
+        text = "Administration will report back, with a full update, by Q2."
+        out = _extract_next_step(text)
+        assert out and "report back" in out[0]["text"]
+
 
 # ── Unanimous vote suppresses Dissenting View ──────────────────────────────
 
