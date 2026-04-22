@@ -145,8 +145,25 @@ _SEMANTIC_DISQUALIFIERS: dict[str, list[re.Pattern]] = {
     ],
     "Promise Made": [
         re.compile(r"^we want to\b", re.I),
+        re.compile(r"\bwondering\b", re.I),
+        re.compile(r"\?", re.I),
     ],
 }
+
+
+def _sentence_around(text: str, start: int, end: int) -> str:
+    """Return the sentence containing text[start:end], using . ! ? as boundaries."""
+    sent_start = 0
+    for p in ".!?":
+        pos = text.rfind(p, 0, start)
+        if pos + 1 > sent_start:
+            sent_start = pos + 1
+    sent_end = len(text)
+    for p in ".!?":
+        pos = text.find(p, end)
+        if pos != -1 and pos < sent_end:
+            sent_end = pos + 1
+    return text[sent_start:sent_end].strip()
 
 
 # ── Transcript slicing ──────────────────────────────────────────────────────
@@ -277,6 +294,8 @@ def _extract_cost_funding(item: dict, transcript_text: str) -> list[dict]:
     seen: set[str] = set()
     for m in _MONEY_RE.finditer(combined):
         raw = m.group(0)
+        if _money_too_small(raw):
+            continue
         formatted = _format_money(raw)
         # Extract a tiny purpose snippet: 3-6 words after the amount
         tail = combined[m.end(): m.end() + 80]
@@ -290,6 +309,22 @@ def _extract_cost_funding(item: dict, transcript_text: str) -> list[dict]:
         if len(results) >= 3:
             break
     return results
+
+
+def _money_too_small(raw: str) -> bool:
+    """Filter out bare dollar amounts under $100 (likely OCR / speech noise)."""
+    has_suffix = bool(
+        re.search(r"(million|billion|\bM\b|\bB\b|\bK\b|thousand)", raw, re.I)
+    )
+    if has_suffix:
+        return False
+    numeric = re.sub(r"[^\d.]", "", raw)
+    if not numeric or numeric == ".":
+        return True
+    try:
+        return float(numeric) < 100
+    except ValueError:
+        return True
 
 
 _PURPOSE_RE = re.compile(
@@ -339,14 +374,13 @@ _NEXT_STEP_KW_RE = re.compile(
 
 def _extract_next_step(transcript_text: str) -> list[dict]:
     for m in _NEXT_STEP_KW_RE.finditer(transcript_text):
-        before = transcript_text[max(0, m.start() - 80): m.start()]
-        if re.search(r"\bif\b", before, re.IGNORECASE):
+        sentence = _sentence_around(transcript_text, m.start(), m.end())
+        before_kw = sentence.split(m.group(0), 1)[0]
+        if re.search(r"\bif\b", before_kw, re.IGNORECASE):
             continue
-        if re.search(r"\bpreviously\b", before, re.IGNORECASE):
+        if re.search(r"\bpreviously\b", sentence, re.IGNORECASE):
             continue
-        after = transcript_text[m.end(): m.end() + 60]
-        snippet = (before.split(".")[-1] + m.group(0) + after.split(".")[0]).strip()
-        return [{"category": "Next Step", "text": _trim_to_chip(snippet)}]
+        return [{"category": "Next Step", "text": _trim_to_chip(sentence)}]
     return []
 
 
@@ -375,9 +409,9 @@ def _extract_related_deferred(item: dict, transcript_text: str) -> list[dict]:
         ref = m.group(1)
         if ref == own:
             continue
-        snippet = transcript_text[max(0, m.start() - 30): m.end() + 30]
+        sentence = _sentence_around(transcript_text, m.start(), m.end())
         results.append(
-            {"category": "Related Item", "text": _trim_to_chip(snippet)}
+            {"category": "Related Item", "text": _trim_to_chip(sentence)}
         )
         break
     return results

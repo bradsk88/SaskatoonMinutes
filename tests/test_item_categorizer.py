@@ -442,6 +442,48 @@ class TestSemanticQualityGate:
         assert _TRAILING_JUNK_RE.search(chip)
 
 
+class TestNextStepSliceQuality:
+    def test_no_midword_start(self):
+        # The "r" of "report back" must not be cut off.
+        text = "If Council wanted to see a report about this. Administration will report back by Q2 next year on the findings."
+        out = _extract_next_step(text)
+        assert out
+        assert not out[0]["text"].startswith(("eport", "eturn", "ext ")), out[0]["text"]
+
+    def test_previously_mid_sentence_skipped(self):
+        text = "We previously landed the world juniors and Curling Canada, hey they want to come back next year."
+        out = _extract_next_step(text)
+        assert out == []
+
+
+class TestMoneyMinimum:
+    def test_bare_tiny_amount_skipped(self):
+        item = {"title": "", "recommendation": "It costs $3 to do this. Also $4 million overall.", "content": "", "motion_text": ""}
+        out = _extract_cost_funding(item, "")
+        texts = [o["text"] for o in out]
+        assert not any("$3" in t and "million" not in t.lower() for t in texts)
+
+    def test_hundreds_kept(self):
+        item = {"title": "", "recommendation": "Permit fee is $500 per application.", "content": "", "motion_text": ""}
+        out = _extract_cost_funding(item, "")
+        assert out and any("500" in o["text"] for o in out)
+
+    def test_suffix_keeps_small_value(self):
+        item = {"title": "", "recommendation": "Allocate $2 million for snow removal.", "content": "", "motion_text": ""}
+        out = _extract_cost_funding(item, "")
+        assert out and any("2M" in o["text"] or "million" in o["text"].lower() for o in out)
+
+
+class TestRelatedItemSliceQuality:
+    def test_no_midword_start(self):
+        text = "I'd like to recuse myself from item 10.1.1 for reasons stated earlier."
+        item = {"section_number": "9.2"}
+        out = _extract_related_deferred(item, text)
+        rel = [o for o in out if o["category"] == "Related Item"]
+        assert rel
+        assert not rel[0]["text"].startswith(("'d", "d ")), rel[0]["text"]
+
+
 class TestSemanticDisqualifiers:
     def test_clarify_disqualifies_unanswered_question(self):
         from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
@@ -466,3 +508,15 @@ class TestSemanticDisqualifiers:
         pats = _SEMANTIC_DISQUALIFIERS.get("Unanswered Question", [])
         text = "What happens to the funding if the project is delayed?"
         assert not any(p.search(text) for p in pats)
+
+    def test_question_disqualifies_promise_made(self):
+        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
+        pats = _SEMANTIC_DISQUALIFIERS["Promise Made"]
+        text = "I'm just wondering what is the will of council."
+        assert any(p.search(text) for p in pats)
+
+    def test_question_mark_disqualifies_promise_made(self):
+        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
+        pats = _SEMANTIC_DISQUALIFIERS["Promise Made"]
+        text = "Could we commit to doing more here?"
+        assert any(p.search(text) for p in pats)
