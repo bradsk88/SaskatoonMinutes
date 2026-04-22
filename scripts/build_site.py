@@ -23,6 +23,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS
 from app.summarizer import extract_meeting_topics, extract_badges
 from app.transcriber import load_cached_transcript, correct_timestamps
+from app.item_summaries_store import load_cached_summaries
 
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "_site")
 TEMPLATE_DIR = os.path.join(PROJECT_ROOT, "app", "templates")
@@ -78,6 +79,15 @@ def _fetch_topics_and_details(meetings):
             # Attach badges to each item (same as /api/meeting/<id>)
             for item in items:
                 item["badges"] = extract_badges(item)
+
+            # Attach categorized chip summaries if available
+            chip_summaries = load_cached_summaries(mid)
+            if chip_summaries:
+                print(f"    Applying chip summaries ({len(chip_summaries)} items)")
+                for item in items:
+                    item["chip_summaries"] = chip_summaries.get(
+                        str(item.get("item_id")), []
+                    )
 
             topics = extract_meeting_topics(items, m.title, max_topics=8)
             topics_data[mid] = topics

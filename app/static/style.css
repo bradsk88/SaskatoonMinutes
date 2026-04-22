@@ -1191,6 +1191,97 @@ a.topic-link:hover {
     border: 1px solid var(--color-border);
 }
 
+/* === Chip view (AI-generated per-item summaries) === */
+.item-view-toggle {
+    display: inline-flex;
+    gap: 0;
+    margin: 0.5rem 0 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--color-surface);
+}
+
+.item-view-toggle .view-option {
+    border: 0;
+    background: transparent;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+
+.item-view-toggle .view-option + .view-option {
+    border-left: 1px solid var(--color-border);
+}
+
+.agenda-item[data-view="chips"] .view-option[data-view-option="chips"],
+.agenda-item[data-view="notes"] .view-option[data-view-option="notes"] {
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+    font-weight: 600;
+}
+
+.agenda-item[data-view="chips"] .item-notes-view,
+.agenda-item[data-view="notes"] .item-chip-view {
+    display: none;
+}
+
+.item-chip-view {
+    margin-top: 0.5rem;
+}
+
+.chip-view-grid {
+    display: grid;
+    grid-template-columns: minmax(120px, max-content) 1fr;
+    gap: 0.35rem 0.6rem;
+    align-items: start;
+}
+
+.chip-row {
+    display: contents;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+.chip-text {
+    font-size: 0.9rem;
+    color: var(--color-text);
+    line-height: 1.35;
+    padding-top: 0.12rem;
+}
+
+.chip-empty {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    margin: 0.5rem 0;
+}
+
+.item-ai-disclaimer {
+    margin-top: 0.75rem;
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+/* Chip color groups (shared within each group) */
+.chip-decision { background: #dbeafe; color: #1e40af; }
+.chip-money    { background: #dcfce7; color: #166534; }
+.chip-context  { background: #f3f4f6; color: #374151; }
+.chip-voices   { background: #f3e8ff; color: #6b21a8; }
+.chip-impact   { background: #ffedd5; color: #9a3412; }
+.chip-future   { background: #ccfbf1; color: #115e59; }
+
 /* === Footer === */
 footer {
     text-align: center;
@@ -1448,6 +1539,25 @@ footer a:hover {
 
     [data-tooltip]:hover::before {
         border-top-color: #e4e6eb;
+    }
+
+    /* Chip view (dark) */
+    .chip-decision { background: #1e293b; color: #93c5fd; }
+    .chip-money    { background: #14281c; color: #86efac; }
+    .chip-context  { background: #1f2937; color: #d1d5db; }
+    .chip-voices   { background: #2a1f3b; color: #d8b4fe; }
+    .chip-impact   { background: #2a1a10; color: #fdba74; }
+    .chip-future   { background: #0f2e2b; color: #5eead4; }
+
+    .item-view-toggle {
+        background: #1f2430;
+        border-color: #2d3140;
+    }
+
+    .agenda-item[data-view="chips"] .view-option[data-view-option="chips"],
+    .agenda-item[data-view="notes"] .view-option[data-view-option="notes"] {
+        background: #1a2f22;
+        color: #86efac;
     }
 }
 

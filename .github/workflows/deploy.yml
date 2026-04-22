@@ -27,6 +27,11 @@ jobs:
           git fetch origin transcripts:refs/remotes/origin/transcripts || echo "No transcripts branch yet"
           git show origin/transcripts:transcripts/ 2>/dev/null && echo "Transcripts branch loaded" || echo "No transcripts available"
 
+      - name: Fetch summaries branch
+        run: |
+          git fetch origin summaries:refs/remotes/origin/summaries || echo "No summaries branch yet"
+          git show origin/summaries:summaries/ 2>/dev/null && echo "Summaries branch loaded" || echo "No summaries available"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'

@@ -1,0 +1,70 @@
+name: Summarize Meeting Items
+
+on:
+  # Run after transcription finishes (fresh transcripts may be available)
+  workflow_run:
+    workflows: ["Transcribe Meeting Videos"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tabs:
+        description: 'Tab slugs to process (space-separated, empty = all)'
+        required: false
+        default: 'council'
+      limit:
+        description: 'Max meetings per tab'
+        required: false
+        default: '2'
+
+concurrency:
+  group: summarize
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # push to summaries branch
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for orphan-branch worktrees
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+            torch==2.2.2+cpu
+          pip install sentence-transformers==2.7.0
+
+      - name: Pre-download MiniLM model
+        run: |
+          python -c "
+          from sentence_transformers import SentenceTransformer
+          SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+          print('MiniLM loaded')
+          "
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Summarize meetings
+        run: |
+          LIMIT="${{ inputs.limit || '2' }}"
+          TABS="${{ inputs.tabs || '' }}"
+
+          ARGS="--limit $LIMIT"
+          if [ -n "$TABS" ]; then
+            ARGS="$ARGS --tabs $TABS"
+          fi
+
+          python scripts/summarize_meetings.py $ARGS

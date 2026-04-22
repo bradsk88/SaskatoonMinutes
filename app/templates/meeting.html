@@ -136,6 +136,44 @@
                   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    // Chip-view category → color group. Mirrors CATEGORY_GROUP in
+    // app/item_categorizer.py; updates must stay in sync.
+    const CHIP_GROUP = {
+        "Outcome": "decision", "Vote Breakdown": "decision",
+        "Amendment Made": "decision", "Dissenting View": "decision",
+        "Cost & Funding": "money",
+        "In Plain Terms": "context", "Debate Highlight": "context",
+        "Data Cited": "context", "Unanswered Question": "context",
+        "Delegation": "voices", "Staff vs. Council": "voices",
+        "Public Sentiment": "voices", "Declared Conflict": "voices",
+        "Who's Affected": "impact", "Equity Impact": "impact",
+        "Environmental Impact": "impact", "Legal Risk Flagged": "impact",
+        "Procedural Note": "future", "Related Item": "future",
+        "Deferred From": "future", "Precedent Set": "future",
+        "Next Step": "future", "Promise Made": "future",
+    };
+
+    function buildChipViewHtml(item) {
+        const chips = item.chip_summaries || [];
+        if (!chips.length) {
+            return `<div class="item-chip-view">
+                <p class="chip-empty">No AI summary available for this item yet.</p>
+                <p class="item-ai-disclaimer">Summaries are AI-generated from the meeting transcript and may contain errors.</p>
+            </div>`;
+        }
+        const rows = chips.map(c => {
+            const group = CHIP_GROUP[c.category] || "context";
+            return `<div class="chip-row">
+                <span class="chip chip-${group}">${escapeHtml(c.category)}</span>
+                <span class="chip-text">${escapeHtml(c.text)}</span>
+            </div>`;
+        }).join('');
+        return `<div class="item-chip-view">
+            <div class="chip-view-grid">${rows}</div>
+            <p class="item-ai-disclaimer">Summaries are AI-generated from the meeting transcript and may contain errors.</p>
+        </div>`;
+    }
+
     function decodeEntities(str) {
         if (!str) return '';
         return str.replace(/&#58;/g, ':').replace(/&#160;/g, ' ')
@@ -338,6 +376,20 @@
             ? buildAttachmentsOnlyHtml(item)
             : buildTranscriptHtml(item);
 
+        const hasChips = !isConsent && Array.isArray(item.chip_summaries)
+            && item.chip_summaries.length > 0;
+        const viewMode = hasChips ? "chips" : "notes";
+        el.dataset.view = viewMode;
+
+        const toggleHtml = hasChips
+            ? `<div class="item-view-toggle" role="tablist">
+                <button class="view-option" data-view-option="chips" role="tab">Summary</button>
+                <button class="view-option" data-view-option="notes" role="tab">Notes</button>
+               </div>`
+            : '';
+
+        const chipsHtml = hasChips ? buildChipViewHtml(item) : '';
+
         el.innerHTML = `
             <div class="item-header">
                 <span class="item-number">${item.section_number}</span>
@@ -348,8 +400,10 @@
                 ${playBtnHtml}
             </div>
             ${badgesHtml ? `<div class="item-badges">${badgesHtml}</div>` : ''}
+            ${toggleHtml}
             ${summaryHtml}
-            ${transcriptHtml}
+            ${chipsHtml}
+            <div class="item-notes-view">${transcriptHtml}</div>
         `;
         return el;
     }
@@ -391,6 +445,16 @@
 
     // Click to toggle clamp on overflowing transcripts
     document.getElementById('agenda-items').addEventListener('click', function(e) {
+        // Per-item view toggle (Summary ↔ Notes)
+        const viewBtn = e.target.closest('.view-option');
+        if (viewBtn) {
+            const item = viewBtn.closest('.agenda-item');
+            if (item) {
+                item.dataset.view = viewBtn.dataset.viewOption;
+            }
+            return;
+        }
+
         // Attachments badge: expand the transcript to reveal attachment links
         const attachBadge = e.target.closest('.item-attach-count');
         if (attachBadge) {
