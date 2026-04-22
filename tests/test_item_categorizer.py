@@ -6,7 +6,8 @@ from app.item_categorizer import (
     CATEGORIES,
     CATEGORY_GROUP,
     MAX_SUMMARY_CHARS,
-    Encoder,
+    SEMANTIC_CATEGORIES,
+    GeminiExtractor,
     _extract_amendment,
     _extract_cost_funding,
     _extract_data_cited,
@@ -16,8 +17,8 @@ from app.item_categorizer import (
     _extract_outcome,
     _extract_procedural_note,
     _extract_related_deferred,
-    _extract_semantic,
     _extract_vote_breakdown,
+    _sanitize_chips,
     _slice_transcript,
     _split_sentences,
     _trim_to_chip,
@@ -215,34 +216,28 @@ class TestDataCited:
         assert _extract_data_cited("Many people attended the meeting.") == []
 
 
-# ── Semantic pass with stub encoder ─────────────────────────────────────────
+# ── LLM pass with stub Gemini extractor ────────────────────────────────────
 
 
-class StubEncoder(Encoder):
-    """Returns deterministic vectors keyed on text content.
+import json
 
-    We rig the similarities so the sentence containing ``CYCLING`` scores
-    above the 0.50 threshold against the ``Environmental Impact`` query and
-    nothing else does.
+
+def _stub_extractor(response: list[dict], captured: dict | None = None):
+    """Build a GeminiExtractor whose generate() returns *response* as JSON.
+
+    If *captured* is provided, the extractor records the allowed_cats list
+    passed to generate() under the key "allowed_cats".
     """
-
-    def encode(self, texts):
-        out = []
-        for t in texts:
-            lower = t.lower()
-            if "environmental" in lower or "emissions" in lower or "ecological" in lower:
-                out.append([1.0, 0.0, 0.0])  # environmental query
-            elif "cycling" in lower:
-                out.append([0.9, 0.1, 0.0])  # good match for environmental
-            elif "unrelated" in lower:
-                out.append([0.0, 1.0, 0.0])  # orthogonal
-            else:
-                out.append([0.0, 0.2, 0.9])  # below threshold
-        return out
+    def _generate(prompt, allowed_cats):
+        if captured is not None:
+            captured["allowed_cats"] = list(allowed_cats)
+            captured["prompt"] = prompt
+        return json.dumps(response)
+    return GeminiExtractor(api_key=None, generate=_generate)
 
 
 class TestExtractItemSummariesSemantic:
-    def test_semantic_pass_with_stub(self):
+    def test_stub_chips_merged(self):
         item = {
             "item_id": 1,
             "title": "Cycling Network Update",
@@ -255,16 +250,17 @@ class TestExtractItemSummariesSemantic:
             "time_start_ms": 0,
             "time_end_ms": 600_000,
         }
-        segments = [
-            _seg(0, "Cycling commuting reduces city emissions significantly over time."),
-            _seg(60_000, "Some unrelated discussion happened here at length."),
-        ]
-        out = extract_item_summaries(item, segments, encoder=StubEncoder())
+        segments = [_seg(0, "Cycling commuting reduces city emissions significantly.")]
+        stub = _stub_extractor([
+            {"category": "Environmental Impact", "text": "Cuts emissions"},
+        ])
+        out = extract_item_summaries(item, segments, gemini_extractor=stub)
         cats = [o["category"] for o in out]
         assert "Environmental Impact" in cats
 
-    def test_determinstic_excludes_same_semantic_category(self):
-        """If Outcome is extracted deterministically, semantic pass must not re-emit it."""
+    def test_deterministic_category_not_requested_from_gemini(self):
+        """Outcome is deterministic; Gemini's allowed_cats must not include it."""
+        captured: dict = {}
         item = {
             "item_id": 2,
             "title": "Something",
@@ -277,10 +273,13 @@ class TestExtractItemSummariesSemantic:
             "time_start_ms": 0,
             "time_end_ms": 300_000,
         }
-        segments = [_seg(0, "Unrelated content here for now.")]
-        out = extract_item_summaries(item, segments, encoder=StubEncoder())
-        # Outcome should appear exactly once.
-        assert sum(1 for o in out if o["category"] == "Outcome") == 1
+        segments = [_seg(0, "Plenty of text to reach the min length threshold.")]
+        stub = _stub_extractor([], captured=captured)
+        extract_item_summaries(item, segments, gemini_extractor=stub)
+        # Outcome is always deterministic → must be excluded.
+        assert "Outcome" not in captured["allowed_cats"]
+        # Only the 12 semantic categories are exposed to Gemini.
+        assert set(captured["allowed_cats"]).issubset(set(SEMANTIC_CATEGORIES))
 
 
 # ── Ordering / eligibility ──────────────────────────────────────────────────
@@ -300,7 +299,7 @@ class TestSortOrder:
             "time_start_ms": 0,
             "time_end_ms": 600_000,
         }
-        out = extract_item_summaries(item, [], encoder=StubEncoder())
+        out = extract_item_summaries(item, [])
         order_idx = [CATEGORIES.index(o["category"]) for o in out]
         assert order_idx == sorted(order_idx)
 
@@ -365,6 +364,7 @@ class TestNextStepConditional:
 
 class TestUnanimousSuppression:
     def test_unanimous_text_suppresses_dissent(self):
+        captured: dict = {}
         item = {
             "item_id": 10,
             "title": "Policy Update",
@@ -377,12 +377,13 @@ class TestUnanimousSuppression:
             "time_start_ms": 0,
             "time_end_ms": 600_000,
         }
-        segments = [_seg(0, "Cycling commuting reduces city emissions significantly over time.")]
-        out = extract_item_summaries(item, segments, encoder=StubEncoder())
-        cats = [o["category"] for o in out]
-        assert "Dissenting View" not in cats
+        segments = [_seg(0, "Plenty of discussion happened across the room here.")]
+        stub = _stub_extractor([], captured=captured)
+        extract_item_summaries(item, segments, gemini_extractor=stub)
+        assert "Dissenting View" not in captured["allowed_cats"]
 
     def test_zero_against_suppresses_dissent(self):
+        captured: dict = {}
         item = {
             "item_id": 11,
             "title": "Policy Update",
@@ -395,51 +396,71 @@ class TestUnanimousSuppression:
             "time_start_ms": 0,
             "time_end_ms": 600_000,
         }
-        segments = [_seg(0, "Cycling commuting reduces city emissions significantly over time.")]
-        out = extract_item_summaries(item, segments, encoder=StubEncoder())
-        cats = [o["category"] for o in out]
-        assert "Dissenting View" not in cats
+        segments = [_seg(0, "Plenty of discussion happened across the room here.")]
+        stub = _stub_extractor([], captured=captured)
+        extract_item_summaries(item, segments, gemini_extractor=stub)
+        assert "Dissenting View" not in captured["allowed_cats"]
 
 
-# ── Sentence deduplication in semantic pass ────────────────────────────────
+# ── Chip sanitization ──────────────────────────────────────────────────────
 
 
-class DedupeStubEncoder(Encoder):
-    """All queries and all sentences get the same high-similarity vector,
-    forcing the same sentence to be the 'best' for every category.
-    Deduplication should prevent it from appearing more than once.
-    """
+class TestSanitizeChips:
+    def test_filters_invalid_category(self):
+        out = _sanitize_chips(
+            [{"category": "Not Real", "text": "hello"}],
+            allowed_cats=["Promise Made"],
+        )
+        assert out == []
 
-    def encode(self, texts):
-        return [[1.0, 0.0, 0.0]] * len(texts)
+    def test_trims_long_text(self):
+        long = "x" * 120
+        out = _sanitize_chips(
+            [{"category": "Promise Made", "text": long}],
+            allowed_cats=["Promise Made"],
+        )
+        assert out and len(out[0]["text"]) <= MAX_SUMMARY_CHARS
 
-
-class TestSemanticDedup:
-    def test_same_sentence_not_reused(self):
-        sentences = ["This single sentence is long enough for a chip summary surely."]
-        out = _extract_semantic(sentences, DedupeStubEncoder(), exclude=set())
+    def test_dedupes_same_text(self):
+        out = _sanitize_chips(
+            [
+                {"category": "Promise Made", "text": "Commit to this work"},
+                {"category": "Equity Impact", "text": "Commit to this work"},
+            ],
+            allowed_cats=["Promise Made", "Equity Impact"],
+        )
         assert len(out) == 1
 
-    def test_no_duplicate_texts_in_output(self):
-        sentences = [
-            "This single sentence is long enough for a chip summary surely.",
-            "Another decent sentence that also has enough length here.",
-        ]
-        out = _extract_semantic(sentences, DedupeStubEncoder(), exclude=set())
-        texts = [o["text"] for o in out]
-        assert len(texts) == len(set(texts))
+    def test_not_a_list(self):
+        assert _sanitize_chips({"oops": 1}, allowed_cats=["Promise Made"]) == []
 
-
-# ── Quality gate on semantic results ───────────────────────────────────────
-
-
-class TestSemanticQualityGate:
-    def test_trailing_junk_filtered(self):
-        chip = _trim_to_chip(
-            "They reduce flood risk, moderate urban heat and support by additional means"
+    def test_missing_fields(self):
+        out = _sanitize_chips(
+            [{"category": "Promise Made"}, {"text": "hello"}, {}],
+            allowed_cats=["Promise Made"],
         )
-        from app.item_categorizer import _TRAILING_JUNK_RE
-        assert _TRAILING_JUNK_RE.search(chip)
+        assert out == []
+
+
+# ── GeminiExtractor state ──────────────────────────────────────────────────
+
+
+class TestGeminiExtractorState:
+    def test_disabled_without_api_key(self, monkeypatch):
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        assert GeminiExtractor().enabled is False
+
+    def test_enabled_with_generate_hook(self):
+        ex = GeminiExtractor(api_key=None, generate=lambda p, c: "[]")
+        assert ex.enabled is True
+
+    def test_enabled_with_api_key(self):
+        ex = GeminiExtractor(api_key="fake")
+        assert ex.enabled is True
+
+    def test_empty_transcript_returns_empty(self):
+        ex = _stub_extractor([{"category": "Promise Made", "text": "hi"}])
+        assert ex.extract({"title": "X"}, "   ", exclude=set()) == []
 
 
 class TestNextStepSliceQuality:
@@ -484,39 +505,3 @@ class TestRelatedItemSliceQuality:
         assert not rel[0]["text"].startswith(("'d", "d ")), rel[0]["text"]
 
 
-class TestSemanticDisqualifiers:
-    def test_clarify_disqualifies_unanswered_question(self):
-        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
-        pats = _SEMANTIC_DISQUALIFIERS["Unanswered Question"]
-        text = "Just to clarify your question, Councillor Park."
-        assert any(p.search(text) for p in pats)
-
-    def test_clarify_disqualifies_staff_vs_council(self):
-        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
-        pats = _SEMANTIC_DISQUALIFIERS["Staff vs. Council"]
-        text = "I want to clarify for the public watching, what city council does."
-        assert any(p.search(text) for p in pats)
-
-    def test_we_want_to_disqualifies_env_impact(self):
-        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
-        pats = _SEMANTIC_DISQUALIFIERS["Environmental Impact"]
-        text = "We want to look at sustainability."
-        assert any(p.search(text) for p in pats)
-
-    def test_normal_sentence_not_disqualified(self):
-        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
-        pats = _SEMANTIC_DISQUALIFIERS.get("Unanswered Question", [])
-        text = "What happens to the funding if the project is delayed?"
-        assert not any(p.search(text) for p in pats)
-
-    def test_question_disqualifies_promise_made(self):
-        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
-        pats = _SEMANTIC_DISQUALIFIERS["Promise Made"]
-        text = "I'm just wondering what is the will of council."
-        assert any(p.search(text) for p in pats)
-
-    def test_question_mark_disqualifies_promise_made(self):
-        from app.item_categorizer import _SEMANTIC_DISQUALIFIERS
-        pats = _SEMANTIC_DISQUALIFIERS["Promise Made"]
-        text = "Could we commit to doing more here?"
-        assert any(p.search(text) for p in pats)

@@ -45,18 +45,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
-          pip install "numpy<2"
-          pip install --extra-index-url https://download.pytorch.org/whl/cpu \
-            torch==2.2.2+cpu
-          pip install sentence-transformers==2.7.0
-
-      - name: Pre-download MiniLM model
-        run: |
-          python -c "
-          from sentence_transformers import SentenceTransformer
-          SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-          print('MiniLM loaded')
-          "
+          pip install google-genai
 
       - name: Configure git
         run: |
@@ -64,6 +53,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Summarize meetings
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           LIMIT="${{ inputs.limit || '2' }}"
           TABS="${{ inputs.tabs || '' }}"

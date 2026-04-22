@@ -27,7 +27,7 @@ from app.transcriber import load_cached_transcript, _git, TRANSCRIPT_BRANCH
 from app.item_categorizer import (
     extract_item_summaries,
     is_eligible_for_summary,
-    MiniLMEncoder,
+    GeminiExtractor,
 )
 from app.item_summaries_store import (
     SUMMARIES_BRANCH,
@@ -70,7 +70,7 @@ def push_summaries_branch() -> None:
                 raise
 
 
-def summarize_meeting(meeting_id: str, encoder) -> dict[str, list[dict]]:
+def summarize_meeting(meeting_id: str, extractor) -> dict[str, list[dict]]:
     """Run the extractor across every eligible agenda item in the meeting."""
     transcript = load_cached_transcript(meeting_id)
     if not transcript:
@@ -83,7 +83,9 @@ def summarize_meeting(meeting_id: str, encoder) -> dict[str, list[dict]]:
         if not is_eligible_for_summary(item):
             summaries[str(item["item_id"])] = []
             continue
-        entries = extract_item_summaries(item, transcript, encoder=encoder)
+        entries = extract_item_summaries(
+            item, transcript, gemini_extractor=extractor,
+        )
         summaries[str(item["item_id"])] = entries
     return summaries
 
@@ -110,7 +112,12 @@ def main() -> None:
     if args.tabs:
         tabs = [t for t in MEETING_TABS if t["slug"] in args.tabs]
 
-    encoder = MiniLMEncoder()
+    extractor = GeminiExtractor()
+    if not extractor.enabled:
+        print(
+            "WARNING: GEMINI_API_KEY is not set — only deterministic chips "
+            "will be produced (no LLM pass)."
+        )
 
     summarized = 0
     skipped = 0
@@ -143,7 +150,7 @@ def main() -> None:
 
             print(f"  [{m.date}] {mid[:8]}... summarizing...", flush=True)
             try:
-                summaries = summarize_meeting(mid, encoder)
+                summaries = summarize_meeting(mid, extractor)
                 save_summaries(mid, summaries)
                 summarized += 1
                 processed_this_tab += 1

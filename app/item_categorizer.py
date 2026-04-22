@@ -9,21 +9,21 @@ Categories are a closed list of 23 labels.  Extraction runs in two passes:
      Amendment Made, Procedural Note, Delegation, Next Step, Related Item,
      Deferred From, Declared Conflict, Data Cited.
 
-  2. Semantic pass — sentence-transformers (all-MiniLM-L6-v2, CPU, ~80 MB)
-     encodes every transcript sentence and every remaining category's
-     representative query; the best sentence above a per-category cosine
-     threshold becomes the summary text for that category.
+  2. LLM pass — a single Gemini 2.5 Flash call per item, constrained to a
+     JSON schema of ``{category, text}`` for the 12 remaining "soft"
+     categories.  Runs only when ``GEMINI_API_KEY`` is set; otherwise only
+     deterministic chips are emitted.
 
 All summaries are trimmed to <=60 characters at a word boundary.
 
-The module has no hard dependency on sentence-transformers at import time —
-the model is lazy-loaded.  Tests can inject a stub encoder via the
-``encoder`` parameter of ``extract_item_summaries``.
+Tests can inject a stub extractor via the ``gemini_extractor`` parameter of
+``extract_item_summaries``.
 """
 
 from __future__ import annotations
 
-import math
+import json
+import os
 import re
 
 from app.summarizer import (
@@ -94,61 +94,24 @@ _CATEGORY_ORDER: dict[str, int] = {c: i for i, c in enumerate(CATEGORIES)}
 
 MAX_SUMMARY_CHARS = 60
 
-# Query strings embedded once and compared against transcript sentences.
-SEMANTIC_QUERIES: dict[str, str] = {
-    "In Plain Terms": "a plain-language explanation of what this item actually does",
-    "Debate Highlight": "a sharp or notable moment of disagreement during debate",
-    "Who's Affected": "which residents, neighbourhoods, or groups will be directly affected",
-    "Staff vs. Council": "a disagreement between city administration and elected councillors",
-    "Precedent Set": "setting a first-of-its-kind precedent for future decisions",
-    "Unanswered Question": "a question raised by a councillor that went unanswered",
-    "Public Sentiment": "members of the public expressing support or opposition",
-    "Dissenting View": "a councillor explaining why they voted against the motion",
-    "Legal Risk Flagged": "legal liability or litigation risk being raised",
-    "Equity Impact": "impact on marginalized, low-income, or under-served groups",
-    "Environmental Impact": "environmental, ecological, or emissions impact",
-    "Promise Made": "a public commitment or promise from council or staff",
+# Categories handled by the LLM pass.  Each maps to a plain-English
+# definition that is included verbatim in the Gemini prompt.
+SEMANTIC_DEFINITIONS: dict[str, str] = {
+    "In Plain Terms": "a 1-sentence plain-language explanation of what this item actually does, written so a busy resident understands it",
+    "Debate Highlight": "a sharp or notable moment of debate — a memorable quote or a pointed exchange",
+    "Who's Affected": "which specific residents, neighbourhoods, businesses, or groups are directly affected",
+    "Staff vs. Council": "a real disagreement between city administration and elected councillors (not just a clarifying question)",
+    "Precedent Set": "a first-of-its-kind decision that will be referenced in future cases",
+    "Unanswered Question": "a substantive question raised that was NOT answered (if it was answered or clarified, do NOT emit this)",
+    "Public Sentiment": "members of the public expressing clear support or opposition (not just 'public engagement is required')",
+    "Dissenting View": "a councillor's stated reason for voting against the motion (omit if the vote was unanimous)",
+    "Legal Risk Flagged": "legal liability, lawsuits, or statutory-risk being raised",
+    "Equity Impact": "concrete impact on marginalized, low-income, Indigenous, or under-served groups",
+    "Environmental Impact": "environmental, ecological, or emissions impact (not just the word 'environment' appearing)",
+    "Promise Made": "a specific public commitment or promise from council or staff (not a question or wondering)",
 }
 
-# Per-category cosine thresholds.  Categories that false-positive on surface
-# words (e.g. "question" matching "Unanswered Question") need a higher bar.
-_SEMANTIC_THRESHOLDS: dict[str, float] = {
-    "In Plain Terms": 0.50,
-    "Debate Highlight": 0.55,
-    "Who's Affected": 0.50,
-    "Staff vs. Council": 0.60,
-    "Precedent Set": 0.55,
-    "Unanswered Question": 0.60,
-    "Public Sentiment": 0.55,
-    "Dissenting View": 0.55,
-    "Legal Risk Flagged": 0.55,
-    "Equity Impact": 0.55,
-    "Environmental Impact": 0.55,
-    "Promise Made": 0.55,
-}
-_DEFAULT_THRESHOLD = 0.55
-
-# Regex patterns that disqualify a sentence for a given category even when
-# the cosine similarity is above threshold.
-_SEMANTIC_DISQUALIFIERS: dict[str, list[re.Pattern]] = {
-    "Unanswered Question": [
-        re.compile(r"\bto clarify\b", re.I),
-        re.compile(r"\bto answer\b", re.I),
-        re.compile(r"\bin response\b", re.I),
-    ],
-    "Staff vs. Council": [
-        re.compile(r"\bto clarify\b", re.I),
-        re.compile(r"\bmixed some\b", re.I),
-    ],
-    "Environmental Impact": [
-        re.compile(r"^we want to\b", re.I),
-    ],
-    "Promise Made": [
-        re.compile(r"^we want to\b", re.I),
-        re.compile(r"\bwondering\b", re.I),
-        re.compile(r"\?", re.I),
-    ],
-}
+SEMANTIC_CATEGORIES: list[str] = list(SEMANTIC_DEFINITIONS.keys())
 
 
 def _sentence_around(text: str, start: int, end: int) -> str:
@@ -446,101 +409,129 @@ def _extract_data_cited(transcript_text: str) -> list[dict]:
 # ── Semantic pass ───────────────────────────────────────────────────────────
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(x * x for x in b))
-    if na == 0 or nb == 0:
-        return 0.0
-    return dot / (na * nb)
+GEMINI_MODEL = "gemini-2.5-flash"
 
 
-class Encoder:
-    """Abstract encoder; implementations return list[list[float]] vectors."""
+class GeminiExtractor:
+    """Calls Gemini to extract the 12 semantic categories for one item.
 
-    def encode(self, texts: list[str]) -> list[list[float]]:  # pragma: no cover
-        raise NotImplementedError
+    Tests can substitute a stub by providing a custom ``generate`` callable.
+    """
 
+    def __init__(
+        self,
+        api_key: str | None = None,
+        generate=None,
+    ):
+        self._api_key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY")
+        self._generate = generate
+        self._client = None
 
-class MiniLMEncoder(Encoder):
-    """Real encoder backed by sentence-transformers MiniLM."""
+    @property
+    def enabled(self) -> bool:
+        return bool(self._api_key) or self._generate is not None
 
-    _model = None
+    def _get_client(self):
+        if self._client is None:
+            from google import genai  # lazy import
 
-    def _load(self):
-        if MiniLMEncoder._model is None:
-            from sentence_transformers import SentenceTransformer
+            self._client = genai.Client(api_key=self._api_key)
+        return self._client
 
-            MiniLMEncoder._model = SentenceTransformer(
-                "sentence-transformers/all-MiniLM-L6-v2"
-            )
-        return MiniLMEncoder._model
-
-    def encode(self, texts: list[str]) -> list[list[float]]:
-        model = self._load()
-        arr = model.encode(
-            texts, convert_to_numpy=True, show_progress_bar=False,
+    def _call(self, prompt: str, allowed_cats: list[str]) -> str:
+        if self._generate is not None:
+            return self._generate(prompt, allowed_cats)
+        client = self._get_client()
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": _chip_list_schema(allowed_cats),
+                "temperature": 0.2,
+            },
         )
-        return [list(map(float, row)) for row in arr]
+        return response.text or "[]"
+
+    def extract(
+        self, item: dict, transcript_text: str, exclude: set[str],
+    ) -> list[dict]:
+        if not transcript_text.strip():
+            return []
+        allowed = [c for c in SEMANTIC_CATEGORIES if c not in exclude]
+        if not allowed:
+            return []
+        prompt = _build_prompt(item, transcript_text, allowed)
+        try:
+            raw = self._call(prompt, allowed)
+            parsed = json.loads(raw)
+        except Exception as exc:
+            print(f"    Gemini call failed: {exc}")
+            return []
+        return _sanitize_chips(parsed, allowed)
 
 
-_TRAILING_JUNK_RE = re.compile(
-    r"\s+(?:by|and|the|to|for|of|in|a|an|that|which|with|from|on|or|but|as|"
-    r"their|our|its|is|are|was|were|has|have|had|this|it|we|they|some|"
-    r"about|into|over|at|than|not|all|no)…$"
-)
+def _chip_list_schema(allowed_cats: list[str]) -> dict:
+    return {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "enum": allowed_cats},
+                "text": {"type": "string", "maxLength": MAX_SUMMARY_CHARS},
+            },
+            "required": ["category", "text"],
+        },
+    }
 
-_MIN_SEMANTIC_CHIP_LEN = 25
+
+def _build_prompt(
+    item: dict, transcript_text: str, allowed_cats: list[str],
+) -> str:
+    lines = [
+        "You are extracting short 'chip' summaries from a Saskatoon city "
+        "council meeting transcript for ONE agenda item.",
+        "",
+        f"Agenda item title: {item.get('title') or '(untitled)'}",
+        "",
+        "For each relevant category below, emit at most ONE chip whose `text` "
+        f"is <= {MAX_SUMMARY_CHARS} characters.  Skip a category entirely if "
+        "the transcript has nothing substantive for it.  Prefer to paraphrase "
+        "concisely rather than quote filler; avoid chips that are just "
+        "procedural or clarifying statements.  Never fabricate details — if "
+        "something is not clearly in the transcript, omit it.",
+        "",
+        "Categories:",
+    ]
+    for cat in allowed_cats:
+        lines.append(f"- {cat}: {SEMANTIC_DEFINITIONS[cat]}")
+    lines.extend([
+        "",
+        "Transcript:",
+        transcript_text,
+        "",
+        "Return a JSON array.  An empty array is valid if nothing fits.",
+    ])
+    return "\n".join(lines)
 
 
-def _extract_semantic(
-    sentences: list[str], encoder: Encoder, exclude: set[str],
-) -> list[dict]:
-    """Run semantic matching for categories not in *exclude*."""
-    if not sentences:
+def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
+    if not isinstance(parsed, list):
         return []
-    target_cats = [c for c in SEMANTIC_QUERIES if c not in exclude]
-    if not target_cats:
-        return []
-
-    queries = [SEMANTIC_QUERIES[c] for c in target_cats]
-    # Encode queries + sentences in a single batch for efficiency.
-    vectors = encoder.encode(queries + sentences)
-    query_vecs = vectors[: len(queries)]
-    sent_vecs = vectors[len(queries):]
-
-    # Build scored list per category, then pick best without reusing sentences.
-    cat_best: list[tuple[str, float, str]] = []
-    for cat, qv in zip(target_cats, query_vecs):
-        best_score = 0.0
-        best_sentence = ""
-        for sent, sv in zip(sentences, sent_vecs):
-            score = _cosine(qv, sv)
-            if score > best_score:
-                best_score = score
-                best_sentence = sent
-        cat_best.append((cat, best_score, best_sentence))
-
-    # Sort by score descending so higher-confidence categories claim first.
-    cat_best.sort(key=lambda t: t[1], reverse=True)
-
+    allowed = set(allowed_cats)
     results: list[dict] = []
-    used_sentences: set[str] = set()
-    for cat, score, sent in cat_best:
-        threshold = _SEMANTIC_THRESHOLDS.get(cat, _DEFAULT_THRESHOLD)
-        if score < threshold or not sent:
+    seen_texts: set[str] = set()
+    for entry in parsed:
+        if not isinstance(entry, dict):
             continue
-        if sent in used_sentences:
+        cat = entry.get("category")
+        text = entry.get("text")
+        if cat not in allowed or not isinstance(text, str) or not text.strip():
             continue
-        disqualifiers = _SEMANTIC_DISQUALIFIERS.get(cat, [])
-        if any(p.search(sent) for p in disqualifiers):
+        chip = _trim_to_chip(text)
+        if not chip or chip in seen_texts:
             continue
-        chip = _trim_to_chip(sent)
-        if len(chip) < _MIN_SEMANTIC_CHIP_LEN:
-            continue
-        if _TRAILING_JUNK_RE.search(chip):
-            continue
-        used_sentences.add(sent)
+        seen_texts.add(chip)
         results.append({"category": cat, "text": chip})
     return results
 
@@ -582,13 +573,14 @@ def is_eligible_for_summary(item: dict) -> bool:
 def extract_item_summaries(
     item: dict,
     transcript_segments: list[dict],
-    encoder: Encoder | None = None,
+    gemini_extractor: GeminiExtractor | None = None,
 ) -> list[dict]:
     """Extract category chip summaries for a single agenda item.
 
     Returns a list of ``{"category": str, "text": str}`` sorted by the
-    canonical 23-category order.  The same category may appear more than
-    once (e.g. multiple Cost & Funding entries).
+    canonical 23-category order.  The deterministic pass always runs.  The
+    Gemini pass runs only when ``gemini_extractor`` is provided or
+    ``GEMINI_API_KEY`` is set in the environment.
     """
     slice_segments = _slice_transcript(transcript_segments, item)
     transcript_text = " ".join(s.get("text", "") for s in slice_segments)
@@ -612,10 +604,9 @@ def extract_item_summaries(
     if "UNANIM" in vote or _is_unanimous_tally(item):
         covered.add("Dissenting View")
 
-    sentences = _split_sentences(transcript_text)
-    if sentences:
-        enc = encoder or MiniLMEncoder()
-        results.extend(_extract_semantic(sentences, enc, exclude=covered))
+    extractor = gemini_extractor if gemini_extractor is not None else GeminiExtractor()
+    if extractor.enabled and transcript_text.strip():
+        results.extend(extractor.extract(item, transcript_text, exclude=covered))
 
     results.sort(key=lambda r: _CATEGORY_ORDER.get(r["category"], 999))
     return results
