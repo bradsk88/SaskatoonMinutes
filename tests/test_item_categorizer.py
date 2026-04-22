@@ -54,12 +54,19 @@ class TestTrimToChip:
     def test_short_passthrough(self):
         assert _trim_to_chip("Approved (8-3)") == "Approved (8-3)"
 
-    def test_long_truncated_at_word(self):
-        text = "This is a long sentence that should be trimmed to sixty characters"
+    def test_overflow_with_natural_break_trimmed_at_break(self):
+        text = (
+            "Council debated the proposal at length. "
+            "Residents raised concerns about parking and traffic on the side streets."
+        )
         result = _trim_to_chip(text)
         assert len(result) <= MAX_SUMMARY_CHARS
-        assert result.endswith("…")
-        assert " " in result  # word boundary preserved
+        assert not result.endswith("…")
+        assert result == "Council debated the proposal at length"
+
+    def test_overflow_without_natural_break_dropped(self):
+        text = "x" * (MAX_SUMMARY_CHARS + 20)
+        assert _trim_to_chip(text) == ""
 
     def test_strips_filler_leads(self):
         assert _trim_to_chip("I think the budget is fine") == "the budget is fine"
@@ -225,14 +232,20 @@ import json
 def _stub_extractor(response: list[dict], captured: dict | None = None):
     """Build a GeminiExtractor whose generate() returns *response* as JSON.
 
-    If *captured* is provided, the extractor records the allowed_cats list
-    passed to generate() under the key "allowed_cats".
+    Any chip in ``response`` without an explicit ``usefulness`` field is
+    treated as ``"high"`` for convenience.  If ``captured`` is provided, the
+    extractor records the allowed_cats and prompt passed to generate().
     """
+    filled = [
+        {"usefulness": "high", **r} if "usefulness" not in r else r
+        for r in response
+    ]
+
     def _generate(prompt, allowed_cats):
         if captured is not None:
             captured["allowed_cats"] = list(allowed_cats)
             captured["prompt"] = prompt
-        return json.dumps(response)
+        return json.dumps(filled)
     return GeminiExtractor(api_key=None, generate=_generate)
 
 
@@ -408,24 +421,24 @@ class TestUnanimousSuppression:
 class TestSanitizeChips:
     def test_filters_invalid_category(self):
         out = _sanitize_chips(
-            [{"category": "Not Real", "text": "hello"}],
+            [{"category": "Not Real", "text": "hello", "usefulness": "high"}],
             allowed_cats=["Promise Made"],
         )
         assert out == []
 
-    def test_trims_long_text(self):
-        long = "x" * 120
+    def test_drops_unnaturally_long_text(self):
+        long = "x" * (MAX_SUMMARY_CHARS + 20)
         out = _sanitize_chips(
-            [{"category": "Promise Made", "text": long}],
+            [{"category": "Promise Made", "text": long, "usefulness": "high"}],
             allowed_cats=["Promise Made"],
         )
-        assert out and len(out[0]["text"]) <= MAX_SUMMARY_CHARS
+        assert out == []
 
     def test_dedupes_same_text(self):
         out = _sanitize_chips(
             [
-                {"category": "Promise Made", "text": "Commit to this work"},
-                {"category": "Equity Impact", "text": "Commit to this work"},
+                {"category": "Promise Made", "text": "Commit to this work", "usefulness": "high"},
+                {"category": "Equity Impact", "text": "Commit to this work", "usefulness": "high"},
             ],
             allowed_cats=["Promise Made", "Equity Impact"],
         )
@@ -440,6 +453,34 @@ class TestSanitizeChips:
             allowed_cats=["Promise Made"],
         )
         assert out == []
+
+    def test_drops_medium_usefulness(self):
+        out = _sanitize_chips(
+            [{"category": "Promise Made", "text": "Decent", "usefulness": "medium"}],
+            allowed_cats=["Promise Made"],
+        )
+        assert out == []
+
+    def test_drops_low_usefulness(self):
+        out = _sanitize_chips(
+            [{"category": "Promise Made", "text": "Vague filler", "usefulness": "low"}],
+            allowed_cats=["Promise Made"],
+        )
+        assert out == []
+
+    def test_drops_missing_usefulness(self):
+        out = _sanitize_chips(
+            [{"category": "Promise Made", "text": "Missing rating"}],
+            allowed_cats=["Promise Made"],
+        )
+        assert out == []
+
+    def test_keeps_high_usefulness(self):
+        out = _sanitize_chips(
+            [{"category": "Promise Made", "text": "Staff will publish Q2 plan", "usefulness": "high"}],
+            allowed_cats=["Promise Made"],
+        )
+        assert len(out) == 1
 
 
 # ── GeminiExtractor state ──────────────────────────────────────────────────

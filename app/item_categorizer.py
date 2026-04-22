@@ -92,7 +92,7 @@ CATEGORY_GROUP: dict[str, str] = {
 
 _CATEGORY_ORDER: dict[str, int] = {c: i for i, c in enumerate(CATEGORIES)}
 
-MAX_SUMMARY_CHARS = 60
+MAX_SUMMARY_CHARS = 100
 
 # Categories handled by the LLM pass.  Each maps to a plain-English
 # definition that is included verbatim in the Gemini prompt.
@@ -175,17 +175,24 @@ _FILLER_LEADS = re.compile(
 
 
 def _trim_to_chip(text: str, limit: int = MAX_SUMMARY_CHARS) -> str:
-    """Trim text to a chip-sized string at a word boundary."""
+    """Clean text for a chip.  Returns '' if it can't fit at a natural break.
+
+    Prefers dropping a chip over mid-word truncation: overflow is only
+    accepted when there is a sentence or clause boundary that fits within
+    ``limit`` characters.
+    """
     text = _clean_entities(text)
     text = _FILLER_LEADS.sub("", text)
     text = text.strip().strip(",;:")
+    if not text:
+        return ""
     if len(text) <= limit:
         return text
-    cut = text[: limit - 1]
-    sp = cut.rfind(" ")
-    if sp > 10:
-        cut = cut[:sp]
-    return cut.rstrip(",;:") + "…"
+    for sep in (". ", "! ", "? ", "; ", ", "):
+        idx = text.rfind(sep, 0, limit)
+        if idx > 20:
+            return text[:idx].rstrip(",;:")
+    return ""
 
 
 # ── Deterministic extractors ────────────────────────────────────────────────
@@ -471,6 +478,9 @@ class GeminiExtractor:
         return _sanitize_chips(parsed, allowed)
 
 
+USEFULNESS_LEVELS: list[str] = ["high", "medium", "low"]
+
+
 def _chip_list_schema(allowed_cats: list[str]) -> dict:
     return {
         "type": "array",
@@ -479,8 +489,9 @@ def _chip_list_schema(allowed_cats: list[str]) -> dict:
             "properties": {
                 "category": {"type": "string", "enum": allowed_cats},
                 "text": {"type": "string", "maxLength": MAX_SUMMARY_CHARS},
+                "usefulness": {"type": "string", "enum": USEFULNESS_LEVELS},
             },
-            "required": ["category", "text"],
+            "required": ["category", "text", "usefulness"],
         },
     }
 
@@ -494,12 +505,24 @@ def _build_prompt(
         "",
         f"Agenda item title: {item.get('title') or '(untitled)'}",
         "",
-        "For each relevant category below, emit at most ONE chip whose `text` "
-        f"is <= {MAX_SUMMARY_CHARS} characters.  Skip a category entirely if "
-        "the transcript has nothing substantive for it.  Prefer to paraphrase "
-        "concisely rather than quote filler; avoid chips that are just "
-        "procedural or clarifying statements.  Never fabricate details — if "
-        "something is not clearly in the transcript, omit it.",
+        "For each relevant category below, emit at most ONE chip. Each chip "
+        f"`text` must be a complete, self-contained phrase of at most "
+        f"{MAX_SUMMARY_CHARS} characters (no trailing ellipsis, no cut-off "
+        "sentences). Paraphrase tightly rather than quoting filler, avoid "
+        "procedural or merely clarifying statements, and never fabricate — "
+        "if the transcript doesn't clearly support a chip, omit it.",
+        "",
+        "Rate each chip's `usefulness`:",
+        "- \"high\": a resident learns something concrete from this chip that "
+        "they could NOT infer from the item title alone — a specific number, "
+        "a named commitment, an identified impact, a real disagreement, a "
+        "concrete next step, or a pointed quote.",
+        "- \"medium\": accurate but mostly restates the obvious, or adds only "
+        "mild colour.",
+        "- \"low\": vague, procedural filler, or could apply to any meeting.",
+        "",
+        "Only include chips you would rate \"high\". If no high-value chip "
+        "fits a category, skip that category.",
         "",
         "Categories:",
     ]
@@ -516,6 +539,7 @@ def _build_prompt(
 
 
 def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
+    """Filter the LLM output down to clean, high-usefulness chips."""
     if not isinstance(parsed, list):
         return []
     allowed = set(allowed_cats)
@@ -526,7 +550,10 @@ def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
             continue
         cat = entry.get("category")
         text = entry.get("text")
+        usefulness = entry.get("usefulness")
         if cat not in allowed or not isinstance(text, str) or not text.strip():
+            continue
+        if usefulness != "high":
             continue
         chip = _trim_to_chip(text)
         if not chip or chip in seen_texts:
@@ -597,6 +624,8 @@ def extract_item_summaries(
     results.extend(_extract_procedural_note(item))
     results.extend(_extract_data_cited(transcript_text))
 
+    # Drop deterministic chips that couldn't be fit at a natural break.
+    results = [r for r in results if r.get("text")]
     covered = {r["category"] for r in results}
 
     # Suppress logically impossible semantic categories.
