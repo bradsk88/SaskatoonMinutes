@@ -15,6 +15,11 @@ on:
         description: 'Max meetings per tab'
         required: false
         default: '2'
+      force:
+        description: 'Re-summarize meetings that already have cached summaries'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: summarize
@@ -66,6 +71,9 @@ jobs:
           ARGS="--limit $LIMIT"
           if [ -n "$TABS" ]; then
             ARGS="$ARGS --tabs $TABS"
+          fi
+          if [ "${{ inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
           fi
 
           python scripts/summarize_meetings.py $ARGS

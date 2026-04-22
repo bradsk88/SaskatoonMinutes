@@ -98,6 +98,10 @@ def main() -> None:
         "--tabs", nargs="*", default=None,
         help="Tab slugs to process (default: all).",
     )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Re-summarize meetings that already have cached summaries.",
+    )
     args = parser.parse_args()
 
     ensure_branches()
@@ -129,7 +133,7 @@ def main() -> None:
                 continue
 
             mid = m.meeting_id
-            if load_cached_summaries(mid) is not None:
+            if not args.force and load_cached_summaries(mid) is not None:
                 print(f"  [{m.date}] {mid[:8]}... already summarized")
                 skipped += 1
                 continue
