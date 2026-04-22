@@ -31,6 +31,8 @@ STATIC_DIR = os.path.join(PROJECT_ROOT, "app", "static")
 
 ESCRIBEMEETINGS_BASE = "https://pub-saskatoon.escribemeetings.com"
 
+MEETINGS_PER_TAB = 20
+
 
 def fetch_with_retry(func, *args, retries=3, delay=3, **kwargs):
     """Call *func* with retry logic and exponential backoff."""
@@ -117,6 +119,7 @@ def fetch_all_data():
         meetings, total_count = fetch_with_retry(
             fetch_past_meetings, page=1, meeting_type=meeting_type,
         )
+        meetings = meetings[:MEETINGS_PER_TAB]
         meetings_data = [m.to_dict() for m in meetings]
         print(f"  Got {len(meetings_data)} meetings (total: {total_count})")
 
