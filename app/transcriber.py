@@ -20,6 +20,52 @@ _PAGE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
 }
 
+# Whisper initial_prompt — biases the decoder toward domain vocabulary so
+# proper nouns and local jargon are transcribed correctly instead of
+# phonetic gibberish ("Me was in" → "Meewasin").
+WHISPER_INITIAL_PROMPT = (
+    "Saskatoon City Council meeting. "
+    # Current council (2024-2028)
+    "Mayor Cynthia Block. "
+    "Councillor Kathryn MacDonald, Councillor Senos Timon, "
+    "Councillor Robert Pearce, Councillor Troy Davies, "
+    "Councillor Randy Donauer, Councillor Jasmin Parker, "
+    "Councillor Holly Kelleher, Councillor Scott Ford, "
+    "Councillor Bev Dubois, Councillor Zach Jeffries. "
+    # Previous council (2020-2024)
+    "Mayor Charlie Clark. "
+    "Councillor Darren Hill, Councillor Hilary Gough, "
+    "Councillor David Kirton, Councillor Mairin Loewen, "
+    "Councillor Sarina Gersher. "
+    # City administration
+    "City Manager Jeff Jorgenson. City Clerk Joanne Chicken. "
+    "City Solicitor. "
+    # Indigenous and cultural terms
+    "Treaty 6 territory. Métis homeland. "
+    "Cree. Dakota. Nakota. Dene. Saulteaux. "
+    # Local organizations and landmarks
+    "Meewasin Valley Authority. Swale Watchers. "
+    "Remai Modern. TCU Place. SaskTel Centre. Midtown Plaza. "
+    "Nutrien Wonderhub. "
+    # Neighbourhoods and geography
+    "Nutana. Riversdale. Caswell Hill. City Park. Sutherland. "
+    "Broadway. Varsity View. Buena Vista. Haultain. Fairhaven. "
+    "Lawson Heights. Stonebridge. Willowgrove. Brighton. "
+    "Confederation. Lakeview. Pleasant Hill. Meadowgreen. Mayfair. "
+    "Blairmore. Rosewood. Evergreen. Kensington. Montgomery. "
+    "Hampton Village. College Park. Silverspring. "
+    # Major roads and infrastructure
+    "Idylwyld Drive. Circle Drive. College Drive. Preston Avenue. "
+    "8th Street. 25th Street. 22nd Street. Attridge Drive. "
+    "Chief Mistawasis Bridge. University Bridge. Broadway Bridge. "
+    # Acronyms and committees
+    "SPC. GPC. BRT. Bus Rapid Transit. "
+    "Standing Policy Committee. "
+    "Governance and Priorities Committee. "
+    "Municipal Planning Commission. "
+    "Board of Police Commissioners."
+)
+
 
 def _extract_video_mp4_url(meeting_id: str) -> str | None:
     """Fetch the eSCRIBE player page and extract the direct MP4 URL.
@@ -60,9 +106,17 @@ def _extract_audio(video_url: str, output_path: str) -> None:
     Uses OGG/Opus instead of WAV to keep file size manageable (~30MB vs
     ~900MB for a full council meeting).  faster-whisper can read OGG
     directly via ffmpeg/libav.
+
+    The ``-reconnect`` flags tell ffmpeg to retry when the HTTP connection
+    drops mid-stream, which prevents truncated downloads on long council
+    meetings (3-5 hours).
     """
     cmd = [
         "ffmpeg", "-y",
+        # HTTP reconnect options — essential for long streams
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "30",
         "-i", video_url,
         "-vn",                  # no video
         "-ac", "1",             # mono
@@ -74,6 +128,22 @@ def _extract_audio(video_url: str, output_path: str) -> None:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg failed: {result.stderr[-500:]}")
+
+
+def _probe_duration(audio_path: str) -> str:
+    """Return a human-readable duration string via ffprobe, or 'unknown'."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
+            capture_output=True, text=True, timeout=10,
+        )
+        secs = float(result.stdout.strip())
+        h, rem = divmod(int(secs), 3600)
+        m, s = divmod(rem, 60)
+        return f"{h}h{m:02d}m{s:02d}s"
+    except Exception:
+        return "duration unknown"
 
 
 def _split_audio(input_path: str, output_dir: str, chunk_minutes: int = 30) -> list[str]:
@@ -114,6 +184,7 @@ def _transcribe_audio(audio_path: str, model: "WhisperModel") -> list[dict]:
     segments, _info = model.transcribe(
         audio_path,
         language="en",
+        initial_prompt=WHISPER_INITIAL_PROMPT,
         vad_filter=True,           # skip silence automatically
         vad_parameters={
             "min_silence_duration_ms": 1000,
@@ -148,7 +219,8 @@ def transcribe_meeting(meeting_id: str, model_size: str = "tiny") -> list[dict]:
         _extract_audio(mp4_url, audio_path)
 
         audio_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-        print(f"  Audio extracted: {audio_size_mb:.0f} MB", flush=True)
+        duration_info = _probe_duration(audio_path)
+        print(f"  Audio extracted: {audio_size_mb:.0f} MB, {duration_info}", flush=True)
 
         # Split into chunks
         chunks_dir = os.path.join(tmpdir, "chunks")

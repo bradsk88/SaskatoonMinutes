@@ -542,6 +542,28 @@ class GeminiExtractor:
         return _sanitize_chips(parsed, allowed)
 
 
+_SASKATOON_NAMES = (
+    # Current council (2024-2028)
+    "Mayor Cynthia Block, "
+    "Councillor Kathryn MacDonald, Councillor Senos Timon, "
+    "Councillor Robert Pearce, Councillor Troy Davies, "
+    "Councillor Randy Donauer, Councillor Jasmin Parker, "
+    "Councillor Holly Kelleher, Councillor Scott Ford, "
+    "Councillor Bev Dubois, Councillor Zach Jeffries. "
+    # Previous council (2020-2024)
+    "Mayor Charlie Clark, "
+    "Councillor Darren Hill, Councillor Hilary Gough, "
+    "Councillor David Kirton, Councillor Mairin Loewen, "
+    "Councillor Sarina Gersher. "
+    # Local vocabulary
+    "Meewasin Valley Authority, Swale Watchers, Remai Modern, "
+    "Métis, Cree, Dakota, Nakota, Dene, Saulteaux, Treaty 6, "
+    "Idylwyld, Nutana, Riversdale, Caswell Hill, Sutherland, "
+    "Buena Vista, Haultain, Stonebridge, Willowgrove, Blairmore, "
+    "Attridge, Chief Mistawasis Bridge."
+)
+
+
 def _build_cleanup_prompt(transcript_text: str) -> str:
     return (
         "You are normalizing the raw automatic transcription of one segment "
@@ -558,7 +580,13 @@ def _build_cleanup_prompt(transcript_text: str) -> str:
         "- You MAY merge run-on conversational chunks into proper sentences "
         "and add periods, commas, and question marks where they belong.\n"
         "- Preserve speaker attributions when present (e.g. \"Councillor "
-        "Pierce said\").\n"
+        "Dubois said\").\n"
+        "- CORRECT garbled proper nouns to the closest match from this "
+        "list of real names and places:\n"
+        f"  {_SASKATOON_NAMES}\n"
+        "  (e.g. \"Du Boa\" or \"DiBoa\" → \"Dubois\", "
+        "\"Me was in\" → \"Meewasin\", \"May-T\" → \"Métis\", "
+        "\"Swail\" → \"Swale\").\n"
         "- Output PLAIN TEXT only — no headers, no commentary, no JSON, no "
         "speaker labels you didn't see in the input.\n"
         "\n"

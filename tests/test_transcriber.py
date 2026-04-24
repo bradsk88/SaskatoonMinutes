@@ -3,8 +3,10 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from app.transcriber import (
+    WHISPER_INITIAL_PROMPT,
     _extract_video_mp4_url,
     _extract_keywords,
+    _probe_duration,
     _section_number_patterns,
     _find_in_transcript,
     correct_timestamps,
@@ -315,3 +317,42 @@ class TestCorrectTimestamps:
         result = correct_timestamps(items, transcript)
         assert result[0]["time_start_ms"] == 4800_000
         assert result[0]["time_start_formatted"] == "1:20:00"
+
+
+# ── Whisper initial_prompt ─────────────────────────────────────────
+
+
+class TestWhisperInitialPrompt:
+    def test_contains_current_mayor(self):
+        assert "Cynthia Block" in WHISPER_INITIAL_PROMPT
+
+    def test_contains_previous_mayor(self):
+        assert "Charlie Clark" in WHISPER_INITIAL_PROMPT
+
+    def test_contains_key_local_vocabulary(self):
+        for term in ("Meewasin", "Métis", "Treaty 6", "Dubois", "Idylwyld"):
+            assert term in WHISPER_INITIAL_PROMPT, f"Missing: {term}"
+
+    def test_contains_councillor_names(self):
+        for name in ("Donauer", "Davies", "Jeffries", "Kelleher", "Timon"):
+            assert name in WHISPER_INITIAL_PROMPT, f"Missing: {name}"
+
+
+# ── Duration probe ─────────────────────────────────────────────────
+
+
+class TestProbeDuration:
+    @patch("app.transcriber.subprocess.run")
+    def test_formats_hours(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="10800.5\n")
+        assert _probe_duration("/fake.ogg") == "3h00m00s"
+
+    @patch("app.transcriber.subprocess.run")
+    def test_formats_short(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="5432.0\n")
+        assert _probe_duration("/fake.ogg") == "1h30m32s"
+
+    @patch("app.transcriber.subprocess.run")
+    def test_returns_unknown_on_error(self, mock_run):
+        mock_run.side_effect = Exception("no ffprobe")
+        assert _probe_duration("/fake.ogg") == "duration unknown"

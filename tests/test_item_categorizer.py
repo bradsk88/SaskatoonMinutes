@@ -7,7 +7,9 @@ from app.item_categorizer import (
     CATEGORY_GROUP,
     MAX_SUMMARY_CHARS,
     SEMANTIC_CATEGORIES,
+    _SASKATOON_NAMES,
     GeminiExtractor,
+    _build_cleanup_prompt,
     _extract_amendment,
     _extract_cost_funding,
     _extract_data_cited,
@@ -687,5 +689,33 @@ class TestRelatedItemSliceQuality:
         rel = [o for o in out if o["category"] == "Related Item"]
         assert rel
         assert not rel[0]["text"].startswith(("'d", "d ")), rel[0]["text"]
+
+
+# ── Cleanup prompt name normalization ──────────────────────────────
+
+
+class TestCleanupPromptNameNormalization:
+    def test_prompt_contains_name_correction_instruction(self):
+        prompt = _build_cleanup_prompt("some transcript text")
+        assert "CORRECT garbled proper nouns" in prompt
+
+    def test_prompt_contains_councillor_names(self):
+        prompt = _build_cleanup_prompt("some text")
+        for name in ("Dubois", "Donauer", "Jeffries", "Kelleher"):
+            assert name in prompt, f"Missing councillor: {name}"
+
+    def test_prompt_contains_local_vocabulary(self):
+        prompt = _build_cleanup_prompt("some text")
+        for term in ("Meewasin", "Métis", "Treaty 6", "Idylwyld"):
+            assert term in prompt, f"Missing term: {term}"
+
+    def test_prompt_contains_correction_examples(self):
+        prompt = _build_cleanup_prompt("some text")
+        assert "Du Boa" in prompt
+        assert "Me was in" in prompt
+
+    def test_saskatoon_names_constant_has_key_entries(self):
+        for name in ("Cynthia Block", "Bev Dubois", "Meewasin", "Métis"):
+            assert name in _SASKATOON_NAMES, f"Missing: {name}"
 
 
