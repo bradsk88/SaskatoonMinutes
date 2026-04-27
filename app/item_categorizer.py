@@ -40,6 +40,7 @@ from app.summarizer import (
     _format_money,
     _format_outcome,
     _is_procedural,
+    _plainify,
 )
 from app.transcriber import _section_number_patterns
 
@@ -213,6 +214,12 @@ def _extract_outcome(item: dict) -> list[dict]:
     outcome = _format_outcome(vote, rec)
     if not outcome or outcome == "Discussed":
         return []
+    title = _plainify(item.get("title") or "")
+    if title:
+        contextual = f"{outcome}: {title}"
+        chip = _trim_to_chip(contextual)
+        if chip:
+            return [{"category": "Outcome", "text": chip}]
     return [{"category": "Outcome", "text": _trim_to_chip(outcome)}]
 
 
@@ -448,6 +455,35 @@ def _extract_data_cited(transcript_text: str) -> list[dict]:
     return [{"category": "Data Cited", "text": _trim_to_chip(m.group(0))}]
 
 
+def _extract_in_plain_terms(item: dict) -> list[dict]:
+    """Fallback 'In Plain Terms' chip derived from the item title and recommendation.
+
+    Always fires so that every substantive item gets at least one chip
+    describing what the item is about, even if the Gemini pass fails or
+    transcript data is unavailable.
+    """
+    title = _plainify(item.get("title") or "")
+    if not title or len(title) < 10:
+        return []
+    rec = (item.get("recommendation") or "").strip()
+    rec_snippet = ""
+    if rec:
+        rec_clean = re.sub(r"\s+", " ", _clean_entities(rec)).strip()
+        first_sentence = re.split(r"[.;]", rec_clean, maxsplit=1)[0].strip()
+        if 10 < len(first_sentence) <= 90:
+            rec_snippet = first_sentence
+    if rec_snippet:
+        combined = f"{title} — {rec_snippet}"
+    else:
+        combined = title
+    chip = _trim_to_chip(combined)
+    if not chip:
+        chip = _trim_to_chip(title)
+    if not chip:
+        return []
+    return [{"category": "In Plain Terms", "text": chip}]
+
+
 # ── Semantic pass ───────────────────────────────────────────────────────────
 
 
@@ -537,9 +573,16 @@ class GeminiExtractor:
             raw = self._call(prompt, allowed)
             parsed = json.loads(raw)
         except Exception as exc:
-            print(f"    Gemini call failed: {exc}")
+            print(f"    Gemini extract failed: {exc}", flush=True)
             return []
-        return _sanitize_chips(parsed, allowed)
+        raw_count = len(parsed) if isinstance(parsed, list) else 0
+        chips = _sanitize_chips(parsed, allowed)
+        if raw_count > 0 and not chips:
+            print(
+                f"    Gemini returned {raw_count} chips but all were filtered out",
+                flush=True,
+            )
+        return chips
 
 
 _SASKATOON_NAMES = (
@@ -767,6 +810,13 @@ def extract_item_summaries(
 
     if extractor.enabled and transcript_text.strip():
         results.extend(extractor.extract(item, transcript_text, exclude=covered))
+
+    # Fallback: if no "In Plain Terms" chip was produced by Gemini, generate
+    # one from the item metadata so every substantive item has at least a
+    # description of what it's about.
+    covered_after = {r["category"] for r in results}
+    if "In Plain Terms" not in covered_after:
+        results.extend(_extract_in_plain_terms(item))
 
     results.sort(key=lambda r: _CATEGORY_ORDER.get(r["category"], 999))
     return results

@@ -15,6 +15,7 @@ from app.item_categorizer import (
     _extract_data_cited,
     _extract_declared_conflict,
     _extract_delegation,
+    _extract_in_plain_terms,
     _extract_next_step,
     _extract_outcome,
     _extract_procedural_note,
@@ -114,9 +115,27 @@ class TestSplitSentences:
 
 
 class TestOutcome:
-    def test_carried(self):
+    def test_carried_no_title(self):
         out = _extract_outcome({"vote_result": "CARRIED (8 to 3)", "recommendation": "x"})
         assert out == [{"category": "Outcome", "text": "Approved (8-3)"}]
+
+    def test_carried_with_title(self):
+        out = _extract_outcome({
+            "vote_result": "CARRIED (8 to 3)",
+            "recommendation": "x",
+            "title": "Ruth Street Active Transportation Plan [CC2026-0303]",
+        })
+        assert out[0]["category"] == "Outcome"
+        assert out[0]["text"].startswith("Approved (8-3): Ruth Street")
+
+    def test_contextual_strips_codes(self):
+        out = _extract_outcome({
+            "vote_result": "CARRIED UNANIMOUSLY",
+            "recommendation": "That the report be received.",
+            "title": "Bylaw No. 9876 - Downtown Zoning Amendment [CC2026-0100]",
+        })
+        assert "[CC2026-0100]" not in out[0]["text"]
+        assert "Zoning" in out[0]["text"]
 
     def test_no_vote(self):
         assert _extract_outcome({"vote_result": "", "recommendation": ""}) == []
@@ -689,6 +708,84 @@ class TestRelatedItemSliceQuality:
         rel = [o for o in out if o["category"] == "Related Item"]
         assert rel
         assert not rel[0]["text"].startswith(("'d", "d ")), rel[0]["text"]
+
+
+# ── In Plain Terms fallback ─────────────────────────────────────────
+
+
+class TestInPlainTerms:
+    def test_extracts_from_title(self):
+        item = {"title": "Ruth Street Active Transportation Plan [CC2026-0303]"}
+        out = _extract_in_plain_terms(item)
+        assert out
+        assert out[0]["category"] == "In Plain Terms"
+        assert "Ruth Street" in out[0]["text"]
+        assert "[CC2026-0303]" not in out[0]["text"]
+
+    def test_includes_recommendation_snippet(self):
+        item = {
+            "title": "Downtown Zoning Amendment",
+            "recommendation": "That Council approve the proposed zoning change.",
+        }
+        out = _extract_in_plain_terms(item)
+        assert out
+        assert "zoning" in out[0]["text"].lower()
+
+    def test_skips_short_title(self):
+        item = {"title": "Report"}
+        assert _extract_in_plain_terms(item) == []
+
+    def test_skips_empty_title(self):
+        item = {"title": ""}
+        assert _extract_in_plain_terms(item) == []
+
+
+class TestInPlainTermsFallback:
+    def test_fallback_fires_when_gemini_disabled(self):
+        item = {
+            "item_id": 99,
+            "title": "Downtown Event and Entertainment District Plan",
+            "recommendation": "That the report be received.",
+            "vote_result": "CARRIED UNANIMOUSLY",
+            "vote_detail": "",
+            "content": "",
+            "motion_text": "",
+            "section_number": "9.1",
+            "time_start_ms": 0,
+            "time_end_ms": 600_000,
+        }
+        segments = [_seg(0, "We talked about the entertainment district plan.")]
+        # No Gemini extractor — deterministic only
+        stub = _stub_extractor([], clean_response=None)
+        # Disable the stub's enabled flag by using no API key and no generate
+        from app.item_categorizer import GeminiExtractor
+        disabled = GeminiExtractor(api_key=None)
+        out = extract_item_summaries(item, segments, gemini_extractor=disabled)
+        cats = [o["category"] for o in out]
+        assert "In Plain Terms" in cats
+        assert "Outcome" in cats
+
+    def test_no_fallback_when_gemini_provides_it(self):
+        item = {
+            "item_id": 100,
+            "title": "Transit Route Changes",
+            "recommendation": "",
+            "vote_result": "",
+            "vote_detail": "",
+            "content": "",
+            "motion_text": "",
+            "section_number": "8.",
+            "time_start_ms": 0,
+            "time_end_ms": 600_000,
+        }
+        segments = [_seg(0, "Discussion of transit route 42.")]
+        stub = _stub_extractor([
+            {"category": "In Plain Terms", "text": "Proposed changes to bus route 42"},
+        ])
+        out = extract_item_summaries(item, segments, gemini_extractor=stub)
+        plain = [o for o in out if o["category"] == "In Plain Terms"]
+        assert len(plain) == 1
+        assert "bus route 42" in plain[0]["text"]
 
 
 # ── Cleanup prompt name normalization ──────────────────────────────

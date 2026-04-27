@@ -75,18 +75,26 @@ def summarize_meeting(meeting_id: str, extractor) -> dict[str, list[dict]]:
     transcript = load_cached_transcript(meeting_id)
     if not transcript:
         return {}
+    print(f"    Transcript has {len(transcript)} segments", flush=True)
     detail = fetch_meeting_detail(meeting_id, include_votes=True)
     items = [it.to_dict() for it in detail["agenda_items"]]
 
+    eligible = 0
     summaries: dict[str, list[dict]] = {}
     for item in items:
         if not is_eligible_for_summary(item):
             summaries[str(item["item_id"])] = []
             continue
+        eligible += 1
+        title = (item.get("title") or "")[:60]
+        print(f"    Item {item['item_id']}: {title}", flush=True)
         entries = extract_item_summaries(
             item, transcript, gemini_extractor=extractor,
         )
+        cats = [e["category"] for e in entries]
+        print(f"      → {len(entries)} chips: {cats}", flush=True)
         summaries[str(item["item_id"])] = entries
+    print(f"    {eligible}/{len(items)} items eligible for summary", flush=True)
     return summaries
 
 
