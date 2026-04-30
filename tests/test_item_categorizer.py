@@ -10,6 +10,7 @@ from app.item_categorizer import (
     _SASKATOON_NAMES,
     GeminiExtractor,
     _build_cleanup_prompt,
+    _build_prompt,
     _extract_amendment,
     _extract_cost_funding,
     _extract_data_cited,
@@ -21,6 +22,7 @@ from app.item_categorizer import (
     _extract_procedural_note,
     _extract_related_deferred,
     _extract_vote_breakdown,
+    _is_boilerplate_rec,
     _sanitize_chips,
     _slice_transcript,
     _split_sentences,
@@ -738,6 +740,102 @@ class TestInPlainTerms:
     def test_skips_empty_title(self):
         item = {"title": ""}
         assert _extract_in_plain_terms(item) == []
+
+    def test_filters_boilerplate_recommendation(self):
+        item = {
+            "title": "Chief's Report",
+            "recommendation": "That the information be received.",
+        }
+        out = _extract_in_plain_terms(item)
+        assert out
+        # Should not include the boilerplate recommendation
+        assert "information be received" not in out[0]["text"]
+
+    def test_keeps_substantive_recommendation(self):
+        item = {
+            "title": "Downtown Plan",
+            "recommendation": "That Council approve the downtown development plan.",
+        }
+        out = _extract_in_plain_terms(item)
+        assert out
+        assert "approve" in out[0]["text"].lower()
+
+
+class TestBoilerplateRecognition:
+    def test_report_received(self):
+        assert _is_boilerplate_rec("That the report be received")
+
+    def test_information_received(self):
+        assert _is_boilerplate_rec("That the information be received")
+
+    def test_presentation_received(self):
+        assert _is_boilerplate_rec("That the presentation be received")
+
+    def test_minutes_noted(self):
+        assert _is_boilerplate_rec("That the minutes be noted")
+
+    def test_substantive_is_not_boilerplate(self):
+        assert not _is_boilerplate_rec("That Council approve the zoning change")
+
+    def test_empty_is_not_boilerplate(self):
+        assert not _is_boilerplate_rec("")
+
+
+class TestGeminiPromptIncludesMetadata:
+    def test_includes_recommendation(self):
+        item = {
+            "title": "Bus Route 42 Changes",
+            "recommendation": "That the administration implement route changes.",
+        }
+        prompt = _build_prompt(item, "transcript text", ["In Plain Terms"])
+        assert "implement route changes" in prompt
+
+    def test_includes_vote_result(self):
+        item = {
+            "title": "Zoning",
+            "vote_result": "CARRIED (8 to 3)",
+        }
+        prompt = _build_prompt(item, "text", ["In Plain Terms"])
+        assert "CARRIED (8 to 3)" in prompt
+
+    def test_works_without_transcript(self):
+        item = {
+            "title": "Budget Item",
+            "recommendation": "Approve the capital budget of $5M.",
+        }
+        prompt = _build_prompt(item, "", ["In Plain Terms"])
+        assert "capital budget" in prompt
+        assert "Transcript" not in prompt
+
+    def test_includes_content(self):
+        item = {
+            "title": "Policy Update",
+            "content": "This policy addresses snow removal standards.",
+        }
+        prompt = _build_prompt(item, "", ["In Plain Terms"])
+        assert "snow removal" in prompt
+
+
+class TestGeminiRunsWithoutTranscript:
+    def test_extract_with_metadata_only(self):
+        captured: dict = {}
+        item = {
+            "item_id": 50,
+            "title": "Capital Budget Allocation",
+            "recommendation": "That Council approve $5M for road repair.",
+            "vote_result": "CARRIED UNANIMOUSLY",
+            "vote_detail": "",
+            "content": "",
+            "motion_text": "",
+            "section_number": "7.1",
+            "time_start_ms": 0,
+            "time_end_ms": 600_000,
+        }
+        stub = _stub_extractor([
+            {"category": "In Plain Terms", "text": "$5M approved for road repair"},
+        ], captured=captured)
+        out = extract_item_summaries(item, [], gemini_extractor=stub)
+        assert any(o["category"] == "In Plain Terms" for o in out)
 
 
 class TestInPlainTermsFallback:

@@ -470,7 +470,7 @@ def _extract_in_plain_terms(item: dict) -> list[dict]:
     if rec:
         rec_clean = re.sub(r"\s+", " ", _clean_entities(rec)).strip()
         first_sentence = re.split(r"[.;]", rec_clean, maxsplit=1)[0].strip()
-        if 10 < len(first_sentence) <= 90:
+        if 10 < len(first_sentence) <= 90 and not _is_boilerplate_rec(first_sentence):
             rec_snippet = first_sentence
     if rec_snippet:
         combined = f"{title} — {rec_snippet}"
@@ -482,6 +482,17 @@ def _extract_in_plain_terms(item: dict) -> list[dict]:
     if not chip:
         return []
     return [{"category": "In Plain Terms", "text": chip}]
+
+
+_BOILERPLATE_REC_RE = re.compile(
+    r"^that the (?:report|information|presentation|correspondence|"
+    r"communication|minutes|letter|petition) be (?:received|noted|filed)",
+    re.IGNORECASE,
+)
+
+
+def _is_boilerplate_rec(text: str) -> bool:
+    return bool(_BOILERPLATE_REC_RE.search(text))
 
 
 # ── Semantic pass ───────────────────────────────────────────────────────────
@@ -560,10 +571,16 @@ class GeminiExtractor:
             print(f"    Gemini cleanup failed, using raw transcript: {exc}")
             return transcript_text
 
+    def _has_metadata(self, item: dict) -> bool:
+        """True when the item has enough metadata to run the LLM without transcript."""
+        rec = (item.get("recommendation") or "").strip()
+        content = (item.get("content") or "").strip()
+        return bool(rec or content)
+
     def extract(
         self, item: dict, transcript_text: str, exclude: set[str],
     ) -> list[dict]:
-        if not transcript_text.strip():
+        if not transcript_text.strip() and not self._has_metadata(item):
             return []
         allowed = [c for c in SEMANTIC_CATEGORIES if c not in exclude]
         if not allowed:
@@ -664,18 +681,41 @@ def _chip_list_schema(allowed_cats: list[str]) -> dict:
 def _build_prompt(
     item: dict, transcript_text: str, allowed_cats: list[str],
 ) -> str:
+    title = item.get("title") or "(untitled)"
+    rec = (item.get("recommendation") or "").strip()
+    motion = (item.get("motion_text") or "").strip()
+    vote = (item.get("vote_result") or "").strip()
+    vote_detail = (item.get("vote_detail") or "").strip()
+    content = (item.get("content") or "").strip()
+
     lines = [
         "You are extracting short 'chip' summaries from a Saskatoon city "
-        "council meeting transcript for ONE agenda item.",
+        "council meeting agenda item. Use ALL the context below — the "
+        "official recommendation and motion text are clean and reliable; "
+        "the transcript is rough automatic speech-to-text and may contain "
+        "errors, but captures discussion not in the official text.",
         "",
-        f"Agenda item title: {item.get('title') or '(untitled)'}",
+        f"Agenda item title: {title}",
+    ]
+    if rec:
+        lines.extend(["", f"Official recommendation: {rec[:500]}"])
+    if motion and motion != rec:
+        lines.extend(["", f"Motion text: {motion[:300]}"])
+    if vote:
+        lines.append(f"Vote result: {vote}")
+    if vote_detail:
+        lines.append(f"Vote detail: {vote_detail[:300]}")
+    if content:
+        lines.extend(["", f"Item content (from agenda notes): {content[:800]}"])
+
+    lines.extend([
         "",
         "For each relevant category below, emit at most ONE chip. Each chip "
         f"`text` must be a complete, self-contained phrase of at most "
         f"{MAX_SUMMARY_CHARS} characters (no trailing ellipsis, no cut-off "
-        "sentences). Paraphrase tightly rather than quoting filler, avoid "
-        "procedural or merely clarifying statements, and never fabricate — "
-        "if the transcript doesn't clearly support a chip, omit it.",
+        "sentences). Paraphrase tightly — do not quote raw transcript "
+        "verbatim. Write each chip so a busy resident understands it "
+        "without reading the agenda.",
         "",
         "Rate each chip's `usefulness`:",
         "- \"high\": adds a specific, concrete fact — a number, a named "
@@ -685,22 +725,18 @@ def _build_prompt(
         "item is about, notes a group that spoke, or summarises a line of "
         "debate.",
         "- \"low\": vague, procedural filler, truisms, or phrasing that "
-        "could apply to any meeting.",
+        "could apply to any meeting (e.g. 'That the report be received').",
         "",
         "Include \"high\" and \"medium\" chips. Omit anything you would rate "
         "\"low\" — skip the category rather than emit a weak chip.",
         "",
         "Categories:",
-    ]
+    ])
     for cat in allowed_cats:
         lines.append(f"- {cat}: {SEMANTIC_DEFINITIONS[cat]}")
-    lines.extend([
-        "",
-        "Transcript:",
-        transcript_text,
-        "",
-        "Return a JSON array.  An empty array is valid if nothing fits.",
-    ])
+    if transcript_text.strip():
+        lines.extend(["", "Transcript (rough, may contain errors):", transcript_text])
+    lines.extend(["", "Return a JSON array.  An empty array is valid if nothing fits."])
     return "\n".join(lines)
 
 
@@ -787,17 +823,26 @@ def extract_item_summaries(
     if extractor.enabled and transcript_text.strip():
         transcript_text = extractor.clean(transcript_text)
 
+    # Metadata-based deterministic extractors — always run because they
+    # operate on clean structured data, not raw transcript.
     results: list[dict] = []
     results.extend(_extract_outcome(item))
     results.extend(_extract_vote_breakdown(item))
     results.extend(_extract_amendment(item))
     results.extend(_extract_cost_funding(item, transcript_text))
-    results.extend(_extract_declared_conflict(transcript_text))
-    results.extend(_extract_delegation(transcript_text))
-    results.extend(_extract_next_step(transcript_text))
-    results.extend(_extract_related_deferred(item, transcript_text))
     results.extend(_extract_procedural_note(item))
-    results.extend(_extract_data_cited(transcript_text))
+
+    # Transcript-based regex extractors — only run when Gemini is disabled
+    # because raw automatic transcript produces too much noise (garbled
+    # fragments, mismatched keywords).  When Gemini is enabled, it handles
+    # these categories far more reliably from the combined metadata +
+    # transcript context.
+    if not extractor.enabled:
+        results.extend(_extract_declared_conflict(transcript_text))
+        results.extend(_extract_delegation(transcript_text))
+        results.extend(_extract_next_step(transcript_text))
+        results.extend(_extract_related_deferred(item, transcript_text))
+        results.extend(_extract_data_cited(transcript_text))
 
     # Drop deterministic chips that couldn't be fit at a natural break.
     results = [r for r in results if r.get("text")]
@@ -808,7 +853,7 @@ def extract_item_summaries(
     if "UNANIM" in vote or _is_unanimous_tally(item):
         covered.add("Dissenting View")
 
-    if extractor.enabled and transcript_text.strip():
+    if extractor.enabled:
         results.extend(extractor.extract(item, transcript_text, exclude=covered))
 
     # Fallback: if no "In Plain Terms" chip was produced by Gemini, generate
