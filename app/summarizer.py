@@ -5,10 +5,18 @@ Zero-dependency extractive summarization using sentence scoring.
 No cloud calls, no ML frameworks needed.
 """
 
-import html as html_mod
 import re
 import math
 from collections import Counter
+
+from app.agenda_items import (
+    categorize_topic,
+    format_outcome,
+    is_major_decision,
+    is_procedural,
+)
+from app.agenda_text import clean_entities, format_money, plainify
+from app.transcript_text import split_sentences
 
 
 def summarize_agenda_items(agenda_items: list[dict], meeting_title: str) -> list[dict]:
@@ -27,7 +35,7 @@ def extract_meeting_topics(
     """
     substantive = [
         item for item in agenda_items
-        if not _is_procedural(item.get("title", ""))
+        if not is_procedural(item.get("title", ""))
     ]
 
     scored = []
@@ -38,24 +46,18 @@ def extract_meeting_topics(
         section = item.get("section_number", "")
         contested = item.get("is_contested", False)
 
-        # Contested votes are always interesting
         contested_score = 0.5 if contested else 0.0
 
-        # Dollar amounts or percentages in rec/title
         has_money = bool(re.search(r'\$[\d,.]+', rec + " " + title))
         money_score = 0.3 if has_money else 0.0
 
-        # Items with explicit vote results
         vote_score = 0.2 if vote else 0.0
 
-        # Items with recommendations (not just section headers)
         rec_score = 0.2 if rec else 0.0
 
-        # Mid-level sections more interesting than top-level or deeply nested
         dot_count = section.count(".")
         depth_score = 0.15 if 1 <= dot_count <= 2 else 0.05
 
-        # Penalise generic committee headers and appointment sub-items
         title_lower = title.lower()
         if "standing policy committee" in title_lower:
             depth_score -= 0.2
@@ -68,7 +70,6 @@ def extract_meeting_topics(
     scored.sort(key=lambda x: x[0], reverse=True)
     top_items = [item for _, item in scored[:max_topics]]
 
-    # Return in original agenda order
     top_set = {id(item) for item in top_items}
     ordered = [item for item in substantive if id(item) in top_set]
 
@@ -82,21 +83,20 @@ def _format_topic(item: dict) -> dict:
     vote = item.get("vote_result", "")
     contested = item.get("is_contested", False)
 
-    outcome = _format_outcome(vote, rec)
-    is_major = _is_major_decision(title, rec, contested)
+    outcome = format_outcome(vote, rec)
+    is_major = is_major_decision(title, rec, contested)
 
-    # Short summary from minutes text for the index page
     content = item.get("content", "")
     summary = ""
     if content:
-        summary = _clean_entities(content)
+        summary = clean_entities(content)
         if len(summary) > 120:
             summary = summary[:117].rsplit(" ", 1)[0] + "..."
 
     return {
-        "topic": _plainify(title),
+        "topic": plainify(title),
         "outcome": outcome,
-        "outcome_detail": _clean_entities(rec) if rec else "",
+        "outcome_detail": clean_entities(rec) if rec else "",
         "summary": summary,
         "vote_result": vote,
         "is_major": is_major,
@@ -113,22 +113,20 @@ def _extract_badges(item: dict) -> list[dict]:
     title = item.get("title", "")
     rec = item.get("recommendation", "")
 
-    # Category badges first (most prominent) – type slug enables per-category colors
     content = item.get("content", "")
-    for cat in _categorize_topic(title, rec, content):
+    for cat in categorize_topic(title, rec, content):
         slug = cat.lower().replace(" & ", "-").replace(" ", "-")
         badges.append({"type": f"cat-{slug}", "label": cat})
 
-    # Dollar amounts with surrounding context for a verb and purpose
     combined = title + " " + rec + " " + content
     money_count = 0
     for m in re.finditer(r'\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion))?', combined):
         raw = m.group()
         verb = _money_verb(combined, m.start())
         purpose = _money_purpose(combined, m.end())
-        formatted = _format_money(raw)
+        formatted = format_money(raw)
         if purpose:
-            label = f"{formatted} \u2192 {purpose}"
+            label = f"{formatted} → {purpose}"
         elif verb:
             label = f"{formatted} {verb}"
         else:
@@ -138,14 +136,12 @@ def _extract_badges(item: dict) -> list[dict]:
         if money_count >= 4:
             break
 
-    # Councillor names from title
     councillor_matches = re.findall(
         r'Councillor\s+([A-Z]\.?\s*[A-Za-z]+)', title
     )
     for name in councillor_matches[:2]:
         badges.append({"type": "person", "label": name.strip()})
 
-    # Street addresses from title only (recommendation has too many false positives)
     addr_matches = re.findall(
         r'(\d+\s+(?:[A-Z][\w]+\s+)*?'
         r'(?:Street|Avenue|Drive|Road|Crescent|Boulevard|Place|Way|Circle)'
@@ -155,7 +151,6 @@ def _extract_badges(item: dict) -> list[dict]:
     for addr in addr_matches[:1]:
         badges.append({"type": "location", "label": addr.strip()})
 
-    # Saskatoon neighbourhood names (only if no street address found)
     if not addr_matches:
         title_lower = title.lower()
         for hood in _SASKATOON_NEIGHBOURHOODS:
@@ -163,7 +158,6 @@ def _extract_badges(item: dict) -> list[dict]:
                 badges.append({"type": "location", "label": hood})
                 break
 
-    # Discussion topics from minutes text ("related to X, Y, and Z")
     for topic in _extract_discussion_topics(content):
         badges.append({"type": "topic", "label": topic})
 
@@ -182,7 +176,6 @@ def _extract_discussion_topics(content: str) -> list[str]:
     if not content:
         return []
 
-    # Match "related to …" or "regarding …" clauses up to the next period
     m = re.search(
         r"(?:related to|regarding|concerning)\s+(.+?)(?:\.|$)",
         content, re.IGNORECASE,
@@ -192,21 +185,15 @@ def _extract_discussion_topics(content: str) -> list[str]:
 
     raw = m.group(1).strip()
 
-    # Split on commas, extracting "and"-joined trailing items separately.
-    # e.g. "traffic volumes and demand, funding strategy, snow removal and
-    #        winter operations" → split on ", " first
     parts = re.split(r",\s*", raw)
 
     topics: list[str] = []
     for part in parts:
         part = part.strip()
-        # Strip leading "and " that follows the last comma
         part = re.sub(r"^and\s+", "", part, flags=re.IGNORECASE)
         if not part:
             continue
-        # Capitalise first letter for badge display
         label = part[0].upper() + part[1:] if len(part) > 1 else part.upper()
-        # Skip very short fragments or very long ones
         if 3 <= len(label) <= 50:
             topics.append(label)
         if len(topics) >= 3:
@@ -222,7 +209,6 @@ def extract_badges(item: dict) -> list[dict]:
 
 # Maps context keywords (found near a dollar amount) to short badge verbs.
 _MONEY_CONTEXT = [
-    # Multi-word / specific patterns first
     (r'not.{0,10}exceed', 'max'),
     (r'award', 'awarded'),
     (r'approv', 'approved'),
@@ -246,7 +232,6 @@ _MONEY_CONTEXT = [
 
 def _money_verb(text: str, match_pos: int) -> str:
     """Find a contextual verb for a dollar amount by scanning nearby text."""
-    # Look at ~80 chars before and ~30 chars after the dollar sign
     start = max(0, match_pos - 80)
     end = min(len(text), match_pos + 30)
     window = text[start:end].lower()
@@ -262,14 +247,11 @@ def _money_purpose(text: str, match_end: int) -> str:
     Looks for patterns like "allocated to the Affordable Housing Reserve"
     and returns a short label like "Housing".
     """
-    # Look at text after the dollar amount, but only within the same clause
     window = text[match_end:match_end + 200]
-    # Stop at clause boundaries (semicolons, periods, "and That")
     for sep in (';', '. ', ' and That', ' That '):
         cut = window.find(sep)
         if cut != -1:
             window = window[:cut]
-    # Match "to the [X] Reserve/Fund/Plan/Program" or "for [X]"
     m = re.search(
         r'(?:to\s+the|for\s+the|for)\s+((?:[A-Z][\w]*\s*){1,5}?)'
         r'\s*(?:Reserve|Fund|Plan|Program|Account|Initiative)',
@@ -277,32 +259,12 @@ def _money_purpose(text: str, match_end: int) -> str:
     )
     if m:
         words = m.group(1).strip().split()
-        # Pick the most descriptive word (skip generic ones)
         skip = {'the', 'a', 'an', 'of', 'and', 'for', 'in', 'city',
                 'neighbourhood', 'land', 'development', 'municipal'}
         meaningful = [w for w in words if w.lower() not in skip]
         if meaningful:
-            # Return up to 2 words for brevity
             return ' '.join(meaningful[:2])
     return ""
-
-
-def _format_money(raw: str) -> str:
-    """Convert a raw dollar match like '$1,500,000' into '$1.5M'."""
-    if re.search(r'(million|billion)', raw, re.IGNORECASE):
-        return raw.strip()
-    numeric = raw.replace('$', '').replace(',', '')
-    try:
-        val = float(numeric)
-    except ValueError:
-        return raw.strip()
-    if val >= 1_000_000_000:
-        return f"${val / 1_000_000_000:.1f}B".replace('.0B', 'B')
-    if val >= 1_000_000:
-        return f"${val / 1_000_000:.1f}M".replace('.0M', 'M')
-    if val >= 100_000:
-        return f"${val / 1_000:.0f}K"
-    return raw.strip()
 
 
 _SASKATOON_NEIGHBOURHOODS = [
@@ -318,159 +280,10 @@ _SASKATOON_NEIGHBOURHOODS = [
     "Cumberland", "Downtown",
 ]
 
-# Maps urban-development category labels to keyword patterns.
-# Matched case-insensitively against title + recommendation text.
-_TOPIC_CATEGORIES = {
-    "Homelessness": [
-        r"homeless", r"drop.in", r"shelter\b", r"supportive housing",
-        r"vulnerable\s+p", r"encampment", r"unshelter",
-    ],
-    "Housing": [
-        r"affordable housing", r"housing\b", r"residential",
-        r"infill\b", r"densif", r"rental",
-    ],
-    "Zoning & Dev": [
-        r"rezon", r"zoning\b", r"land\s+use", r"corridor\s+plan",
-        r"redevelop", r"subdivision", r"building\s+standard",
-        r"development\s+review", r"reserve\s+redesignation",
-        r"land\s+development", r"neighbourhood\s+plan",
-    ],
-    "Transit": [
-        r"\btransit\b", r"bus rapid", r"\bBRT\b", r"grade.separation",
-        r"rail\s+(grade|cross)", r"public\s+transport",
-    ],
-    "Active Transport": [
-        r"active\s+transport", r"cycling", r"\bbike\b", r"bicycle",
-        r"bike\s+lane", r"protected.*\blane", r"multi.use\s+(path|trail)",
-        r"pedestrian", r"sidewalk", r"crosswalk", r"walkability",
-    ],
-    "Traffic": [
-        r"\btraffic\b", r"intersection", r"speed\s+limit",
-        r"road\s+(clos|safe|improv)", r"\btransportation\b",
-    ],
-    "Greenspace": [
-        r"\bpark\b(?!ing)", r"\belm\b", r"urban\s+forest", r"tree\b",
-        r"green\s*space", r"natural\s+area", r"river\s*bank",
-        r"meewasin", r"\btrail\b",
-    ],
-    "Small Business": [
-        r"business\s+improvement", r"\bBID\b", r"small\s+business",
-        r"merchant", r"commercial\s+district", r"storefront",
-    ],
-    "Infrastructure": [
-        r"water\s+main", r"waterworks", r"sewer", r"storm\s*water",
-        r"utilit", r"landfill", r"waste\b", r"capital\s+project",
-        r"bridge\b", r"road\s+construct", r"pipeline\b",
-    ],
-    "Public Safety": [
-        r"police", r"fire\s+(?:dep|serv|stat)", r"\bSPS\b",
-        r"community\s+safety", r"crime\b", r"bylaw\s+enforce",
-    ],
-    "Recreation": [
-        r"ice\s+sheet", r"arena\b", r"leisure", r"recreation",
-        r"pool\b", r"sport\s+facil", r"playground", r"golf\s+course",
-    ],
-    "Property Tax": [
-        r"property\s+tax", r"tax\s+lien", r"mill\s+rate",
-        r"assessment\b", r"tax\s+levy",
-    ],
-    "Arts & Culture": [
-        r"public\s+art", r"art\s+gallery", r"cultur",
-        r"heritage\b", r"festival\b", r"mural\b",
-    ],
-    "Environment": [
-        r"climate\b", r"emission", r"sustainab", r"solar\b",
-        r"energy\s+effic", r"electric\s+vehicle", r"\bEV\b",
-        r"greenhouse\s+gas", r"carbon\b", r"environmental",
-    ],
-}
-
-
-def _categorize_topic(title: str, recommendation: str, content: str = "") -> list[str]:
-    """Return up to 2 urban-development category labels for an agenda item."""
-    combined = title + " " + recommendation + " " + content
-    matches = []
-    for category, patterns in _TOPIC_CATEGORIES.items():
-        for pat in patterns:
-            if re.search(pat, combined, re.IGNORECASE):
-                matches.append(category)
-                break
-        if len(matches) >= 2:
-            break
-    return matches
-
-
-def _format_outcome(vote_result: str, recommendation: str) -> str:
-    """Convert raw vote result + recommendation into a short outcome label."""
-    if not vote_result and not recommendation:
-        return "Discussed"
-
-    if not vote_result:
-        return "Recommended"
-
-    upper = vote_result.upper()
-    rec_upper = recommendation.upper()
-    # Extract vote counts like (7 to 4)
-    counts = re.search(r"\((\d+)\s+to\s+(\d+)\)", vote_result)
-    tally = f" ({counts.group(1)}-{counts.group(2)})" if counts else ""
-
-    if "DEFEATED" in upper:
-        return f"Defeated{tally}"
-    if "DEFERRED" in upper or "TABLED" in upper:
-        return "Deferred"
-    if "WITHDRAWN" in upper:
-        return "Withdrawn"
-    # A motion to defer/table that carried is a deferral, not an approval
-    if re.search(r"\bDEFER(?:RED)?\b", rec_upper) or "TABLED" in rec_upper:
-        return "Deferred"
-    if "UNANIMOUSLY" in upper:
-        return "Approved"
-    if "CARRIED" in upper:
-        return f"Approved{tally}"
-    if "RECEIVED" in upper or "NOTED" in upper:
-        return "Received"
-    return vote_result
-
-
-def _is_major_decision(title: str, recommendation: str, is_contested: bool) -> bool:
-    """Determine whether a decision warrants visual highlighting."""
-    if is_contested:
-        return True
-    combined = title + " " + recommendation
-    if re.search(r"\$[\d,.]+", combined):
-        return True
-    title_lower = title.lower()
-    for keyword in ("bylaw", "budget", "acquisition", "contract", "tax"):
-        if keyword in title_lower:
-            return True
-    return False
-
-
-def _clean_entities(text: str) -> str:
-    """Decode common HTML entities."""
-    text = text.replace("&#58;", ":").replace("&#160;", " ")
-    text = text.replace("&amp;", "&").replace("&quot;", '"')
-    text = text.replace("&lt;", "<").replace("&gt;", ">")
-    return re.sub(r"\s+", " ", text).strip()
-
 
 # ---------------------------------------------------------------------------
 # Extractive backend (zero dependencies)
 # ---------------------------------------------------------------------------
-
-# Common procedural agenda item keywords
-_PROCEDURAL_KEYWORDS = {
-    "call to order", "adjournment", "roll call", "adoption of agenda",
-    "confirmation of agenda", "confirmation of minutes", "adoption of minutes",
-    "declarations of conflict", "declaration of conflict",
-    "communications to council", "o canada",
-    "consent agenda", "public acknowledgments", "public acknowledgements",
-    "question period", "inquiries", "in camera session", "urgent business",
-    "committee reports (not on consent",
-    "unfinished business", "giving notice", "motions (notice",
-    "legislative reports", "administrative reports", "other reports",
-    "in remembrance", "council members",
-}
 
 
 def _summarize_extractive(agenda_items: list[dict], meeting_title: str) -> list[dict]:
@@ -483,8 +296,7 @@ def _summarize_extractive(agenda_items: list[dict], meeting_title: str) -> list[
         title = item.get("title", "")
         content = item.get("content", "")
 
-        # Check if procedural
-        if _is_procedural(title):
+        if is_procedural(title):
             item["summary"] = "Procedural item."
             continue
 
@@ -494,73 +306,14 @@ def _summarize_extractive(agenda_items: list[dict], meeting_title: str) -> list[
     return agenda_items
 
 
-def _is_procedural(title: str) -> bool:
-    title_lower = title.lower().strip()
-    return any(kw in title_lower for kw in _PROCEDURAL_KEYWORDS)
-
-
-# Patterns stripped from titles to produce plain-language summaries
-_PLAIN_REPLACEMENTS = [
-    # "Bylaw No. 9876 - The Foo Bylaw, 2025 (No. 3)" → "Foo"
-    (re.compile(r'^Bylaw\s+No\.\s*\d+\s*[-–—]\s*', re.IGNORECASE), ''),
-    (re.compile(r'\bBylaw\b,?\s*', re.IGNORECASE), ''),
-    (re.compile(r'\(No\.\s*\d+\)', re.IGNORECASE), ''),
-    # Reference codes like [CC2025-0402], [TS2026-0203], [FI2026-0205], [CK 225-4-3]
-    (re.compile(r'\s*\[[\w\s-]+\]\s*$'), ''),
-    # "Award of Contract - Foo (Contract No. 25-0456)" → "Foo"
-    (re.compile(r'^Award\s+of\s+Contract\s*[-–—]\s*', re.IGNORECASE), ''),
-    (re.compile(r'\(Contract\s+No\.\s*[\w-]+\)', re.IGNORECASE), ''),
-    # "Request for Expressions of Interest - Foo" → "Foo"
-    (re.compile(r'^Request\s+for\s+Expressions?\s+of\s+Interest\s*[-–—]\s*', re.IGNORECASE), ''),
-    # "Request for Proposals - Foo" → "Foo"
-    (re.compile(r'^Request\s+for\s+Proposals?\s*[-–—]\s*', re.IGNORECASE), ''),
-    # "Enquiry - Councillor Name (Date) - Topic" → "Topic"
-    (re.compile(r'^Enquiry\s*[-–—]\s*Councillor\s+\S+(?:\s+\S+)?\s*\([^)]*\)\s*[-–—]\s*', re.IGNORECASE), ''),
-    (re.compile(r'^Enquiry\s*[-–—]\s*', re.IGNORECASE), ''),
-    # "Councillor X. Name - Notice of Motion - Topic" → "Topic"
-    (re.compile(r'^Councillor\s+\S+(?:\s+\S+)?\s*[-–—]\s*Notice\s+of\s+Motion\s*[-–—]\s*', re.IGNORECASE), ''),
-    # "Councillor B. Dubois - Topic" → "Topic"
-    (re.compile(r'^Councillor\s+\S+\.?\s+\S+\s*[-–—]\s*', re.IGNORECASE), ''),
-    # "Report of the City Clerk - Foo" → "Foo"
-    (re.compile(r'^Report\s+of\s+the\s+\w[\w\s]{0,30}?[-–—]\s*', re.IGNORECASE), ''),
-    # "Appointments - Foo" / "Appointments – Foo"
-    (re.compile(r'^Appointments?\s*[-–—]\s*', re.IGNORECASE), ''),
-    # "Standing Policy Committee on Foo" → strip
-    (re.compile(r'^Standing\s+Policy\s+Committee\s+(?:on\s+)?', re.IGNORECASE), ''),
-    # Strip leading "The " after other cleanup
-    (re.compile(r'^The\s+', re.IGNORECASE), ''),
-    # Strip reference codes like "[FI2026-0204]" or "[CC2025-0802]"
-    (re.compile(r'\s*\[\w{2,4}\d{4}-\d{3,5}\]\s*'), ''),
-    # Strip year suffixes like ", 2025" or standalone " 2025" at end
-    (re.compile(r'[,\s]+\d{4}\s*$'), ''),
-    # Collapse extra whitespace / dashes
-    (re.compile(r'\s*[-–—]\s*$'), ''),
-    (re.compile(r'\s{2,}'), ' '),
-]
-
-
-def _plainify(text: str) -> str:
-    """Convert a bureaucratic agenda title into plain language."""
-    result = html_mod.unescape(text.strip())
-    for pattern, repl in _PLAIN_REPLACEMENTS:
-        result = pattern.sub(repl, result)
-    result = result.strip(' -–—,.')
-    # Ensure first letter is capitalised after stripping
-    if result:
-        result = result[0].upper() + result[1:]
-    return result or text.strip()
-
-
 def _extract_summary(text: str, title: str, max_sentences: int = 2) -> str:
     """Score and select the best sentences from the text."""
-    sentences = _split_sentences(text)
+    sentences = split_sentences(text, min_len=11)
     if len(sentences) <= max_sentences:
         return " ".join(sentences)
 
-    # Build word frequency from the full text
     words = _tokenize(text)
     word_freq = Counter(words)
-    # Normalize by max frequency
     max_freq = max(word_freq.values()) if word_freq else 1
 
     title_words = set(_tokenize(title))
@@ -571,19 +324,15 @@ def _extract_summary(text: str, title: str, max_sentences: int = 2) -> str:
         if not sent_words:
             continue
 
-        # Frequency score: average normalized frequency of words in sentence
         freq_score = sum(word_freq[w] / max_freq for w in sent_words) / len(sent_words)
 
-        # Position score: earlier sentences get higher scores
         position_score = 1.0 / (1.0 + math.log1p(i))
 
-        # Title overlap: fraction of title words present in sentence
         if title_words:
             overlap_score = len(title_words & set(sent_words)) / len(title_words)
         else:
             overlap_score = 0.0
 
-        # Length penalty: prefer sentences that aren't too short or too long
         length = len(sent_words)
         length_score = 1.0 if 8 <= length <= 30 else 0.5
 
@@ -591,16 +340,8 @@ def _extract_summary(text: str, title: str, max_sentences: int = 2) -> str:
         scored.append((score, i, sentence))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    # Pick top sentences, but return them in original order
     selected = sorted(scored[:max_sentences], key=lambda x: x[1])
     return " ".join(s[2] for s in selected)
-
-
-def _split_sentences(text: str) -> list[str]:
-    """Split text into sentences using basic rules."""
-    # Split on period, exclamation, question mark followed by space or end
-    parts = re.split(r'(?<=[.!?])\s+', text.strip())
-    return [s.strip() for s in parts if s.strip() and len(s.strip()) > 10]
 
 
 def _tokenize(text: str) -> list[str]:

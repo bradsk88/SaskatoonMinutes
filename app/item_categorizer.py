@@ -34,14 +34,22 @@ import json
 import os
 import re
 
+from app.agenda_items import (
+    PROCEDURAL_KEYWORDS,
+    format_outcome,
+    is_procedural,
+)
+from app.agenda_text import (
+    clean_entities,
+    format_money,
+    plainify,
+    trim_to_chip,
+)
 from app.models import Transcript
-from app.summarizer import (
-    _PROCEDURAL_KEYWORDS,
-    _clean_entities,
-    _format_money,
-    _format_outcome,
-    _is_procedural,
-    _plainify,
+from app.transcript_text import (
+    sentence_around,
+    split_sentences,
+    strip_filler_leads,
 )
 from app.transcriber import _section_number_patterns
 
@@ -124,21 +132,6 @@ SEMANTIC_DEFINITIONS: dict[str, str] = {
 SEMANTIC_CATEGORIES: list[str] = list(SEMANTIC_DEFINITIONS.keys())
 
 
-def _sentence_around(text: str, start: int, end: int) -> str:
-    """Return the sentence containing text[start:end], using . ! ? as boundaries."""
-    sent_start = 0
-    for p in ".!?":
-        pos = text.rfind(p, 0, start)
-        if pos + 1 > sent_start:
-            sent_start = pos + 1
-    sent_end = len(text)
-    for p in ".!?":
-        pos = text.find(p, end)
-        if pos != -1 and pos < sent_end:
-            sent_end = pos + 1
-    return text[sent_start:sent_end].strip()
-
-
 # ── Transcript slicing ──────────────────────────────────────────────────────
 
 
@@ -160,50 +153,14 @@ def _slice_transcript(
     return Transcript(segments=kept).to_dict()
 
 
-def _split_sentences(text: str) -> list[str]:
-    """Tokenize free-form transcript text into sentence-like chunks."""
-    if not text:
-        return []
-    text = re.sub(r"\s+", " ", text).strip()
-    # Split on sentence terminators followed by whitespace.
-    parts = re.split(r"(?<=[.!?])\s+", text)
-    cleaned = []
-    for p in parts:
-        p = p.strip()
-        if 12 <= len(p) <= 300:
-            cleaned.append(p)
-    return cleaned
+def _chip(text: str, limit: int = MAX_SUMMARY_CHARS) -> str:
+    """Build a chip from non-transcript text: entities, then length-trim."""
+    return trim_to_chip(clean_entities(text), limit)
 
 
-# ── Truncation ──────────────────────────────────────────────────────────────
-
-_FILLER_LEADS = re.compile(
-    r"^(?:um+,?\s+|uh+,?\s+|well,?\s+|so,?\s+|i think\s+|you know,?\s+|"
-    r"and\s+|but\s+|okay,?\s+|ok,?\s+|right,?\s+|yeah,?\s+|yep,?\s+|"
-    r"actually,?\s+|basically,?\s+)+",
-    re.IGNORECASE,
-)
-
-
-def _trim_to_chip(text: str, limit: int = MAX_SUMMARY_CHARS) -> str:
-    """Clean text for a chip.  Returns '' if it can't fit at a natural break.
-
-    Prefers dropping a chip over mid-word truncation: overflow is only
-    accepted when there is a sentence or clause boundary that fits within
-    ``limit`` characters.
-    """
-    text = _clean_entities(text)
-    text = _FILLER_LEADS.sub("", text)
-    text = text.strip().strip(",;:")
-    if not text:
-        return ""
-    if len(text) <= limit:
-        return text
-    for sep in (". ", "! ", "? ", "; ", ", "):
-        idx = text.rfind(sep, 0, limit)
-        if idx > 20:
-            return text[:idx].rstrip(",;:")
-    return ""
+def _transcript_chip(text: str, limit: int = MAX_SUMMARY_CHARS) -> str:
+    """Build a chip from transcript text: entities, filler, then length-trim."""
+    return trim_to_chip(strip_filler_leads(clean_entities(text)), limit)
 
 
 # ── Deterministic extractors ────────────────────────────────────────────────
@@ -212,16 +169,16 @@ def _trim_to_chip(text: str, limit: int = MAX_SUMMARY_CHARS) -> str:
 def _extract_outcome(item: dict) -> list[dict]:
     vote = item.get("vote_result") or ""
     rec = item.get("recommendation") or ""
-    outcome = _format_outcome(vote, rec)
+    outcome = format_outcome(vote, rec)
     if not outcome or outcome == "Discussed":
         return []
-    title = _plainify(item.get("title") or "")
+    title = plainify(item.get("title") or "")
     if title:
         contextual = f"{outcome}: {title}"
-        chip = _trim_to_chip(contextual)
+        chip = _chip(contextual)
         if chip:
             return [{"category": "Outcome", "text": chip}]
-    return [{"category": "Outcome", "text": _trim_to_chip(outcome)}]
+    return [{"category": "Outcome", "text": _chip(outcome)}]
 
 
 _VOTE_TALLY_RE = re.compile(
@@ -246,7 +203,7 @@ def _extract_vote_breakdown(item: dict) -> list[dict]:
     if total == 0:
         return []
     text = f"{for_n} for, {against_n} against"
-    return [{"category": "Vote Breakdown", "text": _trim_to_chip(text)}]
+    return [{"category": "Vote Breakdown", "text": _chip(text)}]
 
 
 _AMENDMENT_RE = re.compile(
@@ -269,7 +226,7 @@ def _extract_amendment(item: dict) -> list[dict]:
     tail = re.sub(r"^amend(?:ed|ment|ing)?\b[\s,.:;-]*", "", text, flags=re.IGNORECASE)
     if len(tail.split()) < 3:
         return []
-    chip = _trim_to_chip(text)
+    chip = _chip(text)
     if not chip:
         return []
     return [{"category": "Amendment Made", "text": chip}]
@@ -292,13 +249,13 @@ def _extract_cost_funding(item: dict, transcript_text: str) -> list[dict]:
         raw = m.group(0)
         if _money_too_small(raw):
             continue
-        formatted = _format_money(raw)
+        formatted = format_money(raw)
         tail = combined[m.end(): m.end() + 80]
         purpose = _money_purpose_snippet(tail)
         # Require contextual words — a bare amount is not a useful chip.
         if not purpose:
             continue
-        label = _trim_to_chip(f"{formatted} {purpose}".strip())
+        label = _transcript_chip(f"{formatted} {purpose}".strip())
         if not label or label in seen:
             continue
         seen.add(label)
@@ -345,7 +302,7 @@ def _extract_declared_conflict(transcript_text: str) -> list[dict]:
     )
     if not m:
         return []
-    return [{"category": "Declared Conflict", "text": _trim_to_chip(m.group(0))}]
+    return [{"category": "Declared Conflict", "text": _transcript_chip(m.group(0))}]
 
 
 _DELEGATION_RE = re.compile(
@@ -359,7 +316,7 @@ def _extract_delegation(transcript_text: str) -> list[dict]:
     m = _DELEGATION_RE.search(transcript_text[:4000])
     if not m:
         return []
-    return [{"category": "Delegation", "text": _trim_to_chip(m.group(0))}]
+    return [{"category": "Delegation", "text": _transcript_chip(m.group(0))}]
 
 
 _NEXT_STEP_KW_RE = re.compile(
@@ -371,13 +328,13 @@ _NEXT_STEP_KW_RE = re.compile(
 
 def _extract_next_step(transcript_text: str) -> list[dict]:
     for m in _NEXT_STEP_KW_RE.finditer(transcript_text):
-        sentence = _sentence_around(transcript_text, m.start(), m.end())
+        sentence = sentence_around(transcript_text, m.start(), m.end())
         before_kw = sentence.split(m.group(0), 1)[0]
         if re.search(r"\bif\b", before_kw, re.IGNORECASE):
             continue
         if re.search(r"\bpreviously\b", sentence, re.IGNORECASE):
             continue
-        chip = _trim_to_chip(sentence)
+        chip = _transcript_chip(sentence)
         # The matched keyword must survive trimming; otherwise we trimmed
         # to a useless fragment.
         if not chip or not re.search(re.escape(m.group(0)), chip, re.IGNORECASE):
@@ -407,7 +364,7 @@ def _extract_related_deferred(item: dict, transcript_text: str) -> list[dict]:
         )
         if m:
             results.append(
-                {"category": "Deferred From", "text": _trim_to_chip(m.group(0))}
+                {"category": "Deferred From", "text": _transcript_chip(m.group(0))}
             )
     own = (item.get("section_number") or "").rstrip(".")
     for m in re.finditer(
@@ -417,10 +374,10 @@ def _extract_related_deferred(item: dict, transcript_text: str) -> list[dict]:
         ref = m.group(1)
         if ref == own:
             continue
-        sentence = _sentence_around(transcript_text, m.start(), m.end())
+        sentence = sentence_around(transcript_text, m.start(), m.end())
         if re.search(r"\b(recuse|conflict of interest)\b", sentence, re.IGNORECASE):
             continue
-        chip = _trim_to_chip(sentence)
+        chip = _transcript_chip(sentence)
         if not chip:
             continue
         results.append(
@@ -432,12 +389,12 @@ def _extract_related_deferred(item: dict, transcript_text: str) -> list[dict]:
 
 def _extract_procedural_note(item: dict) -> list[dict]:
     title = item.get("title") or ""
-    if not _is_procedural(title):
+    if not is_procedural(title):
         return []
     match_kw = next(
-        (kw for kw in _PROCEDURAL_KEYWORDS if kw in title.lower()), "procedural"
+        (kw for kw in PROCEDURAL_KEYWORDS if kw in title.lower()), "procedural"
     )
-    return [{"category": "Procedural Note", "text": _trim_to_chip(match_kw.title())}]
+    return [{"category": "Procedural Note", "text": _chip(match_kw.title())}]
 
 
 _DATA_RE = re.compile(
@@ -453,7 +410,7 @@ def _extract_data_cited(transcript_text: str) -> list[dict]:
     m = _DATA_RE.search(transcript_text)
     if not m:
         return []
-    return [{"category": "Data Cited", "text": _trim_to_chip(m.group(0))}]
+    return [{"category": "Data Cited", "text": _transcript_chip(m.group(0))}]
 
 
 def _extract_in_plain_terms(item: dict) -> list[dict]:
@@ -463,13 +420,13 @@ def _extract_in_plain_terms(item: dict) -> list[dict]:
     describing what the item is about, even if the Gemini pass fails or
     transcript data is unavailable.
     """
-    title = _plainify(item.get("title") or "")
+    title = plainify(item.get("title") or "")
     if not title or len(title) < 10:
         return []
     rec = (item.get("recommendation") or "").strip()
     rec_snippet = ""
     if rec:
-        rec_clean = re.sub(r"\s+", " ", _clean_entities(rec)).strip()
+        rec_clean = re.sub(r"\s+", " ", clean_entities(rec)).strip()
         first_sentence = re.split(r"[.;]", rec_clean, maxsplit=1)[0].strip()
         if 10 < len(first_sentence) <= 90 and not _is_boilerplate_rec(first_sentence):
             rec_snippet = first_sentence
@@ -477,9 +434,9 @@ def _extract_in_plain_terms(item: dict) -> list[dict]:
         combined = f"{title} — {rec_snippet}"
     else:
         combined = title
-    chip = _trim_to_chip(combined)
+    chip = _chip(combined)
     if not chip:
-        chip = _trim_to_chip(title)
+        chip = _chip(title)
     if not chip:
         return []
     return [{"category": "In Plain Terms", "text": chip}]
@@ -758,7 +715,7 @@ def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
             continue
         if usefulness not in ACCEPTED_USEFULNESS:
             continue
-        chip = _trim_to_chip(text)
+        chip = _transcript_chip(text)
         if not chip or chip in seen_texts:
             continue
         seen_texts.add(chip)
@@ -789,7 +746,7 @@ def is_eligible_for_summary(item: dict) -> bool:
     if item.get("is_recess"):
         return False
     title = item.get("title") or ""
-    if _is_procedural(title):
+    if is_procedural(title):
         return False
     start = item.get("time_start_ms")
     end = item.get("time_end_ms")

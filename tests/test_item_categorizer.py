@@ -25,8 +25,7 @@ from app.item_categorizer import (
     _is_boilerplate_rec,
     _sanitize_chips,
     _slice_transcript,
-    _split_sentences,
-    _trim_to_chip,
+    _transcript_chip,
     extract_item_summaries,
     is_eligible_for_summary,
 )
@@ -55,32 +54,35 @@ class TestCategoryMetadata:
 # ── Trimming ────────────────────────────────────────────────────────────────
 
 
-class TestTrimToChip:
+class TestTranscriptChip:
+    """The categorizer's transcript-chip helper composes
+    clean_entities + strip_filler_leads + trim_to_chip."""
+
     def test_short_passthrough(self):
-        assert _trim_to_chip("Approved (8-3)") == "Approved (8-3)"
+        assert _transcript_chip("Approved (8-3)") == "Approved (8-3)"
 
     def test_overflow_with_natural_break_trimmed_at_break(self):
         text = (
             "Council debated the proposal at length. "
             "Residents raised concerns about parking and traffic on the side streets."
         )
-        result = _trim_to_chip(text)
+        result = _transcript_chip(text)
         assert len(result) <= MAX_SUMMARY_CHARS
         assert not result.endswith("…")
         assert result == "Council debated the proposal at length"
 
     def test_overflow_without_natural_break_dropped(self):
         text = "x" * (MAX_SUMMARY_CHARS + 20)
-        assert _trim_to_chip(text) == ""
+        assert _transcript_chip(text) == ""
 
     def test_strips_filler_leads(self):
-        assert _trim_to_chip("I think the budget is fine") == "the budget is fine"
-        assert _trim_to_chip("Um, we need to vote") == "we need to vote"
-        assert _trim_to_chip("Yeah, the city will also act") == "the city will also act"
-        assert _trim_to_chip("Yep, staff confirmed") == "staff confirmed"
+        assert _transcript_chip("I think the budget is fine") == "the budget is fine"
+        assert _transcript_chip("Um, we need to vote") == "we need to vote"
+        assert _transcript_chip("Yeah, the city will also act") == "the city will also act"
+        assert _transcript_chip("Yep, staff confirmed") == "staff confirmed"
 
     def test_strips_html_entities(self):
-        assert "&amp;" not in _trim_to_chip("Parks &amp; Recreation funded")
+        assert "&amp;" not in _transcript_chip("Parks &amp; Recreation funded")
 
 
 # ── Sentence splitting / slicing ────────────────────────────────────────────
@@ -96,21 +98,6 @@ class TestSliceTranscript:
 
     def test_no_timestamps_returns_empty(self):
         assert _slice_transcript([_seg(0, "x")], {"time_start_ms": None, "time_end_ms": None}) == []
-
-
-class TestSplitSentences:
-    def test_basic_split(self):
-        text = "This is sentence one. Here is another one! And a third?"
-        sentences = _split_sentences(text)
-        assert len(sentences) == 3
-
-    def test_drops_very_short(self):
-        assert _split_sentences("Ok. This sentence is long enough to keep.") == [
-            "This sentence is long enough to keep."
-        ]
-
-    def test_empty(self):
-        assert _split_sentences("") == []
 
 
 # ── Deterministic extractors ────────────────────────────────────────────────
