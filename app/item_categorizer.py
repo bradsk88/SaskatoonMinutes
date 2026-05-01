@@ -144,6 +144,8 @@ def _sentence_around(text: str, start: int, end: int) -> str:
 def _slice_transcript(
     segments: list[dict], item: dict
 ) -> list[dict]:
+    # TODO(U4): replace dict-shaped segment access with Transcript.slice_ms
+    # once extract_item_summaries accepts a Transcript instead of list[dict].
     """Return transcript segments that overlap [item.start, item.end]."""
     start = item.get("time_start_ms")
     end = item.get("time_end_ms")
