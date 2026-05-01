@@ -12,7 +12,6 @@ Usage:
 import argparse
 import os
 import sys
-import time
 import traceback
 
 # Ensure print output appears immediately in CI logs
@@ -22,43 +21,9 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from app.scraper import fetch_past_meetings, MEETING_TABS
-from app.transcriber import (
-    load_cached_transcript,
-    transcribe_meeting,
-    save_transcript,
-    TRANSCRIPT_BRANCH,
-    _git,
-)
-
-
-def ensure_transcript_branch() -> None:
-    """Make sure the orphan branch exists (fetch from remote or create)."""
-    try:
-        _git("fetch", "origin", TRANSCRIPT_BRANCH)
-        # Set up local tracking branch
-        try:
-            _git("branch", TRANSCRIPT_BRANCH, f"origin/{TRANSCRIPT_BRANCH}")
-        except RuntimeError:
-            # Already exists locally, update it
-            _git("branch", "-f", TRANSCRIPT_BRANCH, f"origin/{TRANSCRIPT_BRANCH}")
-    except RuntimeError:
-        # Branch doesn't exist on remote yet - will be created on first save
-        print(f"Branch '{TRANSCRIPT_BRANCH}' not found on remote, will create on first transcript.")
-
-
-def push_transcript_branch() -> None:
-    """Push the transcripts branch to origin."""
-    for attempt in range(4):
-        try:
-            _git("push", "origin", TRANSCRIPT_BRANCH)
-            return
-        except RuntimeError as exc:
-            if attempt < 3:
-                wait = 2 ** (attempt + 1)
-                print(f"  Push failed, retrying in {wait}s: {exc}")
-                time.sleep(wait)
-            else:
-                raise
+from app.models import Transcript
+from app.transcriber import transcribe_meeting
+from app.transcript_cache import TranscriptCache
 
 
 def main():
@@ -77,8 +42,6 @@ def main():
     )
     args = parser.parse_args()
 
-    ensure_transcript_branch()
-
     tabs = MEETING_TABS
     if args.tabs:
         tabs = [t for t in MEETING_TABS if t["slug"] in args.tabs]
@@ -86,41 +49,43 @@ def main():
     transcribed = 0
     skipped = 0
 
-    for tab in tabs:
-        slug = tab["slug"]
-        print(f"\n--- {tab['label']} ({slug}) ---")
-        try:
-            meetings, _ = fetch_past_meetings(page=1, meeting_type=tab["type"])
-        except Exception as exc:
-            print(f"  Failed to fetch meetings: {exc}")
-            continue
-
-        processed_this_tab = 0
-        for m in meetings:
-            if processed_this_tab >= args.limit:
-                break
-            if not m.has_video:
-                continue
-
-            mid = m.meeting_id
-            cached = load_cached_transcript(mid)
-            if cached is not None:
-                print(f"  [{m.date}] {mid[:8]}... already transcribed ({len(cached)} segments)")
-                skipped += 1
-                continue
-
-            print(f"  [{m.date}] {mid[:8]}... transcribing...", flush=True)
+    with TranscriptCache.open() as cache:
+        for tab in tabs:
+            slug = tab["slug"]
+            print(f"\n--- {tab['label']} ({slug}) ---")
             try:
-                segments = transcribe_meeting(mid, model_size=args.model)
-                save_transcript(mid, segments)
-                transcribed += 1
-                processed_this_tab += 1
-                print(f"  Done: {len(segments)} segments", flush=True)
-                # Push incrementally so a timeout doesn't lose completed work.
-                push_transcript_branch()
+                meetings, _ = fetch_past_meetings(page=1, meeting_type=tab["type"])
             except Exception as exc:
-                print(f"  ERROR: {exc}", flush=True)
-                traceback.print_exc()
+                print(f"  Failed to fetch meetings: {exc}")
+                continue
+
+            processed_this_tab = 0
+            for m in meetings:
+                if processed_this_tab >= args.limit:
+                    break
+                if not m.has_video:
+                    continue
+
+                mid = m.meeting_id
+                cached = cache.load(mid)
+                if cached is not None:
+                    print(
+                        f"  [{m.date}] {mid[:8]}... already transcribed "
+                        f"({len(cached.segments)} segments)"
+                    )
+                    skipped += 1
+                    continue
+
+                print(f"  [{m.date}] {mid[:8]}... transcribing...", flush=True)
+                try:
+                    segments = transcribe_meeting(mid, model_size=args.model)
+                    cache.save(mid, Transcript.from_dict(segments))
+                    transcribed += 1
+                    processed_this_tab += 1
+                    print(f"  Done: {len(segments)} segments", flush=True)
+                except Exception as exc:
+                    print(f"  ERROR: {exc}", flush=True)
+                    traceback.print_exc()
 
     print(f"\nFinished: {transcribed} transcribed, {skipped} already cached")
 

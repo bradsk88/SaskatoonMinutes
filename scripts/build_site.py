@@ -22,7 +22,8 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS
 from app.summarizer import extract_meeting_topics, extract_badges
-from app.transcriber import load_cached_transcript, correct_timestamps
+from app.transcriber import correct_timestamps
+from app.transcript_cache import TranscriptCache
 from app.item_summaries_store import load_cached_summaries
 
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "_site")
@@ -59,7 +60,7 @@ def _extract_block(name, text):
     return text[after_open:end].strip()
 
 
-def _fetch_topics_and_details(meetings):
+def _fetch_topics_and_details(meetings, transcript_cache):
     """Fetch per-meeting topics and detail data for a list of Meeting objects."""
     topics_data: dict[str, list] = {}
     details_data: dict[str, dict] = {}
@@ -73,10 +74,13 @@ def _fetch_topics_and_details(meetings):
             items = [item.to_dict() for item in detail["agenda_items"]]
 
             # Correct timestamps using cached transcript if available
-            transcript = load_cached_transcript(mid)
-            if transcript:
-                print(f"    Applying transcript timestamps ({len(transcript)} segments)")
-                items = correct_timestamps(items, transcript)
+            transcript = transcript_cache.load(mid)
+            if transcript and transcript.segments:
+                print(
+                    f"    Applying transcript timestamps "
+                    f"({len(transcript.segments)} segments)"
+                )
+                items = correct_timestamps(items, transcript.to_dict())
 
             # Attach badges to each item (same as /api/meeting/<id>)
             for item in items:
@@ -112,25 +116,28 @@ def fetch_all_data():
     all_topics: dict[str, list] = {}
     all_details: dict[str, dict] = {}
 
-    for tab in MEETING_TABS:
-        slug = tab["slug"]
-        meeting_type = tab["type"]
-        print(f"\nFetching '{tab['label']}' meetings ({slug})...")
-        meetings, total_count = fetch_with_retry(
-            fetch_past_meetings, page=1, meeting_type=meeting_type,
-        )
-        meetings = meetings[:MEETINGS_PER_TAB]
-        meetings_data = [m.to_dict() for m in meetings]
-        print(f"  Got {len(meetings_data)} meetings (total: {total_count})")
+    with TranscriptCache.open() as transcript_cache:
+        for tab in MEETING_TABS:
+            slug = tab["slug"]
+            meeting_type = tab["type"]
+            print(f"\nFetching '{tab['label']}' meetings ({slug})...")
+            meetings, total_count = fetch_with_retry(
+                fetch_past_meetings, page=1, meeting_type=meeting_type,
+            )
+            meetings = meetings[:MEETINGS_PER_TAB]
+            meetings_data = [m.to_dict() for m in meetings]
+            print(f"  Got {len(meetings_data)} meetings (total: {total_count})")
 
-        all_tabs_meetings[slug] = {
-            "meetings": meetings_data,
-            "total_count": total_count,
-        }
+            all_tabs_meetings[slug] = {
+                "meetings": meetings_data,
+                "total_count": total_count,
+            }
 
-        topics, details = _fetch_topics_and_details(meetings)
-        all_topics.update(topics)
-        all_details.update(details)
+            topics, details = _fetch_topics_and_details(
+                meetings, transcript_cache,
+            )
+            all_topics.update(topics)
+            all_details.update(details)
 
     return all_tabs_meetings, all_topics, all_details
 

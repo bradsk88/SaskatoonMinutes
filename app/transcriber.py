@@ -6,7 +6,6 @@ transcribes with faster-whisper, and caches transcript JSON on an
 orphan git branch ('transcripts') to avoid re-processing.
 """
 
-import json
 import os
 import re
 import subprocess
@@ -259,11 +258,13 @@ def transcribe_meeting(meeting_id: str, model_size: str = "tiny") -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Transcript cache on orphan branch
+# Git subprocess helper
 # ---------------------------------------------------------------------------
-
-TRANSCRIPT_BRANCH = "transcripts"
-TRANSCRIPT_DIR = "transcripts"  # path within the branch
+#
+# NOTE(U5): this helper is kept here only so app.item_summaries_store can
+# still import it during the U4→U5 transition.  Once U5 deletes that
+# module, this helper goes with it; production callers should reach for
+# app.cache_git._git instead.
 
 
 def _git(*args: str, cwd: str | None = None) -> str:
@@ -275,83 +276,6 @@ def _git(*args: str, cwd: str | None = None) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr}")
     return result.stdout.strip()
-
-
-def load_cached_transcript(meeting_id: str) -> list[dict] | None:
-    """Try to load a transcript from the orphan branch without checking it out.
-
-    Uses `git show` to read from the branch directly.  Tries the local
-    branch first, then falls back to origin/ (for CI where the branch
-    may not be checked out locally).
-    """
-    for ref in [TRANSCRIPT_BRANCH, f"origin/{TRANSCRIPT_BRANCH}"]:
-        blob_path = f"{ref}:{TRANSCRIPT_DIR}/{meeting_id}.json"
-        try:
-            raw = _git("show", blob_path)
-            return json.loads(raw)
-        except (RuntimeError, json.JSONDecodeError):
-            continue
-    return None
-
-
-def save_transcript(meeting_id: str, segments: list[dict]) -> None:
-    """Save a transcript JSON to the orphan branch.
-
-    Creates the orphan branch if it doesn't exist yet.  All operations
-    use a temporary worktree so the main working tree is never touched.
-    """
-    repo_root = _git("rev-parse", "--show-toplevel")
-
-    # Check if the branch exists locally
-    branch_exists = True
-    try:
-        _git("rev-parse", "--verify", TRANSCRIPT_BRANCH)
-    except RuntimeError:
-        branch_exists = False
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        worktree_path = os.path.join(tmpdir, "wt")
-
-        if branch_exists:
-            _git("worktree", "add", worktree_path, TRANSCRIPT_BRANCH)
-        else:
-            # Create orphan branch directly via worktree
-            _git(
-                "worktree", "add", "--detach", worktree_path,
-            )
-            # Inside the worktree, create the orphan branch
-            _git("checkout", "--orphan", TRANSCRIPT_BRANCH, cwd=worktree_path)
-            _git("rm", "-rf", ".", cwd=worktree_path)
-
-        try:
-            transcript_dir = os.path.join(worktree_path, TRANSCRIPT_DIR)
-            os.makedirs(transcript_dir, exist_ok=True)
-
-            filepath = os.path.join(transcript_dir, f"{meeting_id}.json")
-            with open(filepath, "w") as f:
-                json.dump(segments, f, separators=(",", ":"))
-
-            _git("add", f"{TRANSCRIPT_DIR}/{meeting_id}.json", cwd=worktree_path)
-            _git(
-                "commit", "-m",
-                f"Add transcript for {meeting_id}",
-                cwd=worktree_path,
-            )
-        finally:
-            _git("worktree", "remove", "--force", worktree_path)
-
-
-def get_or_transcribe(meeting_id: str, model_size: str = "base") -> list[dict]:
-    """Load cached transcript or transcribe and cache."""
-    cached = load_cached_transcript(meeting_id)
-    if cached is not None:
-        print(f"  Using cached transcript for {meeting_id[:8]}")
-        return cached
-
-    print(f"  No cached transcript for {meeting_id[:8]}, transcribing...")
-    segments = transcribe_meeting(meeting_id, model_size)
-    save_transcript(meeting_id, segments)
-    return segments
 
 
 # ---------------------------------------------------------------------------

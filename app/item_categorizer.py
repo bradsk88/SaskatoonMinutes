@@ -34,6 +34,7 @@ import json
 import os
 import re
 
+from app.models import Transcript
 from app.summarizer import (
     _PROCEDURAL_KEYWORDS,
     _clean_entities,
@@ -144,21 +145,19 @@ def _sentence_around(text: str, start: int, end: int) -> str:
 def _slice_transcript(
     segments: list[dict], item: dict
 ) -> list[dict]:
-    # TODO(U4): replace dict-shaped segment access with Transcript.slice_ms
-    # once extract_item_summaries accepts a Transcript instead of list[dict].
     """Return transcript segments that overlap [item.start, item.end]."""
     start = item.get("time_start_ms")
     end = item.get("time_end_ms")
     if start is None or end is None:
         return []
-    sliced = []
-    for seg in segments:
-        seg_start = seg.get("start_ms", 0)
-        seg_end = seg.get("end_ms", seg_start)
-        if seg_end < start or seg_start > end:
-            continue
-        sliced.append(seg)
-    return sliced
+    # Delegate the overlap check to Transcript so segment-shape knowledge
+    # lives in one place.
+    transcript = Transcript.from_dict(segments)
+    kept = [
+        s for s in transcript.segments
+        if s.end_ms >= start and s.start_ms <= end
+    ]
+    return Transcript(segments=kept).to_dict()
 
 
 def _split_sentences(text: str) -> list[str]:

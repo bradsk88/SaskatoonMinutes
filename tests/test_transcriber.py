@@ -1,4 +1,3 @@
-import json
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -10,7 +9,6 @@ from app.transcriber import (
     _section_number_patterns,
     _find_in_transcript,
     correct_timestamps,
-    load_cached_transcript,
 )
 
 
@@ -66,26 +64,9 @@ class TestExtractVideoMp4Url:
         assert _extract_video_mp4_url("abc-123") is None
 
 
-class TestLoadCachedTranscript:
-    """Test loading transcripts from the orphan branch."""
-
-    @patch("app.transcriber._git")
-    def test_loads_cached(self, mock_git):
-        segments = [{"start_ms": 0, "end_ms": 1000, "text": "Hello"}]
-        mock_git.return_value = json.dumps(segments)
-
-        result = load_cached_transcript("abc-123")
-        assert result == segments
-        mock_git.assert_called_once_with(
-            "show", "transcripts:transcripts/abc-123.json",
-        )
-
-    @patch("app.transcriber._git")
-    def test_returns_none_when_missing(self, mock_git):
-        mock_git.side_effect = RuntimeError("not found")
-
-        result = load_cached_transcript("abc-123")
-        assert result is None
+# Transcript persistence used to live here as load_cached_transcript /
+# save_transcript; that surface moved to app.transcript_cache in U4 of
+# the typed-cache refactor.  See tests/test_cache_git.py for coverage.
 
 
 # ── Keyword extraction ──────────────────────────────────────────────
