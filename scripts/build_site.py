@@ -24,7 +24,7 @@ from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS
 from app.summarizer import extract_meeting_topics, extract_badges
 from app.transcriber import correct_timestamps
 from app.transcript_cache import TranscriptCache
-from app.item_summaries_store import load_cached_summaries
+from app.item_summaries_cache import ItemSummariesCache
 
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "_site")
 TEMPLATE_DIR = os.path.join(PROJECT_ROOT, "app", "templates")
@@ -60,7 +60,7 @@ def _extract_block(name, text):
     return text[after_open:end].strip()
 
 
-def _fetch_topics_and_details(meetings, transcript_cache):
+def _fetch_topics_and_details(meetings, transcript_cache, summaries_cache):
     """Fetch per-meeting topics and detail data for a list of Meeting objects."""
     topics_data: dict[str, list] = {}
     details_data: dict[str, dict] = {}
@@ -87,13 +87,12 @@ def _fetch_topics_and_details(meetings, transcript_cache):
                 item["badges"] = extract_badges(item)
 
             # Attach categorized chip summaries if available
-            chip_summaries = load_cached_summaries(mid)
+            chip_summaries = summaries_cache.load(mid)
             if chip_summaries:
                 print(f"    Applying chip summaries ({len(chip_summaries)} items)")
                 for item in items:
-                    item["chip_summaries"] = chip_summaries.get(
-                        str(item.get("item_id")), []
-                    )
+                    raw = chip_summaries.get(str(item.get("item_id")), [])
+                    item["chip_summaries"] = [s.to_dict() for s in raw]
 
             topics = extract_meeting_topics(items, m.title, max_topics=8)
             topics_data[mid] = topics
@@ -116,7 +115,8 @@ def fetch_all_data():
     all_topics: dict[str, list] = {}
     all_details: dict[str, dict] = {}
 
-    with TranscriptCache.open() as transcript_cache:
+    with TranscriptCache.open() as transcript_cache, \
+            ItemSummariesCache.open() as summaries_cache:
         for tab in MEETING_TABS:
             slug = tab["slug"]
             meeting_type = tab["type"]
@@ -134,7 +134,7 @@ def fetch_all_data():
             }
 
             topics, details = _fetch_topics_and_details(
-                meetings, transcript_cache,
+                meetings, transcript_cache, summaries_cache,
             )
             all_topics.update(topics)
             all_details.update(details)

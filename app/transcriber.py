@@ -258,27 +258,6 @@ def transcribe_meeting(meeting_id: str, model_size: str = "tiny") -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Git subprocess helper
-# ---------------------------------------------------------------------------
-#
-# NOTE(U5): this helper is kept here only so app.item_summaries_store can
-# still import it during the U4→U5 transition.  Once U5 deletes that
-# module, this helper goes with it; production callers should reach for
-# app.cache_git._git instead.
-
-
-def _git(*args: str, cwd: str | None = None) -> str:
-    """Run a git command and return stdout."""
-    result = subprocess.run(
-        ["git"] + list(args),
-        capture_output=True, text=True, cwd=cwd,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr}")
-    return result.stdout.strip()
-
-
-# ---------------------------------------------------------------------------
 # Transcript-based timestamp correction
 # ---------------------------------------------------------------------------
 

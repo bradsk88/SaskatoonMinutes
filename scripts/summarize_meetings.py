@@ -14,7 +14,6 @@ Usage:
 import argparse
 import os
 import sys
-import time
 import traceback
 
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
@@ -23,64 +22,30 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS
-from app.transcriber import load_cached_transcript, _git, TRANSCRIPT_BRANCH
 from app.item_categorizer import (
     extract_item_summaries,
     is_eligible_for_summary,
     GeminiExtractor,
 )
-from app.item_summaries_store import (
-    SUMMARIES_BRANCH,
-    load_cached_summaries,
-    save_summaries,
-)
+from app.item_summaries_cache import ItemSummariesCache
+from app.models import ItemSummary
+from app.transcript_cache import TranscriptCache
 
 
-def ensure_branches() -> None:
-    """Fetch the transcripts and summaries orphan branches if they exist."""
-    for branch in (TRANSCRIPT_BRANCH, SUMMARIES_BRANCH):
-        try:
-            _git("fetch", "origin", f"{branch}:refs/remotes/origin/{branch}")
-        except RuntimeError:
-            print(f"  Branch '{branch}' not present on origin yet.")
-
-    # Set up local tracking for the summaries branch so save_summaries can
-    # find it via `rev-parse --verify`.
-    try:
-        _git("rev-parse", "--verify", f"origin/{SUMMARIES_BRANCH}")
-    except RuntimeError:
-        return
-    try:
-        _git("branch", "-f", SUMMARIES_BRANCH, f"origin/{SUMMARIES_BRANCH}")
-    except RuntimeError:
-        pass
-
-
-def push_summaries_branch() -> None:
-    for attempt in range(4):
-        try:
-            _git("push", "origin", SUMMARIES_BRANCH)
-            return
-        except RuntimeError as exc:
-            if attempt < 3:
-                wait = 2 ** (attempt + 1)
-                print(f"  Push failed, retrying in {wait}s: {exc}")
-                time.sleep(wait)
-            else:
-                raise
-
-
-def summarize_meeting(meeting_id: str, extractor) -> dict[str, list[dict]]:
+def summarize_meeting(
+    meeting_id: str, extractor, transcript_cache,
+) -> dict[str, list[ItemSummary]]:
     """Run the extractor across every eligible agenda item in the meeting."""
-    transcript = load_cached_transcript(meeting_id)
-    if not transcript:
+    transcript = transcript_cache.load(meeting_id)
+    if not transcript or not transcript.segments:
         return {}
-    print(f"    Transcript has {len(transcript)} segments", flush=True)
+    print(f"    Transcript has {len(transcript.segments)} segments", flush=True)
     detail = fetch_meeting_detail(meeting_id, include_votes=True)
     items = [it.to_dict() for it in detail["agenda_items"]]
+    transcript_segments = transcript.to_dict()
 
     eligible = 0
-    summaries: dict[str, list[dict]] = {}
+    summaries: dict[str, list[ItemSummary]] = {}
     for item in items:
         if not is_eligible_for_summary(item):
             summaries[str(item["item_id"])] = []
@@ -89,11 +54,13 @@ def summarize_meeting(meeting_id: str, extractor) -> dict[str, list[dict]]:
         title = (item.get("title") or "")[:60]
         print(f"    Item {item['item_id']}: {title}", flush=True)
         entries = extract_item_summaries(
-            item, transcript, gemini_extractor=extractor,
+            item, transcript_segments, gemini_extractor=extractor,
         )
         cats = [e["category"] for e in entries]
         print(f"      → {len(entries)} chips: {cats}", flush=True)
-        summaries[str(item["item_id"])] = entries
+        summaries[str(item["item_id"])] = [
+            ItemSummary.from_dict(e) for e in entries
+        ]
     print(f"    {eligible}/{len(items)} items eligible for summary", flush=True)
     return summaries
 
@@ -114,8 +81,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    ensure_branches()
-
     tabs = MEETING_TABS
     if args.tabs:
         tabs = [t for t in MEETING_TABS if t["slug"] in args.tabs]
@@ -131,50 +96,52 @@ def main() -> None:
     skipped = 0
     errors = 0
 
-    for tab in tabs:
-        slug = tab["slug"]
-        print(f"\n--- {tab['label']} ({slug}) ---")
-        try:
-            meetings, _ = fetch_past_meetings(page=1, meeting_type=tab["type"])
-        except Exception as exc:
-            print(f"  Failed to fetch meetings: {exc}")
-            continue
-
-        processed_this_tab = 0
-        for m in meetings:
-            if processed_this_tab >= args.limit:
-                break
-            if not m.has_video:
-                continue
-
-            mid = m.meeting_id
-            if not args.force and load_cached_summaries(mid) is not None:
-                print(f"  [{m.date}] {mid[:8]}... already summarized")
-                skipped += 1
-                continue
-            if load_cached_transcript(mid) is None:
-                print(f"  [{m.date}] {mid[:8]}... no transcript yet, skipping")
-                continue
-
-            print(f"  [{m.date}] {mid[:8]}... summarizing...", flush=True)
+    with TranscriptCache.open() as transcript_cache, \
+            ItemSummariesCache.open() as summaries_cache:
+        for tab in tabs:
+            slug = tab["slug"]
+            print(f"\n--- {tab['label']} ({slug}) ---")
             try:
-                summaries = summarize_meeting(mid, extractor)
-                save_summaries(mid, summaries)
-                summarized += 1
-                processed_this_tab += 1
-                counted = sum(1 for v in summaries.values() if v)
-                print(
-                    f"    Done: {counted}/{len(summaries)} items have chips",
-                    flush=True,
-                )
+                meetings, _ = fetch_past_meetings(page=1, meeting_type=tab["type"])
             except Exception as exc:
-                errors += 1
-                print(f"    ERROR: {exc}", flush=True)
-                traceback.print_exc()
+                print(f"  Failed to fetch meetings: {exc}")
+                continue
 
-    if summarized > 0:
-        print(f"\nPushing {summarized} new summary file(s)...")
-        push_summaries_branch()
+            processed_this_tab = 0
+            for m in meetings:
+                if processed_this_tab >= args.limit:
+                    break
+                if not m.has_video:
+                    continue
+
+                mid = m.meeting_id
+                if not args.force and summaries_cache.load(mid) is not None:
+                    print(f"  [{m.date}] {mid[:8]}... already summarized")
+                    skipped += 1
+                    continue
+                if transcript_cache.load(mid) is None:
+                    print(
+                        f"  [{m.date}] {mid[:8]}... no transcript yet, skipping"
+                    )
+                    continue
+
+                print(f"  [{m.date}] {mid[:8]}... summarizing...", flush=True)
+                try:
+                    summaries = summarize_meeting(
+                        mid, extractor, transcript_cache,
+                    )
+                    summaries_cache.save(mid, summaries)
+                    summarized += 1
+                    processed_this_tab += 1
+                    counted = sum(1 for v in summaries.values() if v)
+                    print(
+                        f"    Done: {counted}/{len(summaries)} items have chips",
+                        flush=True,
+                    )
+                except Exception as exc:
+                    errors += 1
+                    print(f"    ERROR: {exc}", flush=True)
+                    traceback.print_exc()
 
     print(
         f"\nFinished: {summarized} summarized, {skipped} already cached, "
