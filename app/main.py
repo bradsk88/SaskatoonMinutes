@@ -6,10 +6,12 @@ agenda items, and jump to specific timestamps in the meeting video.
 """
 
 import os
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, current_app, render_template, jsonify, request
 from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
-from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS, _SLUG_TO_TYPE
+from app.escribe import EscribeMeetingSource, LiveEscribeTransport
+from app.meeting_source import MeetingSource
+from app.meeting_types import MEETING_TABS, _SLUG_TO_TYPE
 from app.summarizer import summarize_agenda_items, extract_meeting_topics, extract_badges
 
 _CONNECTION_ERROR_MSG = (
@@ -21,6 +23,11 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-key-change-me")
+app.config["meeting_source"] = EscribeMeetingSource(LiveEscribeTransport())
+
+
+def _source() -> MeetingSource:
+    return current_app.config["meeting_source"]
 
 
 @app.route("/")
@@ -42,7 +49,7 @@ def api_meetings():
     slug = request.args.get("type", "")
     meeting_type = _SLUG_TO_TYPE.get(slug)  # None → default
     try:
-        meetings, total_count = fetch_past_meetings(page, meeting_type=meeting_type)
+        meetings, total_count = _source().list_past(page, meeting_type=meeting_type)
         return jsonify({
             "meetings": [m.to_dict() for m in meetings],
             "total_count": total_count,
@@ -64,8 +71,8 @@ def meeting_detail(meeting_id: str):
 def api_meeting_detail(meeting_id: str):
     """API endpoint to fetch meeting details with agenda items and timestamps."""
     try:
-        detail = fetch_meeting_detail(meeting_id, include_votes=True)
-        items = [item.to_dict() for item in detail["agenda_items"]]
+        detail = _source().load_detail(meeting_id)
+        items = [item.to_dict() for item in detail.agenda_items]
 
         for item in items:
             item["badges"] = extract_badges(item)
@@ -77,7 +84,7 @@ def api_meeting_detail(meeting_id: str):
 
         return jsonify({
             "agenda_items": items,
-            "video_url": detail["video_url"],
+            "video_url": detail.video_url,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -92,8 +99,8 @@ def api_meeting_topics(meeting_id: str):
     """
     try:
         title = request.args.get("title", "City Council Meeting")
-        detail = fetch_meeting_detail(meeting_id, include_votes=True)
-        items = [item.to_dict() for item in detail["agenda_items"]]
+        detail = _source().load_detail(meeting_id)
+        items = [item.to_dict() for item in detail.agenda_items]
         topics = extract_meeting_topics(items, title, max_topics=8)
         return jsonify({"meeting_id": meeting_id, "topics": topics})
     except (ConnectionError, SSLError):
