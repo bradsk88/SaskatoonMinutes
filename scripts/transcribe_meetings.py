@@ -20,7 +20,9 @@ os.environ.setdefault("PYTHONUNBUFFERED", "1")
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from app.scraper import fetch_past_meetings, MEETING_TABS
+from app.escribe import EscribeMeetingSource, LiveEscribeTransport
+from app.meeting_source import MeetingSource
+from app.meeting_types import MEETING_TABS
 from app.models import Transcript
 from app.transcriber import transcribe_meeting
 from app.transcript_cache import TranscriptCache
@@ -49,12 +51,13 @@ def main():
     transcribed = 0
     skipped = 0
 
+    source: MeetingSource = EscribeMeetingSource(LiveEscribeTransport())
     with TranscriptCache.open() as cache:
         for tab in tabs:
             slug = tab["slug"]
             print(f"\n--- {tab['label']} ({slug}) ---")
             try:
-                meetings, _ = fetch_past_meetings(page=1, meeting_type=tab["type"])
+                meetings, _ = source.list_past(page=1, meeting_type=tab["type"])
             except Exception as exc:
                 print(f"  Failed to fetch meetings: {exc}")
                 continue

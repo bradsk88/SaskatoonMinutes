@@ -2,7 +2,7 @@
 """
 Build a static version of the YXEMinutes for GitHub Pages.
 
-Fetches meeting data from eSCRIBE (reusing app.scraper), generates topic
+Fetches meeting data from eSCRIBE (via app.escribe.EscribeMeetingSource), generates topic
 summaries (reusing app.summarizer), and produces a self-contained static
 site in _site/.
 
@@ -20,7 +20,9 @@ import time
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS
+from app.escribe import EscribeMeetingSource, LiveEscribeTransport
+from app.meeting_source import MeetingSource
+from app.meeting_types import MEETING_TABS
 from app.summarizer import extract_meeting_topics, extract_badges
 from app.transcriber import correct_timestamps
 from app.transcript_cache import TranscriptCache
@@ -60,7 +62,7 @@ def _extract_block(name, text):
     return text[after_open:end].strip()
 
 
-def _fetch_topics_and_details(meetings, transcript_cache, summaries_cache):
+def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache, summaries_cache):
     """Fetch per-meeting topics and detail data for a list of Meeting objects."""
     topics_data: dict[str, list] = {}
     details_data: dict[str, dict] = {}
@@ -68,10 +70,8 @@ def _fetch_topics_and_details(meetings, transcript_cache, summaries_cache):
         mid = m.meeting_id
         print(f"  [{i + 1}/{len(meetings)}] Fetching topics for {mid[:8]}...")
         try:
-            detail = fetch_with_retry(
-                fetch_meeting_detail, mid, include_votes=True,
-            )
-            items = [item.to_dict() for item in detail["agenda_items"]]
+            detail = fetch_with_retry(source.load_detail, mid)
+            items = [item.to_dict() for item in detail.agenda_items]
 
             # Correct timestamps using cached transcript if available
             transcript = transcript_cache.load(mid)
@@ -98,7 +98,7 @@ def _fetch_topics_and_details(meetings, transcript_cache, summaries_cache):
             topics_data[mid] = topics
             details_data[mid] = {
                 "agenda_items": items,
-                "video_url": detail["video_url"],
+                "video_url": detail.video_url,
             }
         except Exception as exc:
             print(f"    WARNING: Failed to get topics: {exc}")
@@ -109,6 +109,7 @@ def _fetch_topics_and_details(meetings, transcript_cache, summaries_cache):
 
 def fetch_all_data():
     """Fetch meetings list and per-meeting topics from eSCRIBE for all tabs."""
+    source: MeetingSource = EscribeMeetingSource(LiveEscribeTransport())
     # Per-tab meeting lists keyed by slug
     all_tabs_meetings: dict[str, dict] = {}
     # Shared across all tabs (meeting IDs are globally unique)
@@ -122,7 +123,7 @@ def fetch_all_data():
             meeting_type = tab["type"]
             print(f"\nFetching '{tab['label']}' meetings ({slug})...")
             meetings, total_count = fetch_with_retry(
-                fetch_past_meetings, page=1, meeting_type=meeting_type,
+                source.list_past, page=1, meeting_type=meeting_type,
             )
             meetings = meetings[:MEETINGS_PER_TAB]
             meetings_data = [m.to_dict() for m in meetings]
@@ -134,7 +135,7 @@ def fetch_all_data():
             }
 
             topics, details = _fetch_topics_and_details(
-                meetings, transcript_cache, summaries_cache,
+                source, meetings, transcript_cache, summaries_cache,
             )
             all_topics.update(topics)
             all_details.update(details)

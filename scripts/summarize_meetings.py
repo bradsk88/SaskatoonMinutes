@@ -21,27 +21,29 @@ os.environ.setdefault("PYTHONUNBUFFERED", "1")
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from app.scraper import fetch_past_meetings, fetch_meeting_detail, MEETING_TABS
+from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.item_categorizer import (
     extract_item_summaries,
     is_eligible_for_summary,
     GeminiExtractor,
 )
 from app.item_summaries_cache import ItemSummariesCache
+from app.meeting_source import MeetingSource
+from app.meeting_types import MEETING_TABS
 from app.models import ItemSummary
 from app.transcript_cache import TranscriptCache
 
 
 def summarize_meeting(
-    meeting_id: str, extractor, transcript_cache,
+    source: MeetingSource, meeting_id: str, extractor, transcript_cache,
 ) -> dict[str, list[ItemSummary]]:
     """Run the extractor across every eligible agenda item in the meeting."""
     transcript = transcript_cache.load(meeting_id)
     if not transcript or not transcript.segments:
         return {}
     print(f"    Transcript has {len(transcript.segments)} segments", flush=True)
-    detail = fetch_meeting_detail(meeting_id, include_votes=True)
-    items = [it.to_dict() for it in detail["agenda_items"]]
+    detail = source.load_detail(meeting_id)
+    items = [it.to_dict() for it in detail.agenda_items]
     transcript_segments = transcript.to_dict()
 
     eligible = 0
@@ -96,13 +98,14 @@ def main() -> None:
     skipped = 0
     errors = 0
 
+    source: MeetingSource = EscribeMeetingSource(LiveEscribeTransport())
     with TranscriptCache.open() as transcript_cache, \
             ItemSummariesCache.open() as summaries_cache:
         for tab in tabs:
             slug = tab["slug"]
             print(f"\n--- {tab['label']} ({slug}) ---")
             try:
-                meetings, _ = fetch_past_meetings(page=1, meeting_type=tab["type"])
+                meetings, _ = source.list_past(page=1, meeting_type=tab["type"])
             except Exception as exc:
                 print(f"  Failed to fetch meetings: {exc}")
                 continue
@@ -128,7 +131,7 @@ def main() -> None:
                 print(f"  [{m.date}] {mid[:8]}... summarizing...", flush=True)
                 try:
                     summaries = summarize_meeting(
-                        mid, extractor, transcript_cache,
+                        source, mid, extractor, transcript_cache,
                     )
                     summaries_cache.save(mid, summaries)
                     summarized += 1
