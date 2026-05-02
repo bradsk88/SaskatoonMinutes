@@ -63,6 +63,20 @@ class Meeting:
         return asdict(self)
 
 
+@dataclass
+class MeetingDetail:
+    """The full per-meeting payload: agenda items + the bookmarked video URL."""
+
+    agenda_items: list[AgendaItem] = field(default_factory=list)
+    video_url: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "agenda_items": [i.to_dict() for i in self.agenda_items],
+            "video_url": self.video_url,
+        }
+
+
 @dataclass(frozen=True)
 class Segment:
     start_ms: int

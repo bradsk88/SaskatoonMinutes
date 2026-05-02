@@ -1,0 +1,29 @@
+{
+  "d": {
+    "TotalCount": 2,
+    "Meetings": [
+      {
+        "Id": "abc-001",
+        "MeetingType": "City Council Meeting ",
+        "Start": "/Date(1719457800000)/",
+        "FormattedStart": "1:30 PM",
+        "LocationName": "Council Chambers",
+        "HasVideo": true,
+        "HasAgenda": true,
+        "Cancelled": false,
+        "MeetingLinks": []
+      },
+      {
+        "Id": "abc-002",
+        "MeetingType": "City Council Meeting",
+        "Start": "/Date(1719457800000)/",
+        "FormattedStart": "9:00 AM",
+        "LocationName": "Council Chambers",
+        "HasVideo": false,
+        "HasAgenda": true,
+        "Cancelled": false,
+        "MeetingLinks": [{"Title": "Cancellation Notice"}]
+      }
+    ]
+  }
+}
