@@ -7,32 +7,16 @@ pub-saskatoon.escribemeetings.com.
 
 import re
 import json
-import urllib3
-import requests
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
 from app.models import AgendaItem, Meeting  # re-exported for back-compat
+from app.meeting_types import MEETING_TABS, MEETING_TYPE, _SLUG_TO_TYPE  # re-exported  # noqa: F401
+from app.escribe import BASE_URL, LiveEscribeTransport, _build_video_url  # noqa: F401
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-BASE_URL = "https://pub-saskatoon.escribemeetings.com"
-
-# Browser-like headers required by the eSCRIBE AJAX endpoints.
-_AJAX_HEADERS = {
-    "Content-Type": "application/json; charset=utf-8",
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
-    "X-Requested-With": "XMLHttpRequest",
-    "Origin": BASE_URL,
-    "Referer": f"{BASE_URL}/MeetingsCalendarView.aspx",
-}
-
-_PAGE_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
-}
-
-# Re-exported for back-compat; canonical home is app.meeting_types.
-from app.meeting_types import MEETING_TABS, MEETING_TYPE, _SLUG_TO_TYPE  # noqa: E402,F401
+# All HTTP calls now flow through this module-level transport.  In U4 the
+# scraper will go away entirely; for now it preserves the public surface.
+_default_transport = LiveEscribeTransport()
 
 
 def fetch_past_meetings(page: int = 1, meeting_type: str | None = None) -> tuple[list[Meeting], int]:
@@ -44,15 +28,10 @@ def fetch_past_meetings(page: int = 1, meeting_type: str | None = None) -> tuple
 
     Returns (meetings, total_count).
     """
-    url = f"{BASE_URL}/MeetingsCalendarView.aspx/PastMeetings"
-    payload = {
-        "type": meeting_type or MEETING_TYPE,
-        "pageNumber": page,
-    }
-    resp = requests.post(url, json=payload, headers=_AJAX_HEADERS, timeout=30, verify=False)
-    resp.raise_for_status()
-
-    data = resp.json().get("d", {})
+    envelope = _default_transport.fetch_past_meetings_json(
+        page=page, meeting_type=meeting_type or MEETING_TYPE
+    )
+    data = envelope.get("d", {})
     total_count = data.get("TotalCount", 0)
     raw_meetings = data.get("Meetings", [])
 
@@ -89,10 +68,7 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
 
     Returns a dict with 'agenda_items' and 'video_url'.
     """
-    url = f"{BASE_URL}/Meeting.aspx?Id={meeting_id}&Agenda=Agenda&lang=English"
-    resp = requests.get(url, headers=_PAGE_HEADERS, timeout=30, verify=False)
-    resp.raise_for_status()
-    html = resp.text
+    html = _default_transport.fetch_agenda_html(meeting_id)
 
     bookmarks = _extract_bookmarks(html)
     agenda_items = _extract_agenda_items(html, bookmarks)
@@ -137,10 +113,6 @@ def fetch_meeting_detail(meeting_id: str, include_votes: bool = False) -> dict:
         "agenda_items": agenda_items,
         "video_url": video_url,
     }
-
-
-def _build_video_url(meeting_id: str) -> str:
-    return f"{BASE_URL}/Players/ISIStandAlonePlayer.aspx?Id={meeting_id}"
 
 
 def _parse_escribemeetings_date(date_str: str) -> str:
@@ -677,13 +649,13 @@ def fetch_post_minutes(meeting_id: str) -> dict:
 
     Returns ``{"votes": {item_id: vote_dict}, "minutes": {item_id: str}}``.
     """
-    url = f"{BASE_URL}/Meeting.aspx?Id={meeting_id}&Agenda=PostMinutes&lang=English"
+    # TEMP: swallow moves to EscribeMeetingSource in U4.  The transport
+    # raises; this layer keeps existing public-surface behavior (silent
+    # empty payload on PostMinutes failure).
     try:
-        resp = requests.get(url, headers=_PAGE_HEADERS, timeout=30, verify=False)
-        resp.raise_for_status()
+        html = _default_transport.fetch_postminutes_html(meeting_id)
     except Exception:
         return {"votes": {}, "minutes": {}}
-    html = resp.text
     return {
         "votes": _extract_votes(html),
         "minutes": _extract_minutes(html),
