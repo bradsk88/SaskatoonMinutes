@@ -1,6 +1,6 @@
-"""Tests for app.models — Transcript, Segment, ItemSummary."""
+"""Tests for app.models — Transcript, Segment, ItemSummary, Meeting, AgendaItem."""
 
-from app.models import ItemSummary, Segment, Transcript
+from app.models import AgendaItem, ItemSummary, Meeting, Segment, Transcript
 
 
 def _seg(start_ms: int, end_ms: int, text: str = "x") -> Segment:
@@ -85,3 +85,63 @@ class TestItemSummary:
         raw = {"category": "Outcome", "text": "ok", "usefulness": "high"}
         s = ItemSummary.from_dict(raw)
         assert s.to_dict() == {"category": "Outcome", "text": "ok"}
+
+
+class TestAgendaItem:
+    def test_to_dict_includes_derived_fields(self):
+        item = AgendaItem(
+            item_id=42,
+            title="Funding request",
+            content="body",
+            section_number="4.1.2",
+            time_start_ms=3_661_000,
+        )
+        d = item.to_dict()
+        assert d["item_id"] == 42
+        assert d["section_number"] == "4.1.2"
+        assert d["time_start_formatted"] == "1:01:01"
+        assert d["is_contested"] is False
+        assert d["timestamp_inherited"] is False
+        assert d["is_recess"] is False
+        assert d["attachments"] == []
+
+    def test_time_start_formatted_under_one_hour(self):
+        item = AgendaItem(item_id=1, title="t", content="c", section_number="1", time_start_ms=125_000)
+        assert item.time_start_formatted == "2:05"
+
+    def test_time_start_formatted_none(self):
+        item = AgendaItem(item_id=1, title="t", content="c", section_number="1")
+        assert item.time_start_formatted is None
+        assert item.to_dict()["time_start_formatted"] is None
+
+    def test_attachments_default_is_independent(self):
+        a = AgendaItem(item_id=1, title="a", content="", section_number="1")
+        b = AgendaItem(item_id=2, title="b", content="", section_number="2")
+        a.attachments.append("x")
+        assert b.attachments == []
+
+
+class TestMeeting:
+    def test_to_dict_round_trip_shape(self):
+        m = Meeting(
+            meeting_id="abc",
+            title="Council",
+            date="2026-05-01",
+            start_time="6:00 PM",
+            location="Council Chambers",
+            has_video=True,
+            has_agenda=True,
+            video_url="https://example.com/v",
+        )
+        d = m.to_dict()
+        assert d == {
+            "meeting_id": "abc",
+            "title": "Council",
+            "date": "2026-05-01",
+            "start_time": "6:00 PM",
+            "location": "Council Chambers",
+            "has_video": True,
+            "has_agenda": True,
+            "video_url": "https://example.com/v",
+            "is_cancelled": False,
+        }

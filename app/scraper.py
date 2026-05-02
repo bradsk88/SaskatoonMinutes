@@ -12,6 +12,8 @@ import requests
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
+from app.models import AgendaItem, Meeting  # re-exported for back-compat
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE_URL = "https://pub-saskatoon.escribemeetings.com"
@@ -55,59 +57,6 @@ MEETING_TABS: list[dict] = [
 
 # Quick lookup from slug → eSCRIBE type string.
 _SLUG_TO_TYPE = {tab["slug"]: tab["type"] for tab in MEETING_TABS}
-
-
-@dataclass
-class AgendaItem:
-    item_id: int
-    title: str
-    content: str
-    section_number: str  # e.g. "4.1.2"
-    time_start_ms: int | None = None
-    time_end_ms: int | None = None
-    recommendation: str = ""
-    vote_result: str = ""
-    vote_detail: str = ""
-    is_contested: bool = False
-    timestamp_inherited: bool = False
-    is_recess: bool = False
-    attachments: list = field(default_factory=list)
-
-    @property
-    def time_start_formatted(self) -> str | None:
-        if self.time_start_ms is None:
-            return None
-        total_seconds = self.time_start_ms // 1000
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-        if hours > 0:
-            return f"{hours}:{minutes:02d}:{seconds:02d}"
-        return f"{minutes}:{seconds:02d}"
-
-    def to_dict(self) -> dict:
-        d = asdict(self)
-        d["time_start_formatted"] = self.time_start_formatted
-        d["is_contested"] = self.is_contested
-        d["timestamp_inherited"] = self.timestamp_inherited
-        d["is_recess"] = self.is_recess
-        return d
-
-
-@dataclass
-class Meeting:
-    meeting_id: str
-    title: str
-    date: str  # ISO date string
-    start_time: str
-    location: str
-    has_video: bool
-    has_agenda: bool
-    video_url: str | None = None
-    is_cancelled: bool = False
-
-    def to_dict(self) -> dict:
-        return asdict(self)
 
 
 def fetch_past_meetings(page: int = 1, meeting_type: str | None = None) -> tuple[list[Meeting], int]:
