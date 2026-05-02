@@ -1,18 +1,17 @@
 import pytest
 
-from app.scraper import (
-    AgendaItem,
-    Meeting,
-    _parse_escribemeetings_date,
+from app.escribe import (
     _clean_html,
     _extract_bookmarks,
-    _extract_votes,
-    _extract_recommendations,
     _extract_minutes,
-    _propagate_timestamps,
-    _mark_brief_items,
+    _extract_recommendations,
+    _extract_votes,
     _insert_recesses,
+    _mark_brief_items,
+    _parse_escribemeetings_date,
+    _propagate_timestamps,
 )
+from app.models import AgendaItem, Meeting  # noqa: F401
 
 
 # ── _parse_escribemeetings_date ──────────────────────────────────────
