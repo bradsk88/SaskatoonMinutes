@@ -434,6 +434,34 @@ numbers.
   rule on. Edit distance cannot arbitrate this — "Remly" and "Remai" are
   close, so a distance rule scores the known failure as a success.
 
+**Fixtures added, and how they were chosen.** `scripts/add_eval_fixture.py`
+does the item-level selection; the meeting-level selection is recorded
+here because it is the part a person could have biased.
+
+| meeting | tab | items | why this meeting |
+|---|---|---|---|
+| 2026-05-27 `314006fe` | Public Hearing | 5 | delegate-heavy by construction |
+| 2026-04-29 `dd7a2c77` | Public Hearing | 3 | delegate-heavy by construction |
+| 2026-05-06 `a4d94b69` | Planning & Dev | 5 | First Nations engagement (below) |
+
+That takes the fixture set from 11 eligible items to **24**.
+
+The First Nations meeting was found by scanning all 655 cached
+transcripts for a fixed term list (First Nation, Treaty 6, Métis, Cree,
+Dakota, Nakota, Saulteaux, Whitecap, Kahkewistahaw, Muskeg Lake,
+Indigenous, reconciliation, elder, urban reserve, Wanuskewin,
+word-boundary matched), keeping meetings in the current term, ranking by
+distinct terms then hits, and then checking that the **items the ranking
+would actually pick** carry the content — a meeting-level count can be
+satisfied entirely by items the fixture never includes. Of the top
+candidates, 2026-05-06 put 26 hits across 3 of its 5 chosen items against
+10 across 2 for the runner-up (2025-12-17 council, `f890ac5d`). The
+highest-scoring meeting overall (2025-11-25 budget, `71edd7cf`) was
+dropped on size: its five items are ~1M characters, which would cost more
+cleanup than the rest of the fixture set combined and swamp the average
+it is meant to inform. The existing `b71ff753` fixture ranked second on
+the raw scan, which is a check on the scan rather than a new fixture.
+
 **Pre-registered decision rule.** Cleanup survives only if it wins
 **both** gates:
 
