@@ -212,13 +212,27 @@ Cleanup dominates the cost and none of it is cached yet, so a full run is roughl
 
 What was run: the **latest meeting of every body** (16 meetings, `--since 2024-11-01 --limit 1 --force`). That covers the highest-traffic content, exercises every tab's meeting shape, and validates the push path for all three caches including the brand-new `clean-transcripts` branch.
 
-To finish the term:
+**The 16-meeting run produced summaries for all 16 but persisted none of them.** `GitBranchCache` pushes on context exit, and this environment has no git credentials:
+
+```
+RuntimeError: git push origin clean-transcripts failed:
+  fatal: could not read Username for 'https://github.com'
+```
+
+No damage — `origin/summaries` is untouched at `6a2b86d` and still holds the old-format entries, and `clean-transcripts` was never created. But it means **the backfill cannot run from a local unauthenticated shell**; it has to run where credentials exist. `.github/workflows/summarize.yml` already has `contents: write`, so it now takes `since` and `pages` as dispatch inputs:
+
+```
+gh workflow run summarize.yml \
+  -f since=2024-11-01 -f pages=3 -f limit=30 -f force=true
+```
+
+Its timeout went 90 → 350 minutes, which still will not cover 226 meetings in one run. That is fine and is the reason `CleanTranscriptCache` exists: a repeated dispatch re-reads cleanup from cache and only re-pays the chip calls, so dispatching until the counts stop moving converges rather than restarting. Run it per-tab (`-f tabs=council`) to keep each run comfortably inside the limit.
+
+The alternative is to run it from an authenticated local shell, where the full term is one command and 8–15 hours:
 
 ```
 python scripts/summarize_meetings.py --since 2024-11-01 --pages 3 --limit 30 --force
 ```
-
-`--pages 3` is needed because `list_past` returns one page at a time and 20 in-term meetings do not fit on page 1 for the busier tabs. Re-running is cheap for anything already done — the CleanTranscriptCache makes the expensive half a cache hit, so only the chip calls repeat.
 
 ---
 
@@ -227,3 +241,5 @@ python scripts/summarize_meetings.py --since 2024-11-01 --pages 3 --limit 30 --f
 - **Cleanup's remaining value is unmeasured.** ADR `0004` keeps it only for proper-noun correction. Once U1 makes A/B cheap, run the fixtures with cleanup off and check whether chip quality actually drops. If it doesn't, delete the pass and the cache with it.
 - **The name roster is stale for the archive.** `_SASKATOON_NAMES` covers the 2020-2024 and 2024-2028 councils. Meetings older than 2020 would have their proper nouns "corrected" toward the wrong people — an argument for never backfilling the deep archive.
 - **`MeetingTopics` is untouched here** and is still uncached. It shares the summarizer's prompt problems but has its own scope.
+- **Unbookmarked items are a coverage gap the same shape as Consent Items.** On advisory-committee meetings the clerk often places no video bookmarks at all, so real agenda items get no timestamp and fall out of eligibility. The 2026-04-10 Accessibility meeting produced **0 summaries from 15 items** for this reason. Six of those items carry content (`REPORT OF THE CHAIR` has 827 characters) but their recommendations are the 33-character boilerplate, so the current rule — a summary needs a non-boilerplate recommendation, content alone is supporting material — excludes them consistently rather than accidentally. Whether content-only items should be summarizable is a real decision, not an oversight, and it is the natural next unit.
+- **The 16-meeting sample shows chip coverage varying a lot by body**: 29/73 on City Council and 31/71 on Budget, against 2/18 on Police and 2/11 on Municipal Planning. Worth checking whether the low ones are genuinely thin agendas or another eligibility gap like the one above.

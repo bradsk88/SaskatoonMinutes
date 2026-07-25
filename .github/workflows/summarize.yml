@@ -20,6 +20,14 @@ on:
         type: boolean
         required: false
         default: false
+      since:
+        description: 'Only meetings on or after this date (backfill: 2024-11-01)'
+        required: false
+        default: ''
+      pages:
+        description: 'Pages of past meetings to walk per tab'
+        required: false
+        default: '1'
 
 concurrency:
   group: summarize
@@ -31,7 +39,10 @@ permissions:
 jobs:
   summarize:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # The current-term backfill is ~226 meetings and will not fit in one
+    # run.  That is fine: CleanTranscriptCache makes the expensive half a
+    # cache hit, so dispatching repeatedly converges instead of restarting.
+    timeout-minutes: 350
 
     steps:
       - uses: actions/checkout@v4
@@ -59,9 +70,15 @@ jobs:
           LIMIT="${{ inputs.limit || '2' }}"
           TABS="${{ inputs.tabs || '' }}"
 
-          ARGS="--limit $LIMIT"
+          SINCE="${{ inputs.since || '' }}"
+          PAGES="${{ inputs.pages || '1' }}"
+
+          ARGS="--limit $LIMIT --pages $PAGES"
           if [ -n "$TABS" ]; then
             ARGS="$ARGS --tabs $TABS"
+          fi
+          if [ -n "$SINCE" ]; then
+            ARGS="$ARGS --since $SINCE"
           fi
           if [ "${{ inputs.force }}" = "true" ]; then
             ARGS="$ARGS --force"
