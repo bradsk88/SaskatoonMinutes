@@ -41,6 +41,13 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from app.cache import LocalDirCache  # noqa: E402
 from app.clean_transcript_cache import CleanTranscriptCache  # noqa: E402
+from app.summary_judge import (  # noqa: E402
+    FAITHFULNESS_CONCERN,
+    FAITHFULNESS_FLOOR,
+    MIN_MEAN_FAITHFULNESS,
+    MIN_MEAN_SPECIFICITY,
+    SummaryJudge,
+)
 from app.item_categorizer import (  # noqa: E402
     CATEGORIES,
     MAX_DESCRIPTION_CHARS,
@@ -265,6 +272,9 @@ def run_eval(extractor: GeminiExtractor) -> dict:
             results[f"{mid}/{item['item_id']}"] = {
                 "section_number": item.get("section_number") or "",
                 "title": item.get("title") or "",
+                # Kept out of the baseline (see save_baseline): it is the
+                # judge's input, not part of what we diff.
+                "_source": _source_material(item, clean.get(str(item["item_id"]), "")),
                 "description": payload.get("description"),
                 "chips": [
                     {"category": c["category"], "text": c["text"]}
@@ -272,6 +282,24 @@ def run_eval(extractor: GeminiExtractor) -> dict:
                 ],
             }
     return results
+
+
+def _source_material(item: dict, clean_transcript: str) -> str:
+    """Everything the summary was allowed to draw on, for the judge."""
+    parts = []
+    for label, key in (
+        ("Official recommendation", "recommendation"),
+        ("Motion text", "motion_text"),
+        ("Vote result", "vote_result"),
+        ("Vote detail", "vote_detail"),
+        ("Agenda notes", "content"),
+    ):
+        value = (item.get(key) or "").strip()
+        if value:
+            parts.append(f"{label}: {value}")
+    if clean_transcript.strip():
+        parts.append(f"Transcript:\n{clean_transcript}")
+    return "\n\n".join(parts)
 
 
 def build_report(results: dict) -> Report:
@@ -302,8 +330,15 @@ def load_baseline() -> dict | None:
 
 
 def save_baseline(results: dict) -> None:
+    # Source material is the judge's input, not part of the diff — it is
+    # large, it does not change with the prompt, and committing it would
+    # duplicate the fixtures.
+    stripped = {
+        k: {kk: vv for kk, vv in v.items() if kk != "_source"}
+        for k, v in results.items()
+    }
     with open(BASELINE_PATH, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=1, ensure_ascii=False, sort_keys=True)
+        json.dump(stripped, f, indent=1, ensure_ascii=False, sort_keys=True)
         f.write("\n")
 
 
@@ -410,6 +445,95 @@ def _category_sort(cat: str) -> tuple[int, str]:
     return (CATEGORIES.index(cat) if cat in CATEGORIES else len(CATEGORIES), cat)
 
 
+# ── LLM-as-judge ─────────────────────────────────────────────────────────────
+
+
+def run_judge(results: dict) -> dict:
+    judge = SummaryJudge()
+    if not judge.enabled:
+        print("judge: no GEMINI_API_KEY — skipping", file=sys.stderr)
+        return {}
+
+    def one(item: tuple):
+        key, entry = item
+        return key, judge.judge(
+            entry["title"], entry.get("_source", ""),
+            entry.get("description"), entry.get("chips") or [],
+        )
+
+    with ThreadPoolExecutor(max_workers=EXTRACT_WORKERS) as pool:
+        return dict(pool.map(one, results.items()))
+
+
+def _mean(values: list[int]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def render_judge(verdicts: dict) -> str:
+    scored = {k: v for k, v in verdicts.items() if v}
+    if not scored:
+        return "\n## Judge\n\n_no verdicts_"
+    faith = [v["faithfulness"] for v in scored.values()]
+    spec = [v["specificity"] for v in scored.values()]
+    nonred = [v["non_redundancy"] for v in scored.values()]
+    lines = [
+        "",
+        "## Judge",
+        "",
+        f"- Faithfulness: **{_mean(faith):.2f}** (gate {MIN_MEAN_FAITHFULNESS})",
+        f"- Specificity: **{_mean(spec):.2f}** (gate {MIN_MEAN_SPECIFICITY})",
+        f"- Non-redundancy: **{_mean(nonred):.2f}**",
+        f"- Scored: **{len(scored)}/{len(verdicts)}**",
+        "",
+    ]
+    concerns = [
+        (k, v) for k, v in scored.items()
+        if v["faithfulness"] <= FAITHFULNESS_CONCERN or v["unsupported_claims"]
+    ]
+    if concerns:
+        lines.append("### Flagged")
+        for key, v in concerns:
+            lines.append(
+                f"- `{key}` faith={v['faithfulness']} "
+                f"spec={v['specificity']} nonred={v['non_redundancy']}"
+            )
+            for claim in v["unsupported_claims"]:
+                lines.append(f"  - unsupported: {claim}")
+            if not v["supporting_quote"]:
+                lines.append("  - judge found no supporting span in the source")
+    return "\n".join(lines)
+
+
+def judge_failures(verdicts: dict) -> list[str]:
+    scored = {k: v for k, v in verdicts.items() if v}
+    if not scored:
+        return []
+    failures = []
+    unscored = len(verdicts) - len(scored)
+    if unscored:
+        # A judge that did not return is not a pass.
+        failures.append(f"{unscored} summaries could not be judged")
+    mean_faith = _mean([v["faithfulness"] for v in scored.values()])
+    mean_spec = _mean([v["specificity"] for v in scored.values()])
+    if mean_faith < MIN_MEAN_FAITHFULNESS:
+        failures.append(
+            f"mean faithfulness {mean_faith:.2f} is below "
+            f"{MIN_MEAN_FAITHFULNESS} — summaries are asserting things "
+            f"the source does not support"
+        )
+    if mean_spec < MIN_MEAN_SPECIFICITY:
+        failures.append(
+            f"mean specificity {mean_spec:.2f} is below {MIN_MEAN_SPECIFICITY}"
+        )
+    floor = [k for k, v in scored.items() if v["faithfulness"] <= FAITHFULNESS_FLOOR]
+    if floor:
+        failures.append(
+            f"{len(floor)} summaries scored <= {FAITHFULNESS_FLOOR} on "
+            f"faithfulness: {', '.join(sorted(floor)[:5])}"
+        )
+    return failures
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -423,6 +547,10 @@ def main() -> None:
     parser.add_argument(
         "--snapshot", action="store_true",
         help="Overwrite the committed baseline with this run's output.",
+    )
+    parser.add_argument(
+        "--judge", action="store_true",
+        help="Score each summary against its source with an LLM judge.",
     )
     args = parser.parse_args()
 
@@ -457,6 +585,15 @@ def main() -> None:
         with open(step_summary, "a") as f:
             f.write(text + "\n")
 
+    verdicts: dict = {}
+    if args.judge:
+        verdicts = run_judge(results)
+        judge_text = render_judge(verdicts)
+        print(judge_text)
+        if step_summary:
+            with open(step_summary, "a") as f:
+                f.write(judge_text + "\n")
+
     if args.snapshot:
         save_baseline(results)
         print(
@@ -469,6 +606,8 @@ def main() -> None:
         return
 
     failures: list[str] = []
+    if args.judge:
+        failures.extend(judge_failures(verdicts))
     if report.items == 0:
         failures.append("no eligible items in the fixtures")
     if extractor.enabled and report.soft_coverage < MIN_SOFT_COVERAGE:

@@ -230,12 +230,40 @@ class TestAmendment:
         assert len(out) == 1
         assert out[0]["category"] == "Amendment Made"
 
-    def test_bare_amended_word_dropped(self):
+    def test_carried_as_amended_is_an_amendment(self):
+        """"as amended" is eSCRIBE recording that the motion was changed."""
         item = {"motion_text": "", "vote_result": "Carried as amended.", "recommendation": ""}
-        assert _extract_amendment(item) == []
+        out = _extract_amendment(item)
+        assert out and out[0]["category"] == "Amendment Made"
 
     def test_no_amendment(self):
         item = {"motion_text": "That the report be received."}
+        assert _extract_amendment(item) == []
+
+    def test_the_word_amended_describing_a_future_policy_is_not_an_amendment(self):
+        """The real false positive from the 2022-03 committee meeting.
+
+        "until such time as a new or amended Naming of City Property and
+        Development Areas Policy ... is developed" describes a policy
+        nobody amended, but produced an Amendment Made chip.
+        """
+        item = {
+            "motion_text": "", "vote_result": "CARRIED UNANIMOUSLY",
+            "recommendation": (
+                "That a temporary pause of the Civic Naming Program, with "
+                "respect to receiving new submissions, until such time as a "
+                "new or amended Naming of City Property and Development "
+                "Areas Policy, or related policy is developed."
+            ),
+        }
+        assert _extract_amendment(item) == []
+
+    def test_an_amendment_bylaw_title_is_not_an_amendment(self):
+        item = {
+            "motion_text": "That Council consider The Capital Reserve "
+                           "Amendment Bylaw, 2026.",
+            "vote_result": "CARRIED UNANIMOUSLY", "recommendation": "",
+        }
         assert _extract_amendment(item) == []
 
 

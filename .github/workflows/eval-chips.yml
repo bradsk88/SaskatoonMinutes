@@ -11,6 +11,7 @@ on:
   push:
     paths:
       - 'app/item_categorizer.py'
+      - 'app/summary_judge.py'
       - 'app/agenda_text.py'
       - 'app/transcript_text.py'
       - 'scripts/eval_chips.py'
@@ -50,4 +51,4 @@ jobs:
       - name: Chip quality eval
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python scripts/eval_chips.py --diff --check
+        run: python scripts/eval_chips.py --diff --judge --check

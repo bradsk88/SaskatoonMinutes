@@ -253,8 +253,20 @@ def _extract_vote_breakdown(item: dict) -> list[dict]:
     }]
 
 
-_AMENDMENT_RE = re.compile(
-    r"\b(amend(?:ed|ment|ing)?)\b[^.]*",
+# "Amendment Made" means council amended the motion in front of it.  The
+# bare word "amend" does not mean that -- official text is full of it:
+# "until such time as a new or amended Naming of City Property Policy is
+# developed" produced the chip "amended Naming of City Property and
+# Development Areas Policy, or related policy is developed", which
+# describes a future policy nobody amended.  So the trigger has to be
+# language about the motion's own fate, not any occurrence of the word.
+_AMENDMENT_TRIGGER_RE = re.compile(
+    r"\bas\s+amended\b"
+    r"|\bamendment\s+(?:was\s+)?(?:carried|adopted|approved|defeated|lost)\b"
+    r"|\bmoved\s+(?:an?\s+)?amendment\b"
+    r"|\bamendment\s+to\s+the\s+(?:motion|recommendation)\b"
+    # "That the motion be amended to include parks" — the motion's own fate.
+    r"|\b(?:motion|recommendation|resolution|clause)\s+be\s+amended\b",
     re.IGNORECASE,
 )
 
@@ -263,17 +275,13 @@ def _extract_amendment(item: dict) -> list[dict]:
     combined = " ".join(
         str(item.get(k) or "") for k in ("motion_text", "vote_result", "recommendation")
     )
-    if not re.search(r"\bamend(?:ed|ment|ing)?\b", combined, re.IGNORECASE):
-        return []
-    m = _AMENDMENT_RE.search(combined)
+    m = _AMENDMENT_TRIGGER_RE.search(combined)
     if not m:
         return []
-    text = m.group(0).strip()
-    # Require real content beyond the amendment keyword itself.
-    tail = re.sub(r"^amend(?:ed|ment|ing)?\b[\s,.:;-]*", "", text, flags=re.IGNORECASE)
-    if len(tail.split()) < 3:
-        return []
-    chip = _chip(text)
+    # Report the clause the trigger sits in, so the chip says what was
+    # amended rather than just that something was.
+    sentence = sentence_around(combined, m.start(), m.end())
+    chip = _chip(sentence or m.group(0))
     if not chip:
         return []
     return [{"category": "Amendment Made", "text": chip}]
@@ -968,6 +976,21 @@ def _build_prompt(
         lines.append(f"Vote result: {vote}")
     if vote_detail:
         lines.append(f"Vote detail: {vote_detail[:300]}")
+
+    # Which body decided, and whether it decided at all.  Without this the
+    # model asserts "City Council approved …" on Standing Policy Committee
+    # items, where the committee only *recommends* to Council — a real
+    # civic error a reader cannot detect.
+    outcome = format_outcome(vote, rec)
+    if outcome == "Recommended":
+        lines.extend([
+            "",
+            "IMPORTANT: this body RECOMMENDED this to City Council. It is "
+            "not yet approved. Do not write that City Council approved, "
+            "adopted, or funded anything — write what was recommended.",
+        ])
+    elif outcome and outcome != "Discussed":
+        lines.extend(["", f"This body's decision: {outcome}."])
     if content:
         lines.extend(["", f"Item content (from agenda notes): {content[:800]}"])
 
@@ -1002,10 +1025,20 @@ def _build_prompt(
         "substance from the agenda notes and the transcript instead.",
         "- Include the concrete specifics — amounts, dates, locations, "
         "who is affected — when the source supports them.",
+        "- Carry a number's unit and period with it. \"$14,000 a year\" is "
+        "not \"$14,000\"; \"an 8-month extension\" is not \"an "
+        "extension\". Dropping the qualifier changes the fact, and the "
+        "reader has no way to notice.",
         "- Plain language. No bureaucratic phrasing, no file numbers, no "
         "\"the Administration recommends that\".",
         "- State only what the source supports. If the material is thin, "
         "write a shorter description rather than inventing detail.",
+        "- Do NOT append a benefit, purpose, or consequence the source "
+        "does not state. \"This upgrade will benefit users of the "
+        "facility\", \"aiming to improve sustainability\", \"ensuring "
+        "continued support for residents\" — these are your inferences, "
+        "not the city's decision, and a reader cannot tell the "
+        "difference. Stop the sentence when the source stops.",
         "",
         "## chips",
         "",
@@ -1015,6 +1048,10 @@ def _build_prompt(
         "sentences). Paraphrase tightly — do not quote raw transcript "
         "verbatim. A chip carries one specific fact; the description "
         "already covers what the item is, so do not repeat it in a chip.",
+        "",
+        "Every chip must be traceable to something actually said or "
+        "written in the material above. A chip you inferred rather than "
+        "found is worse than no chip — omit the category instead.",
         "",
         "Rate each chip's `usefulness`:",
         "- \"high\": adds a specific, concrete fact — a number, a named "

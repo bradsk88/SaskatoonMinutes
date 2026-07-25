@@ -163,12 +163,29 @@ This is the unit we actually collaborate on, using U1–U2. Expect several passe
 - **`_money_purpose_snippet` rewrote every preposition as "for"**, turning "to complete the project" into the ungrammatical "for complete the project". It now preserves what it matched.
 - **En dashes silently killed money chips.** `$187,000 to Shaw Centre – Score Clock and Timing Equipment` matched nothing, because the purpose pattern had no terminator for `–`. Official agenda text is full of them, so this was dropping real chips, not just malformed ones.
 
-### U6 — LLM-as-judge gate
+### U6 — LLM-as-judge gate — **done**
 
 Deferred until U5 stabilizes, per the eval decision.
 
 - Rubric: faithfulness (judge must quote the supporting source span), specificity, non-redundancy with the title.
-- Gates CI on mean score.
+- Gates CI on mean score. `app/summary_judge.py`, `scripts/eval_chips.py --judge`.
+- The judge sees the source and the summary but **not the generating prompt** — a judge shown the instructions grades compliance with the instructions rather than truthfulness about the meeting.
+
+**Faithfulness went 3.36 → 4.82 over four iterations, and every step was the judge catching something real:**
+
+| | mean faithfulness |
+|---|---|
+| first run | 3.36 (below gate) |
+| full source, no embellishment rule | 4.55 |
+| amendment false-positive fixed | 4.64 |
+| number units + body attribution | **4.82** |
+
+- **My own harness bug first.** The source was truncated to 24k chars, so on the 117k-character homelessness item the judge could not see the transcript it was judging against and reported every transcript-derived chip as unsupported. Faithfulness was measuring transcript length. The source is no longer truncated — Flash takes a 1M-token context.
+- **Unsupported embellishment was real.** "This upgrade will benefit users of the facility", "aiming to improve sustainability", "ensuring continued support for residents" — inferences appended to the city's actual decision, which a reader cannot distinguish from it. The prompt now forbids appending a benefit, purpose, or consequence the source does not state.
+- **`_extract_amendment` was firing on the word "amend".** "until such time as a new or amended Naming of City Property … Policy … is developed" produced `Amendment Made: amended Naming of City Property and Development Areas Policy, or related policy is developed` — describing a policy nobody amended. The trigger is now language about the motion's own fate (`as amended`, `motion be amended`, `amendment carried/defeated`), not any occurrence of the word. This was inflating the corpus's 120 Amendment Made chips with false positives.
+- **Dropping a number's period changes the fact.** The source said "approximately $14,000 **a year**"; the description said "costs the city about $14,000 in tax exemptions". The prompt now requires carrying a number's unit and period with it.
+- **The worst error the judge found: attributing a committee's recommendation to City Council.** On a Standing Policy Committee meeting the description asserted "Saskatoon City Council approved funding" — but a committee *recommends* to Council and approves nothing. The prompt now receives the deterministic outcome label and, when it is `Recommended`, an explicit instruction that nothing has been approved yet. This is a civic accuracy failure no reader could have caught.
+- **The floor is set at 2, not 3, on purpose.** The rubric defines 1–2 as "asserts facts the source does not contain" (fabrication) and 3 as "something is overstated" (quality). Fabrication stops the build; overstatement is reported in the Flagged section and caught in aggregate by the mean gate. A single strict judgment on an eleven-item sample should not turn CI red, particularly when the judge is itself a sampled model.
 
 ### U7 — UI + backfill
 
