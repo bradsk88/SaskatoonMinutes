@@ -142,7 +142,7 @@
         "Outcome": "decision", "Vote Breakdown": "decision",
         "Amendment Made": "decision", "Dissenting View": "decision",
         "Cost & Funding": "money",
-        "In Plain Terms": "context", "Debate Highlight": "context",
+        "Debate Highlight": "context",
         "Data Cited": "context", "Unanswered Question": "context",
         "Delegation": "voices", "Staff vs. Council": "voices",
         "Public Sentiment": "voices", "Declared Conflict": "voices",
@@ -154,13 +154,25 @@
     };
 
     function buildChipViewHtml(item) {
-        const chips = item.chip_summaries || [];
-        if (!chips.length) {
+        const summary = item.summary || {};
+        const chips = summary.chips || [];
+        const description = summary.description || '';
+        if (!description && !chips.length) {
             return `<div class="item-chip-view">
                 <p class="chip-empty">No AI summary available for this item yet.</p>
                 <p class="item-ai-disclaimer">Summaries are AI-generated from the meeting transcript and may contain errors.</p>
             </div>`;
         }
+        // The description is the lede — it is what someone reads instead of
+        // the agenda. Chips are the supporting specifics beneath it.
+        const descHtml = description
+            ? `<p class="item-description">${escapeHtml(description)}</p>`
+            : '';
+        // A summary with chips but no description predates the mandatory
+        // description field. Say so rather than presenting it as current.
+        const legacyHtml = (!description && chips.length)
+            ? `<p class="chip-legacy-note">Older summary — no plain-language description available.</p>`
+            : '';
         const rows = chips.map(c => {
             const group = CHIP_GROUP[c.category] || "context";
             return `<div class="chip-row">
@@ -169,7 +181,9 @@
             </div>`;
         }).join('');
         return `<div class="item-chip-view">
-            <div class="chip-view-grid">${rows}</div>
+            ${descHtml}
+            ${legacyHtml}
+            ${rows ? `<div class="chip-view-grid">${rows}</div>` : ''}
             <p class="item-ai-disclaimer">Summaries are AI-generated from the meeting transcript and may contain errors.</p>
         </div>`;
     }
@@ -376,8 +390,9 @@
             ? buildAttachmentsOnlyHtml(item)
             : buildTranscriptHtml(item);
 
-        const hasChips = !isConsent && Array.isArray(item.chip_summaries)
-            && item.chip_summaries.length > 0;
+        const hasChips = !isConsent && !!item.summary
+            && (!!item.summary.description
+                || (Array.isArray(item.summary.chips) && item.summary.chips.length > 0));
         const viewMode = hasChips ? "chips" : "notes";
         el.dataset.view = viewMode;
 

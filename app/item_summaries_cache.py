@@ -1,8 +1,13 @@
-"""Typed :class:`~app.cache.Cache` for per-meeting item-summary mappings.
+"""Typed :class:`~app.cache.Cache` for per-meeting item summaries.
 
-The on-disk shape is ``{item_id_str: [{"category": str, "text": str}, ...]}``
-— a dict keyed by stringified ``item_id`` whose values are lists of
-:class:`~app.models.ItemSummary`.
+The on-disk shape is ``{item_id_str: {"description": str|null, "chips":
+[{"category": str, "text": str}, ...]}}`` — one
+:class:`~app.models.ItemSummary` per agenda item.
+
+Entries written before the aggregate existed are a bare
+``[{"category", "text"}, ...]`` list.  Those load as **Legacy
+ItemSummary** (no Description) rather than needing a migration; see
+``docs/adr/0003-item-summary-aggregate.md``.
 """
 
 from __future__ import annotations
@@ -28,23 +33,23 @@ class ItemSummariesCache:
     def open(cls) -> "ItemSummariesCache":
         return cls()
 
-    def load(self, meeting_id: str) -> dict[str, list[ItemSummary]] | None:
+    def load(self, meeting_id: str) -> dict[str, ItemSummary] | None:
         raw = self._inner.load(meeting_id)
         if raw is None:
             return None
         return {
-            item_id: [ItemSummary.from_dict(s) for s in entries]
-            for item_id, entries in raw.items()
+            item_id: ItemSummary.from_dict(entry)
+            for item_id, entry in raw.items()
         }
 
     def save(
         self,
         meeting_id: str,
-        summaries: dict[str, list[ItemSummary]],
+        summaries: dict[str, ItemSummary],
     ) -> None:
         payload = {
-            item_id: [s.to_dict() for s in entries]
-            for item_id, entries in summaries.items()
+            item_id: summary.to_dict()
+            for item_id, summary in summaries.items()
         }
         self._inner.save(meeting_id, payload)
 

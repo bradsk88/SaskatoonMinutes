@@ -3,33 +3,30 @@
   "chips": [
    {
     "category": "Outcome",
-    "text": "Approved: Saskatoon Homelessness Action Plan"
-   },
-   {
-    "category": "In Plain Terms",
-    "text": "Saskatoon Homelessness Action Plan"
+    "text": "Approved"
    },
    {
     "category": "Debate Highlight",
-    "text": "Speaker Karen Colbison argued $40M funding led to 170% rise in homelessness"
+    "text": "Karen Kobussen argued $40M in federal funding saw 170% increase in homelessness"
    },
    {
     "category": "Who's Affected",
-    "text": "People experiencing homelessness, businesses"
+    "text": "Saskatoon Crisis serves 80 high-complexity individuals with mental illness, substance use, trauma"
    },
    {
     "category": "Staff vs. Council",
-    "text": "Administration clarified they only endorse the city's role, not the whole plan"
+    "text": "Administration clarified it only endorses the city's specific roles, not the entire plan"
    },
    {
     "category": "Unanswered Question",
-    "text": "A resident asked if an immediate triage response team was being developed"
+    "text": "The plan's performance indicators were endorsed"
    },
    {
-    "category": "Promise Made",
-    "text": "Council committed to annual progress reports on the plan and a full review every four years."
+    "category": "Equity Impact",
+    "text": "The plan includes Indigenous leadership and culturally appropriate responses"
    }
   ],
+  "description": "City Council received the Homelessness Action Plan 2026, reaffirming its leadership role and endorsing performance indicators. This plan outlines the city's framework for addressing homelessness, with public speakers raising concerns about past plan effectiveness and the need for better data and income support.",
   "section_number": "6.2.1",
   "title": "Saskatoon Homelessness Action Plan 2026 [CC2026-0301]"
  },
@@ -52,26 +49,27 @@
     "text": "$187K for complete the project"
    },
    {
-    "category": "In Plain Terms",
-    "text": "Council extended the temporary emergency shelter at 210 Pacific until May 2027"
-   },
-   {
     "category": "Who's Affected",
-    "text": "Residents near 210 Pacific Avenue and those needing shelter are directly affected by the extension."
+    "text": "Individuals experiencing homelessness will continue to have access to emergency shelter services."
    },
    {
     "category": "Precedent Set",
-    "text": "The new 31st Street shelter, enabling this extension, is the province's first purpose-built shelter."
+    "text": "The new 31st Street shelter, which this extension enables"
    },
    {
     "category": "Public Sentiment",
-    "text": "Nearby residents gave positive feedback, appreciating timely issue resolution and clear contacts."
+    "text": "Nearby residents provided positive feedback"
    },
    {
     "category": "Equity Impact",
-    "text": "Extending the shelter ensures continued support for vulnerable residents until a new facility opens."
+    "text": "Ensures continued emergency shelter for vulnerable residents until a new facility is ready."
+   },
+   {
+    "category": "Promise Made",
+    "text": "Staff confirmed community safety plan services will remain in place for the shelter area."
    }
   ],
+  "description": "City Council extended the temporary use of 210 Pacific Avenue as an emergency residential shelter until May 2027. This ensures continued support for vulnerable residents while a new purpose-built shelter is completed.",
   "section_number": "10.3.1",
   "title": "210 Pacific Avenue – Extension of Timeframe for Emergency Residential Shelter [GPC2023-1002, CC2024-0202]"
  },
@@ -79,17 +77,18 @@
   "chips": [
    {
     "category": "Outcome",
-    "text": "Approved: Shaw Centre – Score Clock and Timing Equipment – Request for Additional Funding"
+    "text": "Approved"
    },
    {
     "category": "Vote Breakdown",
     "text": "11 for, 0 against"
    },
    {
-    "category": "In Plain Terms",
-    "text": "Council approved an additional $187,000 for the Shaw Centre's score clock and timing equipment."
+    "category": "Who's Affected",
+    "text": "Users of the Shaw Centre will benefit from upgraded score clock and timing equipment."
    }
   ],
+  "description": "City Council approved an additional $187,000 for new score clock and timing equipment at the Shaw Centre, funded by the Leisure Services Equipment Replacement Reserve.",
   "section_number": "10.3.2",
   "title": "Shaw Centre – Score Clock and Timing Equipment – Request for Additional Funding [CC2026-0605]"
  },
@@ -97,29 +96,26 @@
   "chips": [
    {
     "category": "Outcome",
-    "text": "Approved: Community Support Program 2021 Annual Report [File No. CK 5605-3]"
+    "text": "Approved"
    },
    {
     "category": "Vote Breakdown",
     "text": "5 for, 0 against"
    },
    {
-    "category": "In Plain Terms",
-    "text": "The report details the Community Support Program's 2021 activities"
-   },
-   {
     "category": "Debate Highlight",
-    "text": "Councillor Block questioned why shelters are \"full\" if beds exist"
+    "text": "Shelters are almost 100% full, even in severe weather, making it impossible to find emergency beds."
    },
    {
     "category": "Who's Affected",
-    "text": "Vulnerable people, individuals struggling with addictions, mental health, or homelessness"
+    "text": "Vulnerable residents, including those experiencing homelessness, addiction, or mental health issues."
    },
    {
     "category": "Equity Impact",
-    "text": "Lack of emergency shelter beds disproportionately affects vulnerable people"
+    "text": "Lack of shelter beds disproportionately impacts vulnerable people, including women"
    }
   ],
+  "description": "This report highlights the Community Support Program's 2021 activities, revealing a critical shortage of emergency shelter beds in Saskatoon. Despite new beds, shelters are consistently full, forcing the program to spend more time on housing, and impacting vulnerable residents and downtown businesses.",
   "section_number": "5.1",
   "title": "Community Support Program 2021 Annual Report [File No. CK 5605-3]"
  },
@@ -127,33 +123,26 @@
   "chips": [
    {
     "category": "Outcome",
-    "text": "Approved: 2021 Year-End Report – Community Standards Department [File No. CK 430-34]"
+    "text": "Approved"
    },
    {
     "category": "Vote Breakdown",
     "text": "5 for, 0 against"
    },
    {
-    "category": "In Plain Terms",
-    "text": "This report reviews the Community Standards Department's 2021 activities"
-   },
-   {
     "category": "Who's Affected",
-    "text": "Residents in Nutana, Varsity View, and City Park are affected by expanded residential parking zones."
-   },
-   {
-    "category": "Precedent Set",
-    "text": "Body-worn cameras were implemented for parking enforcement"
+    "text": "Residents in Nutana, Varsity View, and City Park are affected by expanded parking permit zones."
    },
    {
     "category": "Unanswered Question",
-    "text": "The specific cost of the body-worn camera program for parking enforcement was not provided."
+    "text": "Questions about body-worn camera program costs, privacy review details"
    },
    {
     "category": "Promise Made",
-    "text": "Administration will report back on body-worn camera implementation, privacy"
+    "text": "Administration will report back on body-worn camera implementation, privacy, and costs."
    }
   ],
+  "description": "The Community Standards Department's 2021 report highlights 4,400 by-law investigations, $3.9M in parking revenue, and new body-worn cameras for parking enforcement. Council requested more details on the camera program's privacy and costs.",
   "section_number": "5.3",
   "title": "2021 Year-End Report – Community Standards Department [File No. CK 430-34]"
  },
@@ -161,25 +150,14 @@
   "chips": [
    {
     "category": "Outcome",
-    "text": "Approved: 2021 Year-End Report – Planning and Development Department [File No. CK 430-41]"
+    "text": "Approved"
    },
    {
     "category": "Vote Breakdown",
     "text": "5 for, 0 against"
-   },
-   {
-    "category": "In Plain Terms",
-    "text": "This report summarizes the Planning and Development Department's 2021 achievements and 2022 plans."
-   },
-   {
-    "category": "Who's Affected",
-    "text": "Residents, First Nations, and developers are affected by planning, zoning, and housing initiatives."
-   },
-   {
-    "category": "Equity Impact",
-    "text": "The report highlights work on the Kakaushita Hall First Nation New Urban Reserve and rapid housing."
    }
   ],
+  "description": "This report summarizes the Planning and Development Department's 2021 achievements, including new urban reserves, zoning bylaw review, and a rebound in development permits, and outlines 2022 plans.",
   "section_number": "5.4",
   "title": "2021 Year-End Report – Planning and Development Department [File No. CK 430-41]"
  },
@@ -187,25 +165,18 @@
   "chips": [
    {
     "category": "Outcome",
-    "text": "Approved: Recovery Park Public Art Scope Change [File No. CK 4040-4]"
+    "text": "Approved"
    },
    {
     "category": "Vote Breakdown",
     "text": "5 for, 0 against"
    },
    {
-    "category": "In Plain Terms",
-    "text": "The public art plan for Recovery Park changed from one artwork to three"
-   },
-   {
-    "category": "Who's Affected",
-    "text": "Residents city-wide will see public art promoting environmental sustainability"
-   },
-   {
     "category": "Environmental Impact",
-    "text": "The public art aims to educate residents about recycling and environmental sustainability"
+    "text": "Public art will serve as an educational tool for recycling and environmental sustainability."
    }
   ],
+  "description": "The city will now install three public artworks instead of one for the new Recovery Park waste diversion facility, with two pieces placed in other city locations to boost awareness of recycling and environmental sustainability. The project budget of $275,000 remains unchanged.",
   "section_number": "5.5",
   "title": "Recovery Park Public Art Scope Change [File No. CK 4040-4]"
  },
@@ -213,21 +184,22 @@
   "chips": [
    {
     "category": "Outcome",
-    "text": "Approved: 2022 Assistance to Community Groups – Cash Grant – Environmental Category [File No"
+    "text": "Approved"
    },
    {
     "category": "Vote Breakdown",
     "text": "5 for, 0 against"
    },
    {
-    "category": "In Plain Terms",
-    "text": "Council approved funding for 13 non-profit environmental projects in Saskatoon for 2022."
+    "category": "Who's Affected",
+    "text": "13 non-profit organizations received grants for environmental initiatives across Saskatoon."
    },
    {
     "category": "Environmental Impact",
-    "text": "Grants support projects for water/energy efficiency, waste reduction, green spaces"
+    "text": "Grants support projects for waste reduction, water protection, active transport"
    }
   ],
+  "description": "Council approved funding for 13 non-profit environmental projects in 2022. These grants support initiatives like waste reduction, water protection, active transportation, and native plant restoration in Saskatoon.",
   "section_number": "5.6",
   "title": "2022 Assistance to Community Groups – Cash Grant – Environmental Category [File No. CK 1871-10]"
  },
@@ -235,7 +207,7 @@
   "chips": [
    {
     "category": "Outcome",
-    "text": "Approved: Temporary Pause of Civic Naming Program [File No. CK 6310-0]"
+    "text": "Approved"
    },
    {
     "category": "Vote Breakdown",
@@ -246,18 +218,23 @@
     "text": "amended Naming of City Property and Development Areas Policy, or related policy is developed"
    },
    {
-    "category": "In Plain Terms",
-    "text": "City Council paused accepting new names for streets and parks until a new"
+    "category": "Who's Affected",
+    "text": "Residents and diverse communities hoping to submit new names will face a 1-2 year pause."
    },
    {
-    "category": "Who's Affected",
-    "text": "Newcomer and diverse communities hoping to submit names for civic properties are directly affected."
+    "category": "Staff vs. Council",
+    "text": "Council inquired about broader renaming tools for streets, but staff deemed it impractical."
+   },
+   {
+    "category": "Equity Impact",
+    "text": "The new naming policy aims to better recognize Indigenous and diverse communities."
    },
    {
     "category": "Promise Made",
-    "text": "Administration promised interim reports on the legacy review project, including policy changes"
+    "text": "Administration committed to engaging diverse community groups in the new policy development."
    }
   ],
+  "description": "Saskatoon will temporarily stop accepting new submissions for its Civic Naming Program for up to two years. This pause allows the city to develop a new policy that better reflects Indigenous and diverse communities, and to focus on renaming controversial sites.",
   "section_number": "5.7",
   "title": "Temporary Pause of Civic Naming Program [File No. CK 6310-0]"
  }

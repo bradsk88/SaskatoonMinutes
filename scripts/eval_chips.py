@@ -43,6 +43,7 @@ from app.cache import LocalDirCache  # noqa: E402
 from app.clean_transcript_cache import CleanTranscriptCache  # noqa: E402
 from app.item_categorizer import (  # noqa: E402
     CATEGORIES,
+    MAX_DESCRIPTION_CHARS,
     SEMANTIC_CATEGORIES,
     GeminiExtractor,
     clean_meeting_transcripts,
@@ -118,10 +119,25 @@ class Report:
         self.items_with_soft = 0
         self.title_echoes = 0
         self.categories: dict[str, int] = {}
+        self.descriptions = 0
+        self.missing_descriptions = 0
+        self.description_echoes = 0
+        self.description_overruns = 0
 
-    def add_item(self, mid: str, item: dict, chips: list[dict]) -> None:
+    def add_item(
+        self, mid: str, item: dict, chips: list[dict],
+        description: str | None = None,
+    ) -> None:
         self.items += 1
         title = item.get("title") or ""
+        if description:
+            self.descriptions += 1
+            if is_title_echo(description, title):
+                self.description_echoes += 1
+            if len(description) > MAX_DESCRIPTION_CHARS:
+                self.description_overruns += 1
+        else:
+            self.missing_descriptions += 1
         # A soft chip that only restates the title is the metadata fallback
         # wearing an LLM category's name — it doesn't count as coverage.
         if any(
@@ -133,6 +149,11 @@ class Report:
             f"\n### {item.get('section_number', '')} {title[:70]}\n"
             f"<sub>{mid[:8]} · item {item['item_id']}</sub>\n"
         )
+        if description:
+            flag = " ⚠️ title echo" if is_title_echo(description, title) else ""
+            self.rows.append(f"> {description}{flag}\n")
+        else:
+            self.rows.append("> _**no description**_\n")
         if not chips:
             self.rows.append("_no chips_\n")
         for c in chips:
@@ -164,6 +185,10 @@ class Report:
             f"({self.soft_coverage:.0%})",
             f"- Title-echo chips: **{self.title_echoes}/{self.chips}** "
             f"({self.echo_share:.0%})",
+            f"- Descriptions: **{self.descriptions}/{self.items}** "
+            f"· missing: **{self.missing_descriptions}** "
+            f"· title echoes: **{self.description_echoes}** "
+            f"· over {MAX_DESCRIPTION_CHARS} chars: **{self.description_overruns}**",
             "",
             "| category | count |",
             "|---|---|",
@@ -215,12 +240,14 @@ def run_eval(extractor: GeminiExtractor) -> dict:
                 )),
                 items,
             ))
-        for item, chips in extracted:
+        for item, payload in extracted:
             results[f"{mid}/{item['item_id']}"] = {
                 "section_number": item.get("section_number") or "",
                 "title": item.get("title") or "",
+                "description": payload.get("description"),
                 "chips": [
-                    {"category": c["category"], "text": c["text"]} for c in chips
+                    {"category": c["category"], "text": c["text"]}
+                    for c in payload.get("chips") or []
                 ],
             }
     return results
@@ -235,7 +262,9 @@ def build_report(results: dict) -> Report:
             "title": entry["title"],
             "section_number": entry["section_number"],
         }
-        report.add_item(mid, item, entry["chips"])
+        report.add_item(
+            mid, item, entry["chips"], description=entry.get("description"),
+        )
     return report
 
 
@@ -281,6 +310,7 @@ def render_diff(baseline: dict, current: dict) -> str:
         if old is None:
             changed += 1
             lines.append(f"### + NEW {new['section_number']} {new['title'][:60]}")
+            lines.append(f"+ _description_ — {new.get('description') or '(none)'}")
             for c in new["chips"]:
                 lines.append(f"+ **{c['category']}** — {c['text']}")
             lines.append("")
@@ -293,8 +323,13 @@ def render_diff(baseline: dict, current: dict) -> str:
             lines.append("")
             continue
 
-        old_cats, new_cats = _by_category(old["chips"]), _by_category(new["chips"])
         rows: list[str] = []
+        old_desc, new_desc = old.get("description"), new.get("description")
+        if old_desc != new_desc:
+            rows.append(f"- _description_ — {old_desc or '(none)'}")
+            rows.append(f"+ _description_ — {new_desc or '(none)'}")
+
+        old_cats, new_cats = _by_category(old["chips"]), _by_category(new["chips"])
         for cat in sorted(set(old_cats) | set(new_cats), key=_category_sort):
             before, after = old_cats.get(cat, []), new_cats.get(cat, [])
             if before == after:
@@ -325,9 +360,11 @@ def render_diff(baseline: dict, current: dict) -> str:
         lines.extend(rows)
         lines.append("")
 
-    unchanged = len(set(baseline) & set(current)) - sum(
-        1 for k in set(baseline) & set(current)
+    shared = set(baseline) & set(current)
+    unchanged = len(shared) - sum(
+        1 for k in shared
         if baseline[k]["chips"] != current[k]["chips"]
+        or baseline[k].get("description") != current[k].get("description")
     )
     lines.append(f"**{changed} items changed, {unchanged} unchanged**")
     if gained:
@@ -422,6 +459,21 @@ def main() -> None:
         failures.append(
             f"{report.echo_share:.0%} of chips merely restate the item title "
             f"(limit {MAX_TITLE_ECHO:.0%})"
+        )
+    # The Description is a required field of the response schema, so a
+    # missing one is a contract violation rather than a quality shortfall.
+    # It is not allowed to slide.
+    if extractor.enabled and report.missing_descriptions:
+        failures.append(
+            f"{report.missing_descriptions}/{report.items} items have no "
+            f"description — it is a required schema field, so this is a "
+            f"broken contract, not a soft miss"
+        )
+    if report.description_echoes:
+        failures.append(
+            f"{report.description_echoes}/{report.descriptions} descriptions "
+            f"restate the item title — that is the failure the mandatory "
+            f"description exists to prevent"
         )
     if failures:
         print("\nFAILED:", file=sys.stderr)

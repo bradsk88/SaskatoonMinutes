@@ -1,6 +1,6 @@
 """Tests for app.models — Transcript, Segment, ItemSummary, Meeting, AgendaItem."""
 
-from app.models import AgendaItem, ItemSummary, Meeting, Segment, Transcript
+from app.models import AgendaItem, Chip, ItemSummary, Meeting, Segment, Transcript
 
 
 def _seg(start_ms: int, end_ms: int, text: str = "x") -> Segment:
@@ -73,18 +73,77 @@ class TestTranscriptText:
         assert Transcript().text == ""
 
 
-class TestItemSummary:
+class TestChip:
     def test_round_trip(self):
         raw = {"category": "Outcome", "text": "Approved (8-3)"}
+        c = Chip.from_dict(raw)
+        assert c.to_dict() == raw
+        assert Chip.from_dict(c.to_dict()) == c
+
+    def test_extra_fields_dropped(self):
+        # Forward-compat: the model's usefulness rating is not persisted.
+        raw = {"category": "Outcome", "text": "ok", "usefulness": "high"}
+        assert Chip.from_dict(raw).to_dict() == {"category": "Outcome", "text": "ok"}
+
+
+class TestItemSummary:
+    def test_round_trip(self):
+        raw = {
+            "description": "Raises transit fines to $250.",
+            "chips": [{"category": "Outcome", "text": "Approved (8-3)"}],
+        }
         s = ItemSummary.from_dict(raw)
         assert s.to_dict() == raw
         assert ItemSummary.from_dict(s.to_dict()) == s
 
-    def test_extra_fields_dropped(self):
-        # Forward-compat: extra fields silently dropped on load.
-        raw = {"category": "Outcome", "text": "ok", "usefulness": "high"}
+    def test_description_is_required_to_not_be_legacy(self):
+        s = ItemSummary.from_dict({
+            "description": "Does a concrete thing.", "chips": [],
+        })
+        assert s.is_legacy is False
+
+    def test_blank_description_normalizes_to_none(self):
+        s = ItemSummary.from_dict({"description": "   ", "chips": []})
+        assert s.description is None
+        assert s.is_legacy is True
+
+    def test_missing_description_key_is_legacy(self):
+        s = ItemSummary.from_dict({"chips": []})
+        assert s.is_legacy is True
+
+    def test_missing_chips_key_is_an_empty_list(self):
+        assert ItemSummary.from_dict({"description": "x"}).chips == []
+
+
+class TestLegacyItemSummary:
+    """Entries cached before the aggregate load without a migration."""
+
+    def test_a_bare_chip_list_loads_as_legacy(self):
+        raw = [
+            {"category": "Outcome", "text": "Approved"},
+            {"category": "In Plain Terms", "text": "Subcommittee report"},
+        ]
         s = ItemSummary.from_dict(raw)
-        assert s.to_dict() == {"category": "Outcome", "text": "ok"}
+        assert s.is_legacy is True
+        assert s.description is None
+        assert [c.category for c in s.chips] == ["Outcome", "In Plain Terms"]
+
+    def test_a_retired_category_still_loads(self):
+        """In Plain Terms is retired, but 2,567 cached chips still use it."""
+        s = ItemSummary.from_dict([{"category": "In Plain Terms", "text": "x"}])
+        assert s.chips[0].category == "In Plain Terms"
+
+    def test_an_empty_legacy_list_loads(self):
+        s = ItemSummary.from_dict([])
+        assert s.is_legacy is True
+        assert s.chips == []
+
+    def test_legacy_round_trips_into_the_new_shape(self):
+        s = ItemSummary.from_dict([{"category": "Outcome", "text": "Approved"}])
+        assert s.to_dict() == {
+            "description": None,
+            "chips": [{"category": "Outcome", "text": "Approved"}],
+        }
 
 
 class TestAgendaItem:

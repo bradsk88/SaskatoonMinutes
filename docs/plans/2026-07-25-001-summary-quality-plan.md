@@ -105,7 +105,7 @@ Makes every subsequent unit cheap to evaluate. No behaviour change to chip conte
 - **`load_dotenv` at import scope leaked a live API key into `os.environ` for the whole test process**, so unit tests that merely constructed a `GeminiExtractor` began calling Gemini for real (suite time 1.0s → 18.4s). It now loads inside `main()`, with a test asserting the module has no `load_dotenv` attribute.
 - **`In Plain Terms` flaps run-to-run** between a real description and the title-echo fallback on identical input — stronger evidence for U3's mandatory-field fix than the corpus audit was.
 
-### U3 — `ItemSummary` becomes an aggregate
+### U3 — `ItemSummary` becomes an aggregate — **done**
 
 The format change. ADR `0003`.
 
@@ -114,7 +114,23 @@ The format change. ADR `0003`.
 - Retire "In Plain Terms"; delete `_extract_in_plain_terms` (R3).
 - `from_dict` legacy detection (R4).
 - `ItemSummariesCache` serialization follows.
-- **Exit check:** no fixture item produces a description equal to its title; `is_title_echo` rate on descriptions is 0.
+- **Exit check:** no fixture item produces a description equal to its title; `is_title_echo` rate on descriptions is 0. **Met.**
+
+**Result on the 9 fixture items:**
+
+| | before U3 | after U3 |
+|---|---|---|
+| title-echo chips | 32% (10/31) | **0%** (0/46) |
+| descriptions present | n/a | **9/9** |
+| descriptions that echo the title | n/a | **0** |
+| chips per item | 4.4 | 5.1 |
+
+**What U3 turned up:**
+
+- **`_extract_outcome` was appending the item title**, which accounted for **100%** of the remaining title echo once the description existed (`Approved: Shaw Centre – Score Clock and Timing Equipment – Request for Additional Funding`). The title was added there to give the chip context back when a summary was nothing but chips; the Description carries that now, so Outcome is just the verdict — `Approved`, `Approved (8-3)`. Removing it took chip echo from 17% to 0%.
+- **`MAX_DESCRIPTION_CHARS` is a target, not a ceiling.** Raising it 220 → 280 to accommodate four overruns made the model write *longer* (335, 314, 310 chars), pad process detail back in ("received the report as information and reaffirmed…"), and push one item into a title echo. Reverted to 220, which produces tighter and better writing. Do not raise it to make the overrun count go down — the overruns are the model reaching for substance.
+- **`--check` now fails on a missing or title-echoing description.** A missing description is a violated schema contract, not a soft quality miss, so it is not allowed to slide.
+- **The Cost & Funding bleed is reproducing in the fixtures** as intended: item 10.3.1 (the 210 Pacific Avenue shelter) carries `$187K for the Shaw Centre score clock` and `$187K for complete the project`, both belonging to 10.3.2. That is R10, still open in U5.
 
 ### U4 — Consent Item coverage
 

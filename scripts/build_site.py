@@ -86,13 +86,19 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
             for item in items:
                 item["badges"] = extract_badges(item)
 
-            # Attach categorized chip summaries if available
-            chip_summaries = summaries_cache.load(mid)
-            if chip_summaries:
-                print(f"    Applying chip summaries ({len(chip_summaries)} items)")
+            # Attach the ItemSummary (description + chips) if available
+            item_summaries = summaries_cache.load(mid)
+            if item_summaries:
+                print(f"    Applying item summaries ({len(item_summaries)} items)")
                 for item in items:
-                    raw = chip_summaries.get(str(item.get("item_id")), [])
-                    item["chip_summaries"] = [s.to_dict() for s in raw]
+                    summary = item_summaries.get(str(item.get("item_id")))
+                    if summary is None:
+                        continue
+                    item["summary"] = summary.to_dict()
+                    # Legacy summaries predate the mandatory description, so
+                    # the page marks them rather than passing them off as
+                    # meeting the current bar.
+                    item["summary"]["is_legacy"] = summary.is_legacy
 
             topics = extract_meeting_topics(items, m.title, max_topics=8)
             topics_data[mid] = topics

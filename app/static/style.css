@@ -1267,6 +1267,22 @@ a.topic-link:hover {
     margin: 0.5rem 0;
 }
 
+/* The plain-language description is the lede of an item summary — it
+   reads before the chips and carries more weight than any one of them. */
+.item-description {
+    margin: 0.35rem 0 0.75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--color-text);
+}
+
+.chip-legacy-note {
+    margin: 0.35rem 0 0.6rem;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
 .item-ai-disclaimer {
     margin-top: 0.75rem;
     font-size: 0.72rem;

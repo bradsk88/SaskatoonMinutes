@@ -47,7 +47,7 @@ def summarize_meeting(
     extractor,
     transcript_cache,
     clean_cache,
-) -> dict[str, list[ItemSummary]]:
+) -> dict[str, ItemSummary]:
     """Run the extractor across every eligible agenda item in the meeting."""
     transcript = transcript_cache.load(meeting_id)
     if not transcript or not transcript.segments:
@@ -58,8 +58,11 @@ def summarize_meeting(
     transcript_segments = transcript.to_dict()
 
     eligible = [i for i in items if is_eligible_for_summary(i)]
-    summaries: dict[str, list[ItemSummary]] = {
-        str(i["item_id"]): [] for i in items if not is_eligible_for_summary(i)
+    # Ineligible items get an empty summary so the page can tell "nothing
+    # to summarize here" apart from "not summarized yet".
+    summaries: dict[str, ItemSummary] = {
+        str(i["item_id"]): ItemSummary(description=None, chips=[])
+        for i in items if not is_eligible_for_summary(i)
     }
 
     # Cleanup is the expensive half and chip-prompt changes don't affect
@@ -73,24 +76,38 @@ def summarize_meeting(
     if clean != (cached_clean or {}):
         clean_cache.save(meeting_id, clean)
 
-    def run(item: dict) -> tuple[dict, list[dict]]:
+    def run(item: dict) -> tuple[dict, dict]:
         return item, extract_item_summaries(
             item, transcript_segments,
             gemini_extractor=extractor,
             cleaned_transcript_text=clean[str(item["item_id"])],
         )
 
+    missing_description = 0
     with ThreadPoolExecutor(max_workers=EXTRACT_WORKERS) as pool:
-        for item, entries in pool.map(run, eligible):
+        for item, payload in pool.map(run, eligible):
+            summary = ItemSummary.from_dict(payload)
             title = (item.get("title") or "")[:60]
-            cats = [e["category"] for e in entries]
+            cats = [c.category for c in summary.chips]
             print(f"    Item {item['item_id']}: {title}", flush=True)
-            print(f"      → {len(entries)} chips: {cats}", flush=True)
-            summaries[str(item["item_id"])] = [
-                ItemSummary.from_dict(e) for e in entries
-            ]
+            print(
+                f"      → {'description + ' if summary.description else 'NO DESCRIPTION, '}"
+                f"{len(summary.chips)} chips: {cats}",
+                flush=True,
+            )
+            if summary.description is None:
+                missing_description += 1
+            summaries[str(item["item_id"])] = summary
 
     print(f"    {len(eligible)}/{len(items)} items eligible for summary", flush=True)
+    if missing_description:
+        # Loud on purpose: a summary with no description is a degraded
+        # artifact, not a normal outcome.
+        print(
+            f"    WARNING: {missing_description}/{len(eligible)} items got no "
+            f"description from Gemini",
+            flush=True,
+        )
     return summaries
 
 
@@ -164,7 +181,10 @@ def main() -> None:
                     summaries_cache.save(mid, summaries)
                     summarized += 1
                     processed_this_tab += 1
-                    counted = sum(1 for v in summaries.values() if v)
+                    counted = sum(
+                        1 for s in summaries.values()
+                        if s.description or s.chips
+                    )
                     print(
                         f"    Done: {counted}/{len(summaries)} items have chips",
                         flush=True,

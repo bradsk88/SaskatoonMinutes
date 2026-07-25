@@ -1,14 +1,15 @@
 """
-Hybrid extractor that turns an agenda item + its transcript slice into a
-list of short category-chip summaries.
+Hybrid extractor that turns an agenda item + its transcript slice into an
+ItemSummary: a mandatory plain-language Description plus its Chips.
 
-Categories are a closed list of 23 labels.  Extraction runs in three
+Chip categories are a closed list of 22 labels.  Extraction runs in three
 passes when Gemini is enabled (cleanup + deterministic + LLM); just the
 deterministic pass otherwise.
 
-  0. Cleanup pass — a single Gemini call that normalizes the rambling,
-     filler-laden automatic transcription into well-punctuated sentences
-     while preserving every fact, name, number, and quote.
+  0. Cleanup pass — Gemini calls that normalize the rambling, filler-laden
+     automatic transcription into well-punctuated sentences while
+     preserving every fact, name, number, and quote.  Chunked on segment
+     boundaries, because one call cannot emit a 100-minute item.
 
   1. Deterministic pass — regex and heuristics over the item's metadata
      and the cleaned transcript text. Covers Outcome, Vote Breakdown,
@@ -16,13 +17,18 @@ deterministic pass otherwise.
      Step, Related Item, Deferred From, Declared Conflict, Data Cited.
 
   2. LLM pass — a single Gemini 2.5 Flash call per item, constrained to a
-     JSON schema of ``{category, text, usefulness}`` for the 12 remaining
-     "soft" categories.
+     JSON schema of ``{description, chips: [{category, text, usefulness}]}``
+     for the 11 remaining "soft" categories.  ``description`` is
+     **required**: as an optional category the model declined it on about
+     half of all items and a metadata fallback echoed the item's title.
+     See ``docs/adr/0003-item-summary-aggregate.md``.
 
-When ``GEMINI_API_KEY`` is unset the cleanup and LLM passes are skipped
-and only deterministic chips are emitted.
+When ``GEMINI_API_KEY`` is unset the cleanup and LLM passes are skipped,
+and the result is a Legacy ItemSummary — deterministic chips with no
+description.  There is deliberately no non-LLM description fallback: text
+derived from the title is a title echo by construction.
 
-All summaries are trimmed to <=100 characters at a natural clause break.
+Chips are trimmed to <=100 characters at a natural clause break.
 
 Tests can inject a stub extractor via the ``gemini_extractor`` parameter
 of ``extract_item_summaries``.
@@ -62,7 +68,6 @@ CATEGORIES: list[str] = [
     "Vote Breakdown",
     "Amendment Made",
     "Cost & Funding",
-    "In Plain Terms",
     "Delegation",
     "Debate Highlight",
     "Who's Affected",
@@ -89,7 +94,6 @@ CATEGORY_GROUP: dict[str, str] = {
     "Amendment Made": "decision",
     "Dissenting View": "decision",
     "Cost & Funding": "money",
-    "In Plain Terms": "context",
     "Debate Highlight": "context",
     "Data Cited": "context",
     "Unanswered Question": "context",
@@ -116,7 +120,6 @@ MAX_SUMMARY_CHARS = 100
 # Categories handled by the LLM pass.  Each maps to a plain-English
 # definition that is included verbatim in the Gemini prompt.
 SEMANTIC_DEFINITIONS: dict[str, str] = {
-    "In Plain Terms": "a 1-sentence plain-language explanation of what this item actually does, written so a busy resident understands it",
     "Debate Highlight": "a sharp or notable moment of debate — a memorable quote, a pointed exchange, or a striking argument from a named speaker. Do NOT use this category to restate the vote outcome (e.g. 'council unanimously opposed the proposal' belongs to Outcome, not here).",
     "Who's Affected": "which specific residents, neighbourhoods, businesses, or groups are directly affected",
     "Staff vs. Council": "a real disagreement between city administration and elected councillors (not just a clarifying question)",
@@ -168,17 +171,18 @@ def _transcript_chip(text: str, limit: int = MAX_SUMMARY_CHARS) -> str:
 
 
 def _extract_outcome(item: dict) -> list[dict]:
+    """The verdict alone — "Approved (8-3)" — with no title.
+
+    The title used to be appended here to give the chip context back when
+    a summary was nothing but chips.  The Description now carries that
+    context, so repeating the title makes the Outcome chip a title echo
+    sitting directly beneath a sentence that already said it better.
+    """
     vote = item.get("vote_result") or ""
     rec = item.get("recommendation") or ""
     outcome = format_outcome(vote, rec)
     if not outcome or outcome == "Discussed":
         return []
-    title = plainify(item.get("title") or "")
-    if title:
-        contextual = f"{outcome}: {title}"
-        chip = _chip(contextual)
-        if chip:
-            return [{"category": "Outcome", "text": chip}]
     return [{"category": "Outcome", "text": _chip(outcome)}]
 
 
@@ -434,46 +438,6 @@ def _extract_data_cited(transcript_text: str) -> list[dict]:
     return [{"category": "Data Cited", "text": _transcript_chip(m.group(0))}]
 
 
-def _extract_in_plain_terms(item: dict) -> list[dict]:
-    """Fallback 'In Plain Terms' chip derived from the item title and recommendation.
-
-    Always fires so that every substantive item gets at least one chip
-    describing what the item is about, even if the Gemini pass fails or
-    transcript data is unavailable.
-    """
-    title = plainify(item.get("title") or "")
-    if not title or len(title) < 10:
-        return []
-    rec = (item.get("recommendation") or "").strip()
-    rec_snippet = ""
-    if rec:
-        rec_clean = re.sub(r"\s+", " ", clean_entities(rec)).strip()
-        first_sentence = re.split(r"[.;]", rec_clean, maxsplit=1)[0].strip()
-        if 10 < len(first_sentence) <= 90 and not _is_boilerplate_rec(first_sentence):
-            rec_snippet = first_sentence
-    if rec_snippet:
-        combined = f"{title} — {rec_snippet}"
-    else:
-        combined = title
-    chip = _chip(combined)
-    if not chip:
-        chip = _chip(title)
-    if not chip:
-        return []
-    return [{"category": "In Plain Terms", "text": chip}]
-
-
-_BOILERPLATE_REC_RE = re.compile(
-    r"^that the (?:report|information|presentation|correspondence|"
-    r"communication|minutes|letter|petition) be (?:received|noted|filed)",
-    re.IGNORECASE,
-)
-
-
-def _is_boilerplate_rec(text: str) -> bool:
-    return bool(_BOILERPLATE_REC_RE.search(text))
-
-
 # ── Semantic pass ───────────────────────────────────────────────────────────
 
 
@@ -518,7 +482,7 @@ class GeminiExtractor:
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "response_json_schema": _chip_list_schema(allowed_cats),
+                "response_json_schema": _summary_schema(allowed_cats),
                 # Zero, not 0.2: the eval loop diffs one run against a
                 # committed baseline, and sampling noise buries the signal
                 # from an actual prompt change under a screenful of
@@ -527,7 +491,7 @@ class GeminiExtractor:
                 "temperature": 0.0,
             },
         )
-        return response.text or "[]"
+        return response.text or "{}"
 
     def clean(self, transcript_text: str) -> str:
         """Normalize a rambling transcript slice into well-punctuated sentences.
@@ -578,27 +542,48 @@ class GeminiExtractor:
 
     def extract(
         self, item: dict, transcript_text: str, exclude: set[str],
-    ) -> list[dict]:
+    ) -> tuple[str | None, list[dict]]:
+        """Return ``(description, chips)`` for one agenda item.
+
+        ``description`` is ``None`` only when the call failed or the model
+        returned nothing usable — never as a routine outcome, because the
+        schema requires it.  A ``None`` here is a signal to look, not a
+        cue to substitute filler.
+        """
         if not transcript_text.strip() and not self._has_metadata(item):
-            return []
+            return None, []
         allowed = [c for c in SEMANTIC_CATEGORIES if c not in exclude]
-        if not allowed:
-            return []
         prompt = _build_prompt(item, transcript_text, allowed)
         try:
             raw = self._call(prompt, allowed)
             parsed = json.loads(raw)
         except Exception as exc:
             print(f"    Gemini extract failed: {exc}", flush=True)
-            return []
-        raw_count = len(parsed) if isinstance(parsed, list) else 0
-        chips = _sanitize_chips(parsed, allowed)
+            return None, []
+        if not isinstance(parsed, dict):
+            print(
+                f"    Gemini returned {type(parsed).__name__}, expected an object",
+                flush=True,
+            )
+            return None, []
+
+        description = _sanitize_description(parsed.get("description"))
+        if description is None:
+            print(
+                "    Gemini returned no usable description for "
+                f"{(item.get('title') or '')[:50]!r}",
+                flush=True,
+            )
+
+        raw_chips = parsed.get("chips")
+        raw_count = len(raw_chips) if isinstance(raw_chips, list) else 0
+        chips = _sanitize_chips(raw_chips, allowed)
         if raw_count > 0 and not chips:
             print(
                 f"    Gemini returned {raw_count} chips but all were filtered out",
                 flush=True,
             )
-        return chips
+        return description, chips
 
 
 _SASKATOON_NAMES = (
@@ -840,18 +825,46 @@ USEFULNESS_LEVELS: list[str] = ["high", "medium", "low"]
 ACCEPTED_USEFULNESS: set[str] = {"high", "medium"}
 
 
-def _chip_list_schema(allowed_cats: list[str]) -> dict:
+# A Description is 1-2 sentences, so it gets more room than a chip.  Not
+# hard-trimmed: cutting a description mid-clause would be worse than one
+# that runs slightly long, and the eval reports overruns instead.
+#
+# Do not raise this to "fit" descriptions that overrun.  The model reads
+# the number as a target rather than a ceiling — raising it 220 -> 280
+# produced 300+ character descriptions that padded process detail back in
+# ("received the report as information and reaffirmed...") and pushed one
+# item into a title echo.  The tighter bound produces better writing; the
+# overruns are the model reaching for substance, which is fine.
+MAX_DESCRIPTION_CHARS = 220
+
+
+def _summary_schema(allowed_cats: list[str]) -> dict:
+    """Response schema for one agenda item's ItemSummary.
+
+    ``description`` is **required**.  That is the whole point: as an
+    optional chip category the model declined it on roughly half of all
+    items, and a metadata fallback then echoed the item's title back at
+    the reader.  A required field cannot be declined, and a missing one
+    is a parse error we can see rather than filler we cannot.
+    """
     return {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "category": {"type": "string", "enum": allowed_cats},
-                "text": {"type": "string"},
-                "usefulness": {"type": "string", "enum": USEFULNESS_LEVELS},
+        "type": "object",
+        "properties": {
+            "description": {"type": "string"},
+            "chips": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "category": {"type": "string", "enum": allowed_cats},
+                        "text": {"type": "string"},
+                        "usefulness": {"type": "string", "enum": USEFULNESS_LEVELS},
+                    },
+                    "required": ["category", "text", "usefulness"],
+                },
             },
-            "required": ["category", "text", "usefulness"],
         },
+        "required": ["description", "chips"],
     }
 
 
@@ -887,12 +900,40 @@ def _build_prompt(
 
     lines.extend([
         "",
+        "Return TWO things: a `description`, and a list of `chips`.",
+        "",
+        "## description (required)",
+        "",
+        "One or two sentences, at most "
+        f"{MAX_DESCRIPTION_CHARS} characters, saying what this item "
+        "actually does and why it matters to a resident of Saskatoon. "
+        "This is the single most important field — it is what someone "
+        "reads instead of the agenda.",
+        "",
+        "Rules for `description`:",
+        "- Do NOT restate the agenda item's title. The reader can already "
+        "see the title; repeating it tells them nothing. If your "
+        "description would just be the title reworded, dig into the "
+        "recommendation and transcript for what the item concretely "
+        "changes, costs, permits, or requires.",
+        "- Lead with the substance, not the process. Prefer \"Raises transit "
+        "fare-evasion fines to $250 and lets inspectors issue tickets\" "
+        "over \"Council considered a report about the transit bylaw\".",
+        "- Include the concrete specifics — amounts, dates, locations, "
+        "who is affected — when the source supports them.",
+        "- Plain language. No bureaucratic phrasing, no file numbers, no "
+        "\"the Administration recommends that\".",
+        "- State only what the source supports. If the material is thin, "
+        "write a shorter description rather than inventing detail.",
+        "",
+        "## chips",
+        "",
         "For each relevant category below, emit at most ONE chip. Each chip "
         f"`text` must be a complete, self-contained phrase of at most "
         f"{MAX_SUMMARY_CHARS} characters (no trailing ellipsis, no cut-off "
         "sentences). Paraphrase tightly — do not quote raw transcript "
-        "verbatim. Write each chip so a busy resident understands it "
-        "without reading the agenda.",
+        "verbatim. A chip carries one specific fact; the description "
+        "already covers what the item is, so do not repeat it in a chip.",
         "",
         "Rate each chip's `usefulness`:",
         "- \"high\": adds a specific, concrete fact — a number, a named "
@@ -911,10 +952,34 @@ def _build_prompt(
     ])
     for cat in allowed_cats:
         lines.append(f"- {cat}: {SEMANTIC_DEFINITIONS[cat]}")
+    if not allowed_cats:
+        lines.append(
+            "- (none — every category is already covered; return an empty "
+            "`chips` list and focus on the description)"
+        )
     if transcript_text.strip():
         lines.extend(["", "Transcript (rough, may contain errors):", transcript_text])
-    lines.extend(["", "Return a JSON array.  An empty array is valid if nothing fits."])
+    lines.extend([
+        "",
+        "Return a JSON object with `description` and `chips`. An empty "
+        "`chips` list is valid if nothing fits; an empty `description` is "
+        "not.",
+    ])
     return "\n".join(lines)
+
+
+def _sanitize_description(value) -> str | None:
+    """Normalize the model's description, or ``None`` if it gave us nothing.
+
+    Deliberately does not fall back to the item's title.  Substituting the
+    title is what the retired "In Plain Terms" fallback did, and a title
+    echo is indistinguishable from a real summary once it is on the page —
+    a missing description is visibly missing, which is the safer failure.
+    """
+    if not isinstance(value, str):
+        return None
+    text = re.sub(r"\s+", " ", clean_entities(value)).strip()
+    return text or None
 
 
 def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
@@ -977,13 +1042,17 @@ def extract_item_summaries(
     transcript_segments: list[dict],
     gemini_extractor: GeminiExtractor | None = None,
     cleaned_transcript_text: str | None = None,
-) -> list[dict]:
-    """Extract category chip summaries for a single agenda item.
+) -> dict:
+    """Build the ItemSummary payload for a single agenda item.
 
-    Returns a list of ``{"category": str, "text": str}`` sorted by the
-    canonical 23-category order.  The deterministic pass always runs.  The
-    Gemini pass runs only when ``gemini_extractor`` is provided or
-    ``GEMINI_API_KEY`` is set in the environment.
+    Returns ``{"description": str | None, "chips": [{"category", "text"}]}``
+    with chips sorted by the canonical 22-category order — the shape
+    :meth:`app.models.ItemSummary.from_dict` consumes.
+
+    The deterministic pass always runs.  The Gemini pass runs only when
+    ``gemini_extractor`` is provided or ``GEMINI_API_KEY`` is set, and it
+    is the sole source of ``description``; without it the result is a
+    Legacy ItemSummary carrying chips but no description.
 
     Pass ``cleaned_transcript_text`` to supply an already-cleaned slice
     (e.g. from ``CleanTranscriptCache``) and skip the cleanup call.
@@ -1031,15 +1100,16 @@ def extract_item_summaries(
     if "UNANIM" in vote or _is_unanimous_tally(item):
         covered.add("Dissenting View")
 
+    # The Description comes only from the LLM.  With no extractor there is
+    # nothing honest to put there — deterministic text derived from the
+    # title is a title echo by construction, which is the failure this
+    # aggregate exists to prevent.
+    description: str | None = None
     if extractor.enabled:
-        results.extend(extractor.extract(item, transcript_text, exclude=covered))
-
-    # Fallback: if no "In Plain Terms" chip was produced by Gemini, generate
-    # one from the item metadata so every substantive item has at least a
-    # description of what it's about.
-    covered_after = {r["category"] for r in results}
-    if "In Plain Terms" not in covered_after:
-        results.extend(_extract_in_plain_terms(item))
+        description, semantic_chips = extractor.extract(
+            item, transcript_text, exclude=covered,
+        )
+        results.extend(semantic_chips)
 
     results.sort(key=lambda r: _CATEGORY_ORDER.get(r["category"], 999))
-    return results
+    return {"description": description, "chips": results}

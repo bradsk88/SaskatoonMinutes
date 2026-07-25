@@ -47,7 +47,7 @@ class RecordingExtractor(GeminiExtractor):
     def __init__(self):
         super().__init__(
             api_key="test-key",
-            generate=lambda prompt, cats: "[]",
+            generate=lambda prompt, cats: '{"description": "A concrete summary.", "chips": []}',
             clean_generate=self._clean,
         )
         self.clean_calls: list[str] = []
@@ -239,11 +239,11 @@ class TestExtractAcceptsPreCleanedText:
     def test_supplied_text_is_what_reaches_the_extractors(self):
         """Money in the pre-cleaned text is found; money in the raw text is not."""
         ex = RecordingExtractor()
-        chips = extract_item_summaries(
+        out = extract_item_summaries(
             item(1), segments("nothing here"), gemini_extractor=ex,
             cleaned_transcript_text="Council approved $250,000 for the new pathway.",
         )
-        assert any(c["category"] == "Cost & Funding" for c in chips)
+        assert any(c["category"] == "Cost & Funding" for c in out["chips"])
 
     def test_empty_string_is_honoured_rather_than_treated_as_absent(self):
         ex = RecordingExtractor()

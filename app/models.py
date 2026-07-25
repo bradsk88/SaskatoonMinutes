@@ -137,17 +137,60 @@ class Transcript:
 
 
 @dataclass(frozen=True)
-class ItemSummary:
-    """One category-chip summary for a single agenda item."""
+class Chip:
+    """One ``(category, text)`` fact about an agenda item."""
 
     category: str
     text: str
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ItemSummary":
-        # Extra fields are dropped; only ``category`` and ``text`` are part
-        # of the on-disk contract today.
+    def from_dict(cls, data: dict) -> "Chip":
+        # Extra fields (e.g. the model's ``usefulness`` rating) are dropped;
+        # only ``category`` and ``text`` are part of the on-disk contract.
         return cls(category=data["category"], text=data["text"])
 
     def to_dict(self) -> dict:
         return {"category": self.category, "text": self.text}
+
+
+@dataclass(frozen=True)
+class ItemSummary:
+    """The summary of one agenda item: a Description plus its Chips.
+
+    ``description`` is a plain-language explanation of what the item does,
+    written for a busy resident.  It is a required field of the LLM
+    response schema rather than a chip category the model may decline —
+    a declinable description is what produced 2,567 title-echo summaries
+    across the cached corpus.  See ``docs/adr/0003-item-summary-aggregate.md``.
+
+    ``description`` is ``None`` only for a **Legacy ItemSummary**: one
+    cached before the aggregate existed, or produced by a run with no
+    Gemini key.  Both are degraded artifacts, and the UI marks them as
+    such rather than presenting them as meeting the current bar.
+    """
+
+    description: str | None
+    chips: list[Chip] = field(default_factory=list)
+
+    @property
+    def is_legacy(self) -> bool:
+        """True when this summary carries no Description."""
+        return self.description is None
+
+    @classmethod
+    def from_dict(cls, data: dict | list) -> "ItemSummary":
+        # A bare list is the pre-aggregate on-disk shape, so old cache
+        # entries load as Legacy rather than needing a migration.
+        if isinstance(data, list):
+            return cls(description=None, chips=[Chip.from_dict(c) for c in data])
+        description = (data.get("description") or "").strip()
+        return cls(
+            description=description or None,
+            chips=[Chip.from_dict(c) for c in data.get("chips") or []],
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "description": self.description,
+            "chips": [c.to_dict() for c in self.chips],
+        }

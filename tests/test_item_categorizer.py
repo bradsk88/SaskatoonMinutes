@@ -11,19 +11,18 @@ from app.item_categorizer import (
     GeminiExtractor,
     _build_cleanup_prompt,
     _build_prompt,
+    _summary_schema,
     _extract_amendment,
     _extract_cost_funding,
     _extract_data_cited,
     _extract_declared_conflict,
     _extract_delegation,
-    _extract_in_plain_terms,
     _extract_next_step,
     _extract_outcome,
     _extract_procedural_note,
     _extract_related_deferred,
     _is_unanimous_tally,
     _extract_vote_breakdown,
-    _is_boilerplate_rec,
     _sanitize_chips,
     _slice_transcript,
     _transcript_chip,
@@ -34,6 +33,22 @@ from app.item_categorizer import (
 
 def _seg(start_ms: int, text: str, length: int = 5000) -> dict:
     return {"start_ms": start_ms, "end_ms": start_ms + length, "text": text}
+
+
+def _summary_item(item_id: int, title: str) -> dict:
+    """A minimal agenda item that clears is_eligible_for_summary."""
+    return {
+        "item_id": item_id,
+        "title": title,
+        "recommendation": "",
+        "motion_text": "",
+        "vote_result": "",
+        "vote_detail": "",
+        "content": "",
+        "section_number": "8.",
+        "time_start_ms": 0,
+        "time_end_ms": 600_000,
+    }
 
 
 # ── Category metadata ───────────────────────────────────────────────────────
@@ -48,8 +63,13 @@ class TestCategoryMetadata:
         allowed = {"decision", "money", "context", "voices", "impact", "future"}
         assert set(CATEGORY_GROUP.values()) <= allowed
 
-    def test_count_is_23(self):
-        assert len(CATEGORIES) == 23
+    def test_count_is_22(self):
+        """In Plain Terms was retired; the Description replaced it."""
+        assert len(CATEGORIES) == 22
+
+    def test_in_plain_terms_is_retired(self):
+        assert "In Plain Terms" not in CATEGORIES
+        assert "In Plain Terms" not in SEMANTIC_CATEGORIES
 
 
 # ── Trimming ────────────────────────────────────────────────────────────────
@@ -109,23 +129,25 @@ class TestOutcome:
         out = _extract_outcome({"vote_result": "CARRIED (8 to 3)", "recommendation": "x"})
         assert out == [{"category": "Outcome", "text": "Approved (8-3)"}]
 
-    def test_carried_with_title(self):
+    def test_title_is_not_repeated_in_the_outcome(self):
+        """The Description carries the context; repeating the title here
+        made the Outcome chip a title echo under a sentence that said it
+        better.  It was 100% of the remaining echo after U3."""
         out = _extract_outcome({
             "vote_result": "CARRIED (8 to 3)",
             "recommendation": "x",
             "title": "Ruth Street Active Transportation Plan [CC2026-0303]",
         })
-        assert out[0]["category"] == "Outcome"
-        assert out[0]["text"].startswith("Approved (8-3): Ruth Street")
+        assert out == [{"category": "Outcome", "text": "Approved (8-3)"}]
 
-    def test_contextual_strips_codes(self):
+    def test_unanimous_carries_no_title_either(self):
         out = _extract_outcome({
             "vote_result": "CARRIED UNANIMOUSLY",
             "recommendation": "That the report be received.",
             "title": "Bylaw No. 9876 - Downtown Zoning Amendment [CC2026-0100]",
         })
+        assert "Zoning" not in out[0]["text"]
         assert "[CC2026-0100]" not in out[0]["text"]
-        assert "Zoning" in out[0]["text"]
 
     def test_no_vote(self):
         assert _extract_outcome({"vote_result": "", "recommendation": ""}) == []
@@ -307,19 +329,26 @@ class TestDataCited:
 import json
 
 
+STUB_DESCRIPTION = "Council approved a specific, concrete thing this item does."
+
+
 def _stub_extractor(
     response: list[dict],
     captured: dict | None = None,
     clean_response: str | None = None,
+    description: str | None = STUB_DESCRIPTION,
 ):
-    """Build a GeminiExtractor whose generate() returns *response* as JSON.
+    """Build a GeminiExtractor whose generate() returns an ItemSummary as JSON.
 
-    Any chip in ``response`` without an explicit ``usefulness`` field is
-    treated as ``"high"`` for convenience.  If ``captured`` is provided,
-    the extractor records the allowed_cats, prompt, and (when cleanup
-    runs) the cleaned-text input.  Pass ``clean_response`` to make the
-    cleanup pass return that string; otherwise cleanup is a no-op
-    (returns the input verbatim).
+    *response* is the chip list.  Any chip without an explicit
+    ``usefulness`` field is treated as ``"high"`` for convenience.
+    ``description`` becomes the required description field; pass ``None``
+    to simulate a model that failed to supply one.
+
+    If ``captured`` is provided, the extractor records the allowed_cats,
+    prompt, and (when cleanup runs) the cleaned-text input.  Pass
+    ``clean_response`` to make the cleanup pass return that string;
+    otherwise cleanup is a no-op (returns the input verbatim).
     """
     filled = [
         {"usefulness": "high", **r} if "usefulness" not in r else r
@@ -330,7 +359,7 @@ def _stub_extractor(
         if captured is not None:
             captured["allowed_cats"] = list(allowed_cats)
             captured["prompt"] = prompt
-        return json.dumps(filled)
+        return json.dumps({"description": description or "", "chips": filled})
 
     def _clean(text):
         if captured is not None:
@@ -361,8 +390,9 @@ class TestExtractItemSummariesSemantic:
             {"category": "Environmental Impact", "text": "Cuts emissions"},
         ])
         out = extract_item_summaries(item, segments, gemini_extractor=stub)
-        cats = [o["category"] for o in out]
+        cats = [o["category"] for o in out["chips"]]
         assert "Environmental Impact" in cats
+        assert out["description"] == STUB_DESCRIPTION
 
     def test_deterministic_category_not_requested_from_gemini(self):
         """Outcome is deterministic; Gemini's allowed_cats must not include it."""
@@ -384,7 +414,7 @@ class TestExtractItemSummariesSemantic:
         extract_item_summaries(item, segments, gemini_extractor=stub)
         # Outcome is always deterministic → must be excluded.
         assert "Outcome" not in captured["allowed_cats"]
-        # Only the 12 semantic categories are exposed to Gemini.
+        # Only the 11 semantic categories are exposed to Gemini.
         assert set(captured["allowed_cats"]).issubset(set(SEMANTIC_CATEGORIES))
 
 
@@ -406,7 +436,7 @@ class TestSortOrder:
             "time_end_ms": 600_000,
         }
         out = extract_item_summaries(item, [])
-        order_idx = [CATEGORIES.index(o["category"]) for o in out]
+        order_idx = [CATEGORIES.index(o["category"]) for o in out["chips"]]
         assert order_idx == sorted(order_idx)
 
 
@@ -638,7 +668,7 @@ class TestGeminiExtractorState:
 
     def test_empty_transcript_returns_empty(self):
         ex = _stub_extractor([{"category": "Promise Made", "text": "hi"}])
-        assert ex.extract({"title": "X"}, "   ", exclude=set()) == []
+        assert ex.extract({"title": "X"}, "   ", exclude=set()) == (None, [])
 
 
 class TestCleanupPass:
@@ -685,7 +715,7 @@ class TestCleanupPass:
         assert captured["clean_input"] == raw
         # The Cost & Funding deterministic extractor only finds the
         # amount because it ran against the cleaned text.
-        assert any(o["category"] == "Cost & Funding" for o in out)
+        assert any(o["category"] == "Cost & Funding" for o in out["chips"])
 
     def test_extract_summaries_passes_cleaned_text_to_gemini(self):
         captured: dict = {}
@@ -755,82 +785,13 @@ class TestRelatedItemSliceQuality:
         assert not rel[0]["text"].startswith(("'d", "d ")), rel[0]["text"]
 
 
-# ── In Plain Terms fallback ─────────────────────────────────────────
-
-
-class TestInPlainTerms:
-    def test_extracts_from_title(self):
-        item = {"title": "Ruth Street Active Transportation Plan [CC2026-0303]"}
-        out = _extract_in_plain_terms(item)
-        assert out
-        assert out[0]["category"] == "In Plain Terms"
-        assert "Ruth Street" in out[0]["text"]
-        assert "[CC2026-0303]" not in out[0]["text"]
-
-    def test_includes_recommendation_snippet(self):
-        item = {
-            "title": "Downtown Zoning Amendment",
-            "recommendation": "That Council approve the proposed zoning change.",
-        }
-        out = _extract_in_plain_terms(item)
-        assert out
-        assert "zoning" in out[0]["text"].lower()
-
-    def test_skips_short_title(self):
-        item = {"title": "Report"}
-        assert _extract_in_plain_terms(item) == []
-
-    def test_skips_empty_title(self):
-        item = {"title": ""}
-        assert _extract_in_plain_terms(item) == []
-
-    def test_filters_boilerplate_recommendation(self):
-        item = {
-            "title": "Chief's Report",
-            "recommendation": "That the information be received.",
-        }
-        out = _extract_in_plain_terms(item)
-        assert out
-        # Should not include the boilerplate recommendation
-        assert "information be received" not in out[0]["text"]
-
-    def test_keeps_substantive_recommendation(self):
-        item = {
-            "title": "Downtown Plan",
-            "recommendation": "That Council approve the downtown development plan.",
-        }
-        out = _extract_in_plain_terms(item)
-        assert out
-        assert "approve" in out[0]["text"].lower()
-
-
-class TestBoilerplateRecognition:
-    def test_report_received(self):
-        assert _is_boilerplate_rec("That the report be received")
-
-    def test_information_received(self):
-        assert _is_boilerplate_rec("That the information be received")
-
-    def test_presentation_received(self):
-        assert _is_boilerplate_rec("That the presentation be received")
-
-    def test_minutes_noted(self):
-        assert _is_boilerplate_rec("That the minutes be noted")
-
-    def test_substantive_is_not_boilerplate(self):
-        assert not _is_boilerplate_rec("That Council approve the zoning change")
-
-    def test_empty_is_not_boilerplate(self):
-        assert not _is_boilerplate_rec("")
-
-
 class TestGeminiPromptIncludesMetadata:
     def test_includes_recommendation(self):
         item = {
             "title": "Bus Route 42 Changes",
             "recommendation": "That the administration implement route changes.",
         }
-        prompt = _build_prompt(item, "transcript text", ["In Plain Terms"])
+        prompt = _build_prompt(item, "transcript text", ["Who's Affected"])
         assert "implement route changes" in prompt
 
     def test_includes_vote_result(self):
@@ -838,7 +799,7 @@ class TestGeminiPromptIncludesMetadata:
             "title": "Zoning",
             "vote_result": "CARRIED (8 to 3)",
         }
-        prompt = _build_prompt(item, "text", ["In Plain Terms"])
+        prompt = _build_prompt(item, "text", ["Who's Affected"])
         assert "CARRIED (8 to 3)" in prompt
 
     def test_works_without_transcript(self):
@@ -846,7 +807,7 @@ class TestGeminiPromptIncludesMetadata:
             "title": "Budget Item",
             "recommendation": "Approve the capital budget of $5M.",
         }
-        prompt = _build_prompt(item, "", ["In Plain Terms"])
+        prompt = _build_prompt(item, "", ["Who's Affected"])
         assert "capital budget" in prompt
         assert "Transcript" not in prompt
 
@@ -855,7 +816,7 @@ class TestGeminiPromptIncludesMetadata:
             "title": "Policy Update",
             "content": "This policy addresses snow removal standards.",
         }
-        prompt = _build_prompt(item, "", ["In Plain Terms"])
+        prompt = _build_prompt(item, "", ["Who's Affected"])
         assert "snow removal" in prompt
 
 
@@ -874,59 +835,88 @@ class TestGeminiRunsWithoutTranscript:
             "time_start_ms": 0,
             "time_end_ms": 600_000,
         }
-        stub = _stub_extractor([
-            {"category": "In Plain Terms", "text": "$5M approved for road repair"},
-        ], captured=captured)
+        stub = _stub_extractor(
+            [{"category": "Who's Affected", "text": "Drivers on arterial roads"}],
+            captured=captured,
+            description="Puts $5M toward repaving arterial roads across the city.",
+        )
         out = extract_item_summaries(item, [], gemini_extractor=stub)
-        assert any(o["category"] == "In Plain Terms" for o in out)
+        # No transcript at all, but the metadata alone still yields a summary.
+        assert out["description"] == "Puts $5M toward repaving arterial roads across the city."
+        assert any(o["category"] == "Who's Affected" for o in out["chips"])
 
 
-class TestInPlainTermsFallback:
-    def test_fallback_fires_when_gemini_disabled(self):
-        item = {
-            "item_id": 99,
-            "title": "Downtown Event and Entertainment District Plan",
-            "recommendation": "That the report be received.",
-            "vote_result": "CARRIED UNANIMOUSLY",
-            "vote_detail": "",
-            "content": "",
-            "motion_text": "",
-            "section_number": "9.1",
-            "time_start_ms": 0,
-            "time_end_ms": 600_000,
-        }
-        segments = [_seg(0, "We talked about the entertainment district plan.")]
-        # No Gemini extractor — deterministic only
-        stub = _stub_extractor([], clean_response=None)
-        # Disable the stub's enabled flag by using no API key and no generate
-        from app.item_categorizer import GeminiExtractor
-        disabled = GeminiExtractor(api_key=None)
-        out = extract_item_summaries(item, segments, gemini_extractor=disabled)
-        cats = [o["category"] for o in out]
-        assert "In Plain Terms" in cats
-        assert "Outcome" in cats
+class TestDescriptionIsMandatoryNotFallback:
+    """The Description replaced the "In Plain Terms" chip + metadata fallback.
 
-    def test_no_fallback_when_gemini_provides_it(self):
-        item = {
-            "item_id": 100,
-            "title": "Transit Route Changes",
-            "recommendation": "",
-            "vote_result": "",
-            "vote_detail": "",
-            "content": "",
-            "motion_text": "",
-            "section_number": "8.",
-            "time_start_ms": 0,
-            "time_end_ms": 600_000,
-        }
+    The old design let the model decline the category, then substituted a
+    chip built from the item's title -- which is why 2,567 cached chips
+    were title echoes.  There is deliberately no replacement fallback.
+    """
+
+    def test_description_comes_from_the_model(self):
+        item = _summary_item(100, "Transit Route Changes")
         segments = [_seg(0, "Discussion of transit route 42.")]
-        stub = _stub_extractor([
-            {"category": "In Plain Terms", "text": "Proposed changes to bus route 42"},
-        ])
+        stub = _stub_extractor(
+            [], description="Reroutes bus 42 off Broadway and adds two stops.",
+        )
         out = extract_item_summaries(item, segments, gemini_extractor=stub)
-        plain = [o for o in out if o["category"] == "In Plain Terms"]
-        assert len(plain) == 1
-        assert "bus route 42" in plain[0]["text"]
+        assert out["description"] == "Reroutes bus 42 off Broadway and adds two stops."
+
+    def test_no_description_without_gemini(self):
+        """Deterministic-only runs produce a Legacy ItemSummary, not filler."""
+        item = _summary_item(99, "Downtown Event and Entertainment District Plan")
+        item["vote_result"] = "CARRIED UNANIMOUSLY"
+        segments = [_seg(0, "We talked about the entertainment district plan.")]
+        out = extract_item_summaries(
+            item, segments, gemini_extractor=GeminiExtractor(api_key=None),
+        )
+        assert out["description"] is None
+        # Deterministic chips still work; only the description is absent.
+        assert "Outcome" in [c["category"] for c in out["chips"]]
+
+    def test_title_is_never_substituted_for_a_missing_description(self):
+        item = _summary_item(101, "Downtown Event and Entertainment District Plan")
+        segments = [_seg(0, "Some discussion.")]
+        stub = _stub_extractor([], description=None)
+        out = extract_item_summaries(item, segments, gemini_extractor=stub)
+        assert out["description"] is None
+
+    def test_blank_description_is_none_not_empty_string(self):
+        item = _summary_item(102, "Transit Route Changes")
+        stub = _stub_extractor([], description="   ")
+        out = extract_item_summaries(
+            item, [_seg(0, "Talk.")], gemini_extractor=stub,
+        )
+        assert out["description"] is None
+
+    def test_description_has_html_entities_cleaned(self):
+        item = _summary_item(103, "Parks Funding")
+        stub = _stub_extractor(
+            [], description="Funds Parks &amp; Recreation upgrades citywide.",
+        )
+        out = extract_item_summaries(
+            item, [_seg(0, "Talk.")], gemini_extractor=stub,
+        )
+        assert "&amp;" not in out["description"]
+        assert "Parks & Recreation" in out["description"]
+
+
+class TestSummarySchema:
+    def test_description_is_required(self):
+        schema = _summary_schema(["Who's Affected"])
+        assert "description" in schema["required"]
+
+    def test_chips_are_constrained_to_allowed_categories(self):
+        schema = _summary_schema(["Who's Affected"])
+        chip = schema["properties"]["chips"]["items"]
+        assert chip["properties"]["category"]["enum"] == ["Who's Affected"]
+
+    def test_prompt_forbids_restating_the_title(self):
+        prompt = _build_prompt(
+            _summary_item(1, "Transit Bylaw"), "text", ["Who's Affected"],
+        )
+        assert "Do NOT restate the agenda item's title" in prompt
 
 
 # ── Cleanup prompt name normalization ──────────────────────────────

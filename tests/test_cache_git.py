@@ -184,27 +184,46 @@ class TestTypedWrappers:
 
     def test_item_summaries_cache_round_trip(self, repo_with_remote):
         from app.item_summaries_cache import ItemSummariesCache
-        from app.models import ItemSummary
+        from app.models import Chip, ItemSummary
 
         summaries = {
-            "1": [],
-            "7": [
-                ItemSummary(category="Outcome", text="Approved"),
-                ItemSummary(category="In Plain Terms", text="Subcommittee report"),
-            ],
+            "1": ItemSummary(description=None, chips=[]),
+            "7": ItemSummary(
+                description="Approves the subcommittee's 2026 work plan.",
+                chips=[
+                    Chip(category="Outcome", text="Approved"),
+                    Chip(category="Vote Breakdown", text="5 for, 0 against"),
+                ],
+            ),
         }
         with ItemSummariesCache.open() as cache:
             cache.save("m1", summaries)
             assert cache.load("m1") == summaries
 
-    def test_item_summaries_on_disk_format_matches_legacy(
+    def test_legacy_entries_load_without_migration(self, repo_with_remote):
+        """Cached summaries predating the aggregate are still readable."""
+        from app.item_summaries_cache import ItemSummariesCache
+
+        with ItemSummariesCache.open() as cache:
+            cache._inner.save("m1", {
+                "7": [{"category": "Outcome", "text": "Approved"}],
+            })
+            loaded = cache.load("m1")
+        assert loaded["7"].is_legacy is True
+        assert loaded["7"].description is None
+        assert loaded["7"].chips[0].category == "Outcome"
+
+    def test_item_summaries_on_disk_format_is_compact(
         self, repo_with_remote,
     ):
         from app.item_summaries_cache import ItemSummariesCache
-        from app.models import ItemSummary
+        from app.models import Chip, ItemSummary
 
         summaries = {
-            "7": [ItemSummary(category="Outcome", text="Approved")],
+            "7": ItemSummary(
+                description="Approves the plan.",
+                chips=[Chip(category="Outcome", text="Approved")],
+            ),
         }
         with ItemSummariesCache.open() as cache:
             cache.save("m1", summaries)
@@ -212,4 +231,7 @@ class TestTypedWrappers:
             raw = open(
                 os.path.join(worktree, "summaries", "m1.json")
             ).read()
-        assert raw == '{"7":[{"category":"Outcome","text":"Approved"}]}'
+        assert raw == (
+            '{"7":{"description":"Approves the plan.",'
+            '"chips":[{"category":"Outcome","text":"Approved"}]}}'
+        )
