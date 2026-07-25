@@ -12,9 +12,7 @@ from app.item_categorizer import (
     SEMANTIC_CATEGORIES,
     SEMANTIC_DEFINITIONS,
     USEFULNESS_LEVELS,
-    _SASKATOON_NAMES,
     GeminiExtractor,
-    _build_cleanup_prompt,
     _build_prompt,
     _summary_schema,
     _extract_amendment,
@@ -33,6 +31,7 @@ from app.item_categorizer import (
     _transcript_chip,
     extract_item_summaries,
     is_eligible_for_summary,
+    item_transcript_text,
 )
 
 
@@ -390,7 +389,6 @@ STUB_DESCRIPTION = "Council approved a specific, concrete thing this item does."
 def _stub_extractor(
     response: list[dict],
     captured: dict | None = None,
-    clean_response: str | None = None,
     description: str | None = STUB_DESCRIPTION,
 ):
     """Build a GeminiExtractor whose generate() returns an ItemSummary as JSON.
@@ -400,10 +398,8 @@ def _stub_extractor(
     ``description`` becomes the required description field; pass ``None``
     to simulate a model that failed to supply one.
 
-    If ``captured`` is provided, the extractor records the allowed_cats,
-    prompt, and (when cleanup runs) the cleaned-text input.  Pass
-    ``clean_response`` to make the cleanup pass return that string;
-    otherwise cleanup is a no-op (returns the input verbatim).
+    If ``captured`` is provided, the extractor records the allowed_cats
+    and the prompt it was called with.
     """
     filled = [
         {"usefulness": "high", **r} if "usefulness" not in r else r
@@ -416,14 +412,7 @@ def _stub_extractor(
             captured["prompt"] = prompt
         return json.dumps({"description": description or "", "chips": filled})
 
-    def _clean(text):
-        if captured is not None:
-            captured["clean_input"] = text
-        return clean_response if clean_response is not None else text
-
-    return GeminiExtractor(
-        api_key=None, generate=_generate, clean_generate=_clean,
-    )
+    return GeminiExtractor(api_key=None, generate=_generate)
 
 
 class TestExtractItemSummariesSemantic:
@@ -726,26 +715,14 @@ class TestGeminiExtractorState:
         assert ex.extract({"title": "X"}, "   ", exclude=set()) == (None, [])
 
 
-class TestCleanupPass:
-    def test_clean_noop_without_api_key(self, monkeypatch):
-        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        ex = GeminiExtractor()
-        text = "um, like, the city, you know, will do something."
-        assert ex.clean(text) == text
+class TestTranscriptReachesThePrompt:
+    def test_the_prompt_sees_the_raw_slice(self):
+        """No cleanup pass stands between the transcript and the chip call.
 
-    def test_clean_uses_stub_when_provided(self):
-        ex = GeminiExtractor(
-            api_key=None,
-            generate=lambda p, c: "[]",
-            clean_generate=lambda t: "Cleaned: " + t,
-        )
-        assert ex.clean("rambling text") == "Cleaned: rambling text"
-
-    def test_clean_returns_input_when_blank(self):
-        ex = _stub_extractor([], clean_response="should not be used")
-        assert ex.clean("   ") == "   "
-
-    def test_extract_summaries_feeds_cleaned_text_to_the_prompt(self):
+        The A/B that deleted cleanup scored exactly this text (ADR
+        `0005`), so anything rewriting it here would invalidate that
+        result silently.
+        """
         captured: dict = {}
         item = {
             "item_id": 99,
@@ -759,17 +736,23 @@ class TestCleanupPass:
             "time_start_ms": 0,
             "time_end_ms": 600_000,
         }
-        # Raw transcript: rambling. Cleaned: coherent sentences.
         raw = "um yeah so we, you know, talked about funding stuff."
-        cleaned = "Council allocated $750,000 for snow removal."
-        segments = [_seg(0, raw)]
-        stub = _stub_extractor([], captured=captured, clean_response=cleaned)
-        extract_item_summaries(item, segments, gemini_extractor=stub)
-        # The cleanup hook saw the raw text...
-        assert captured["clean_input"] == raw
-        # ...and the semantic prompt saw the cleaned text, not the raw.
-        assert cleaned in captured["prompt"]
-        assert raw not in captured["prompt"]
+        stub = _stub_extractor([], captured=captured)
+        extract_item_summaries(item, [_seg(0, raw)], gemini_extractor=stub)
+        assert raw in captured["prompt"]
+
+    def test_segments_are_joined_with_one_space(self):
+        item = {
+            "item_id": 1, "title": "", "section_number": "1.",
+            "time_start_ms": 0, "time_end_ms": 600_000,
+        }
+        segments = [_seg(0, "First part."), _seg(5000, "Second part.")]
+        assert item_transcript_text(item, segments) == "First part. Second part."
+
+    def test_an_item_with_no_slice_gets_empty_text(self):
+        item = {"item_id": 1, "title": "", "timestamp_inherited": True}
+        assert item_transcript_text(item, [_seg(0, "anything")]) == ""
+
 
 class TestNextStepSliceQuality:
     def test_no_midword_start(self):
@@ -1067,36 +1050,6 @@ class TestCategoryDefinitionsDisambiguate:
 
     def test_the_tie_breaks_reach_the_prompt(self):
         assert "REPLACE this chip rather than suppress it" in _rules_prompt()
-
-
-# ── Cleanup prompt name normalization ──────────────────────────────
-
-
-class TestCleanupPromptNameNormalization:
-    def test_prompt_contains_name_correction_instruction(self):
-        prompt = _build_cleanup_prompt("some transcript text")
-        assert "CORRECT garbled proper nouns" in prompt
-
-    def test_prompt_contains_councillor_names(self):
-        prompt = _build_cleanup_prompt("some text")
-        for name in ("Dubois", "Donauer", "Jeffries", "Kelleher"):
-            assert name in prompt, f"Missing councillor: {name}"
-
-    def test_prompt_contains_local_vocabulary(self):
-        prompt = _build_cleanup_prompt("some text")
-        for term in ("Meewasin", "Métis", "Treaty 6", "Idylwyld"):
-            assert term in prompt, f"Missing term: {term}"
-
-    def test_prompt_contains_correction_examples(self):
-        prompt = _build_cleanup_prompt("some text")
-        assert "Du Boa" in prompt
-        assert "Me was in" in prompt
-
-    def test_saskatoon_names_constant_has_key_entries(self):
-        for name in ("Cynthia Block", "Bev Dubois", "Meewasin", "Métis"):
-            assert name in _SASKATOON_NAMES, f"Missing: {name}"
-
-
 
 
 class TestMoneyPurposeParsing:

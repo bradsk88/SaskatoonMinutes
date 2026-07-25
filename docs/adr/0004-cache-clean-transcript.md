@@ -1,5 +1,9 @@
 # The CleanTranscript is cached, because prompt iteration cannot afford to re-derive it
 
+> **Superseded by `0005`.** The cleanup pass this ADR caches was measured
+> against no cleanup at all and lost; the pass and its cache are deleted.
+> Kept for the reasoning, which is why the measurement happened.
+
 The Gemini cleanup pass must *emit* every agenda item's transcript slice in full — measured at ~270k characters, roughly 68k output tokens, for a single council meeting, run serially per item. A full pass over the 2026-06-24 council meeting exceeded ten minutes without finishing, which made iterating on the chip prompt impossible in practice: every experiment re-paid for cleanup that the experiment hadn't changed. So the cleanup output is cached per agenda item in a `CleanTranscriptCache`, splitting summarization cost in two — editing the **cleanup** prompt busts the cache and costs a full re-run, editing the **chip** prompt costs seconds.
 
 ## Considered options

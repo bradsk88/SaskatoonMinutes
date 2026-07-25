@@ -41,7 +41,6 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport  # noqa: E402
 from app.item_categorizer import (  # noqa: E402
-    _SASKATOON_NAMES,
     _slice_transcript,
     is_eligible_for_summary,
 )
@@ -65,9 +64,32 @@ _CAPITALIZED = re.compile(r"\b[A-Z][a-zA-Z'’-]+")
 _NOT_NAMES = {"I", "I'm", "I've", "I'd", "I'll", "OK"}
 
 
+# Names the site already knows how to spell, used here as a stop-list so
+# the ranking counts *unfamiliar* names — delegates, First Nations, firms.
+#
+# This is a copy of the roster that used to live in the cleanup prompt.
+# It is frozen here on purpose: as prompt input every entry was an
+# attractor that a garbled token could be snapped onto, which is what
+# produced "Remai Modern" for a condo corporation (ADR `0005`).  As a
+# stop-list it is only ever subtracted from a count, never shown to a
+# model, so a stale entry costs a slightly worse fixture ranking and
+# nothing else.
+_KNOWN_NAMES = (
+    "Cynthia Block Kathryn MacDonald Senos Timon Robert Pearce Troy Davies "
+    "Randy Donauer Jasmin Parker Holly Kelleher Scott Ford Bev Dubois "
+    "Zach Jeffries Charlie Clark Darren Hill Hilary Gough David Kirton "
+    "Mairin Loewen Sarina Gersher Mayor Councillor "
+    "Meewasin Valley Authority Swale Watchers Remai Modern "
+    "Métis Cree Dakota Nakota Dene Saulteaux Treaty "
+    "Idylwyld Nutana Riversdale Caswell Hill Sutherland Buena Vista "
+    "Haultain Stonebridge Willowgrove Blairmore Attridge "
+    "Chief Mistawasis Bridge"
+)
+
+
 def _roster_tokens() -> set[str]:
-    """Lowercased words of ``_SASKATOON_NAMES``, for absence checks."""
-    return {w for w in re.split(r"[^A-Za-z]+", _SASKATOON_NAMES.lower()) if w}
+    """Lowercased words of the known-name stop-list, for absence checks."""
+    return {w for w in re.split(r"[^A-Za-z]+", _KNOWN_NAMES.lower()) if w}
 
 
 def name_candidates(text: str, roster: set[str] | None = None) -> set[str]:

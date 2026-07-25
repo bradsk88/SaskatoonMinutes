@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>No-Cloud Fitness Bands &mdash; Local-First Wearable Comparison</title>
+<style>
+  :root {
+    --green: #16a34a; --green-bg: #dcfce7; --green-border: #86efac;
+    --yellow: #ca8a04; --yellow-bg: #fef9c3; --yellow-border: #fde047;
+    --red: #dc2626; --red-bg: #fee2e2; --red-border: #fca5a5;
+    --bg: #f8fafc; --card-bg: #fff; --text: #1e293b; --muted: #64748b;
+    --border: #e2e8f0; --accent: #6366f1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f172a; --card-bg: #1e293b; --text: #e2e8f0; --muted: #94a3b8;
+      --border: #334155; --accent: #818cf8;
+      --green-bg: #052e16; --green-border: #166534;
+      --yellow-bg: #422006; --yellow-border: #854d0e;
+      --red-bg: #450a0a; --red-border: #991b1b;
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+
+  /* Header */
+  header { text-align: center; padding: 3rem 1rem 2rem; }
+  header h1 { font-size: 2rem; font-weight: 800; margin-bottom: .5rem; }
+  header p { color: var(--muted); max-width: 640px; margin: 0 auto; font-size: 1.05rem; }
+
+  /* Rating badges */
+  .badge { display: inline-block; padding: .2rem .7rem; border-radius: 999px; font-size: .78rem; font-weight: 600; white-space: nowrap; }
+  .badge-green  { background: var(--green-bg);  color: var(--green);  border: 1px solid var(--green-border); }
+  .badge-yellow { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border); }
+  .badge-red    { background: var(--red-bg);    color: var(--red);    border: 1px solid var(--red-border); }
+
+  /* Tier headings */
+  .tier { margin: 2.5rem 0 1rem; padding-bottom: .5rem; border-bottom: 2px solid var(--border); }
+  .tier h2 { font-size: 1.3rem; }
+  .tier p { color: var(--muted); font-size: .9rem; }
+
+  /* Product cards grid */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.5rem; }
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .card-img { width: 100%; height: 210px; object-fit: contain; background: #f1f5f9; padding: 1rem; }
+  @media (prefers-color-scheme: dark) { .card-img { background: #1a2332; } }
+  .card-body { padding: 1.25rem; flex: 1; display: flex; flex-direction: column; }
+  .card-body h3 { font-size: 1.15rem; margin-bottom: .25rem; }
+  .card-price { font-size: 1.4rem; font-weight: 700; color: var(--accent); margin-bottom: .75rem; }
+  .card-specs { list-style: none; font-size: .88rem; margin-bottom: 1rem; flex: 1; }
+  .card-specs li { padding: .3rem 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+  .card-specs li:last-child { border-bottom: none; }
+  .card-specs .label { color: var(--muted); }
+  .card-footer { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  .card-footer a { font-size: .82rem; color: var(--accent); text-decoration: none; }
+  .card-footer a:hover { text-decoration: underline; }
+
+  /* Comparison table */
+  .table-wrap { overflow-x: auto; margin: 2rem 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; background: var(--card-bg); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+  th, td { padding: .65rem .85rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg); font-weight: 600; position: sticky; top: 0; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+
+  /* Stack section */
+  .stack { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; margin: 2.5rem 0; }
+  .stack h2 { margin-bottom: 1rem; font-size: 1.3rem; }
+  .pipeline { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; justify-content: center; margin: 1.5rem 0; }
+  .pipeline-step { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1.25rem; text-align: center; min-width: 130px; }
+  .pipeline-step strong { display: block; font-size: .92rem; }
+  .pipeline-step small { color: var(--muted); font-size: .78rem; }
+  .pipeline-arrow { font-size: 1.5rem; color: var(--muted); }
+  .stack ul { margin-top: 1rem; padding-left: 1.25rem; font-size: .92rem; }
+  .stack li { margin-bottom: .4rem; }
+
+  /* Legend */
+  .legend { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 1rem 0 2rem; font-size: .88rem; align-items: center; }
+  .legend span { display: flex; align-items: center; gap: .4rem; }
+
+  footer { text-align: center; padding: 2rem 1rem; color: var(--muted); font-size: .82rem; }
+  @media (max-width: 600px) {
+    .cards { grid-template-columns: 1fr; }
+    header h1 { font-size: 1.5rem; }
+    .pipeline { flex-direction: column; }
+    .pipeline-arrow { transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>No-Cloud Fitness Bands</h1>
+  <p>A comparison of fitness wearables you can use without handing your health data to Big Tech. From fully open-source to subscription-free with data export.</p>
+</header>
+
+<div class="container">
+
+  <!-- Cloud-Free Rating Legend -->
+  <div class="legend">
+    <strong>Cloud-free rating:</strong>
+    <span><span class="badge badge-green">Fully Local</span> All data stays on your device</span>
+    <span><span class="badge badge-yellow">Exportable</span> Cloud app, but data can be exported</span>
+    <span><span class="badge badge-red">Cloud-Locked</span> No practical export path yet</span>
+  </div>
+
+  <!-- ======================== TIER 1 ======================== -->
+  <div class="tier">
+    <h2>Tier 1: Best for No-Cloud</h2>
+    <p>Gadgetbridge-compatible devices &mdash; fully local data with no vendor app required.</p>
+  </div>
+
+  <div class="cards">
+
+    <!-- PineTime -->
+    <div class="card">
+      <img class="card-img" src="https://pine64.com/wp-content/uploads/2021/04/PineTime-Seal-1.jpg" alt="PineTime smartwatch" loading="lazy">
+      <div class="card-body">
+        <h3>PineTime</h3>
+        <div class="card-price">~$27</div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>~7 days</span></li>
+          <li><span class="label">Display</span><span>1.3″ IPS 240×240</span></li>
+          <li><span class="label">Sensors</span><span>HR, Accelerometer</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--red)">No</span></li>
+          <li><span class="label">Water</span><span>IP67</span></li>
+          <li><span class="label">Connectivity</span><span>BLE 5.0</span></li>
+          <li><span class="label">Firmware</span><span>InfiniTime (open source)</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Full support</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-green">Fully Local</span>
+          <a href="https://pine64.com/product/pinetime-smartwatch-sealed/" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Xiaomi Smart Band 9 -->
+    <div class="card">
+      <img class="card-img" src="https://i02.appmifile.com/828_operatorx_operatorx_opx/26/09/2024/e4477095ab705aced7ac8236670d4fde.png" alt="Xiaomi Smart Band 9" loading="lazy">
+      <div class="card-body">
+        <h3>Xiaomi Smart Band 9</h3>
+        <div class="card-price">~$35</div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>Up to 21 days</span></li>
+          <li><span class="label">Display</span><span>1.62″ AMOLED 192×490</span></li>
+          <li><span class="label">Sensors</span><span>HR, SpO2, Accel, Gyro</span></li>
+          <li><span class="label">HRV</span><span>Via stress monitoring</span></li>
+          <li><span class="label">Water</span><span>5 ATM (50m)</span></li>
+          <li><span class="label">Connectivity</span><span>BLE 5.4</span></li>
+          <li><span class="label">Weight</span><span>15.8 g (no strap)</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Supported (key extraction needed)</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-green">Fully Local</span>
+          <a href="https://www.mi.com/global/product/xiaomi-smart-band-9/" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Amazfit Band 7 -->
+    <div class="card">
+      <img class="card-img" src="https://us.amazfit.com/cdn/shop/products/Black-1_grande.jpg?v=1663840478" alt="Amazfit Band 7" loading="lazy">
+      <div class="card-body">
+        <h3>Amazfit Band 7</h3>
+        <div class="card-price">~$40</div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>Up to 18 days</span></li>
+          <li><span class="label">Display</span><span>1.47″ AMOLED 198×368</span></li>
+          <li><span class="label">Sensors</span><span>HR, SpO2, Accelerometer</span></li>
+          <li><span class="label">HRV</span><span>Via stress monitoring</span></li>
+          <li><span class="label">Water</span><span>5 ATM (50m)</span></li>
+          <li><span class="label">Connectivity</span><span>BLE 5.2</span></li>
+          <li><span class="label">Weight</span><span>~28 g</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Supported (auth token needed)</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-green">Fully Local</span>
+          <a href="https://us.amazfit.com/products/amazfit-band-7" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bangle.js 2 -->
+    <div class="card">
+      <img class="card-img" src="https://www.espruino.com/img/BANGLEJS2_angled.jpg" alt="Bangle.js 2 open source smartwatch" loading="lazy">
+      <div class="card-body">
+        <h3>Bangle.js 2</h3>
+        <div class="card-price">~$97</div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>Up to 4 weeks</span></li>
+          <li><span class="label">Display</span><span>1.3″ always-on, sunlight-readable</span></li>
+          <li><span class="label">Sensors</span><span>HR, Accel, Gyro, Barometer, Compass</span></li>
+          <li><span class="label">HRV</span><span>DIY (community IBI apps)</span></li>
+          <li><span class="label">Water</span><span>5 ATM (50m)</span></li>
+          <li><span class="label">Firmware</span><span>Espruino JS (fully open source)</span></li>
+          <li><span class="label">Gadgetbridge</span><span>First-class (official companion)</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-green">Fully Local</span>
+          <a href="https://banglejs.com/" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Movesense HR2 -->
+    <div class="card">
+      <img class="card-img" src="https://www.movesense.com/wp-content/uploads/2023/03/movesense-medical-sensor-chest.png" alt="Movesense HR2 ECG sensor" loading="lazy" style="object-fit:contain;">
+      <div class="card-body">
+        <h3>Movesense HR2</h3>
+        <div class="card-price">~$70/unit <small style="font-size:.7rem;color:var(--muted)">(sold in packs)</small></div>
+        <ul class="card-specs">
+          <li><span class="label">Form</span><span>Chest-strap sensor pod</span></li>
+          <li><span class="label">Sensors</span><span>Single-lead ECG, Accel, Gyro</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">ECG-grade R-R intervals (gold standard)</span></li>
+          <li><span class="label">Recovery</span><span>Raw data only (build your own pipeline)</span></li>
+          <li><span class="label">Export</span><span>Open API, open firmware, BLE streaming</span></li>
+          <li><span class="label">Cloud</span><span>None. Zero cloud dependency</span></li>
+          <li><span class="label">Certification</span><span>MDR Class IIa (Medical variant)</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-green">Fully Local</span>
+          <a href="https://www.movesense.com/" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /cards -->
+
+  <!-- ======================== TIER 2 ======================== -->
+  <div class="tier">
+    <h2>Tier 2: Subscription-Free with Data Export</h2>
+    <p>Cloud-based companion apps, but no subscription required and data can be exported or pulled via API.</p>
+  </div>
+
+  <div class="cards">
+
+    <!-- Amazfit Helio Strap -->
+    <div class="card">
+      <img class="card-img" src="https://us.amazfit.com/cdn/shop/files/20250625-145756_grande.jpg?v=1751336918" alt="Amazfit Helio Strap" loading="lazy">
+      <div class="card-body">
+        <h3>Amazfit Helio Strap</h3>
+        <div class="card-price">$99</div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>Up to 10 days</span></li>
+          <li><span class="label">Display</span><span>None (screen-free)</span></li>
+          <li><span class="label">Sensors</span><span>HR, SpO2, Accel, Gyro, Temp</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">Dedicated (BioTracker 6.0)</span></li>
+          <li><span class="label">Water</span><span>5 ATM (50m)</span></li>
+          <li><span class="label">Weight</span><span>20 g</span></li>
+          <li><span class="label">App</span><span>Zepp (cloud, data exportable)</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Partial / Experimental</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-yellow">Exportable</span>
+          <a href="https://us.amazfit.com/products/helio-strap" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Garmin Vivosmart 5 -->
+    <div class="card">
+      <img class="card-img" src="https://res.garmin.com/en/products/010-02645-10/v/cf-sm-7c498779-af8c-44d3-89f8-55bed4f8aa10.jpg" alt="Garmin Vivosmart 5" loading="lazy">
+      <div class="card-body">
+        <h3>Garmin Vivosmart 5</h3>
+        <div class="card-price">$150</div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>Up to 7 days</span></li>
+          <li><span class="label">Display</span><span>OLED touchscreen</span></li>
+          <li><span class="label">Sensors</span><span>HR, SpO2, Accelerometer</span></li>
+          <li><span class="label">HRV</span><span>Via Garmin Connect (limited)</span></li>
+          <li><span class="label">Water</span><span>5 ATM (50m)</span></li>
+          <li><span class="label">App</span><span>Garmin Connect (FIT/CSV export, python scraper)</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Partial (basic protocol)</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-yellow">Exportable</span>
+          <a href="https://www.garmin.com/en-US/p/782585/" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Polar Loop -->
+    <div class="card">
+      <img class="card-img" src="https://www.polar.com/img/cms/d097fdbfcc1fa9c9708b2f1060da7f24cb9d5bf3-1500x1500-1000.webp" alt="Polar Loop fitness band" loading="lazy">
+      <div class="card-body">
+        <h3>Polar Loop</h3>
+        <div class="card-price">$199</div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>Up to 8 days</span></li>
+          <li><span class="label">Display</span><span>None (screen-free)</span></li>
+          <li><span class="label">Sensors</span><span>HR (Precision Prime), Accel, Temp</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">Yes (Precision Prime)</span></li>
+          <li><span class="label">Water</span><span>WR30 (30m)</span></li>
+          <li><span class="label">Weight</span><span>29 g</span></li>
+          <li><span class="label">App</span><span>Polar Flow (CSV/GPX/TCX export, AccessLink API)</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Not yet supported</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-yellow">Exportable</span>
+          <a href="https://www.polar.com/us-en/loop" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Oura Ring 4 -->
+    <div class="card">
+      <img class="card-img" src="https://oura.com/cdn/shop/files/horizon-pdp-hero-silver.png" alt="Oura Ring 4" loading="lazy">
+      <div class="card-body">
+        <h3>Oura Ring 4</h3>
+        <div class="card-price">$349 <small style="font-size:.7rem;color:var(--muted)">+ $6/mo</small></div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>Up to 8 days</span></li>
+          <li><span class="label">Form</span><span>Ring (screen-free)</span></li>
+          <li><span class="label">Sensors</span><span>HR, SpO2, Temp, Accelerometer</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">Dedicated (r²=0.98 vs ECG)</span></li>
+          <li><span class="label">Recovery</span><span>Readiness Score, sleep staging, resp rate</span></li>
+          <li><span class="label">Export</span><span>CSV free; REST API requires membership</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Not supported</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-yellow">Exportable</span>
+          <a href="https://ouraring.com/" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Withings ScanWatch 2 -->
+    <div class="card">
+      <img class="card-img" src="https://www.withings.com/content/dam/withings/product-images/scanwatch2/SW2_42mm_BLUE_3Q_FRONT.png" alt="Withings ScanWatch 2" loading="lazy">
+      <div class="card-body">
+        <h3>Withings ScanWatch 2</h3>
+        <div class="card-price">$350</div>
+        <ul class="card-specs">
+          <li><span class="label">Form</span><span>Hybrid analog watch (tiny OLED sub-display)</span></li>
+          <li><span class="label">Sensors</span><span>ECG, HR, SpO2, Temp, Accelerometer</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">Medical-grade ECG + optical HRV</span></li>
+          <li><span class="label">Recovery</span><span>Vitalite Score, sleep stages (polysomnography-calibrated)</span></li>
+          <li><span class="label">Export</span><span>CSV export + full public REST API (OAuth)</span></li>
+          <li><span class="label">Privacy</span><span>French company, EU GDPR-native</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Not yet supported</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-yellow">Exportable</span>
+          <a href="https://www.withings.com/us/en/scanwatch" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ultrahuman Ring Air -->
+    <div class="card">
+      <img class="card-img" src="https://store.ultrahuman.com/cdn/shop/files/Aster-Black-Front.png" alt="Ultrahuman Ring Air" loading="lazy">
+      <div class="card-body">
+        <h3>Ultrahuman Ring Air</h3>
+        <div class="card-price">$350 <small style="font-size:.7rem;color:var(--muted)">(no subscription)</small></div>
+        <ul class="card-specs">
+          <li><span class="label">Form</span><span>Ring (screen-free, titanium)</span></li>
+          <li><span class="label">Sensors</span><span>HR, SpO2, Temp, Accelerometer</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">Dedicated overnight HRV</span></li>
+          <li><span class="label">Recovery</span><span>Recovery index, sleep stages, movement score</span></li>
+          <li><span class="label">Export</span><span>UltraSignal raw data API, Gadgetbridge protocol documented</span></li>
+          <li><span class="label">Note</span><span style="color:var(--yellow);">Not available in US (patent dispute)</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Protocol documented / initial support</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-yellow">Exportable</span>
+          <a href="https://www.ultrahuman.com/ring/" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Garmin Fenix 8 -->
+    <div class="card">
+      <img class="card-img" src="https://res.garmin.com/en/products/010-02903-10/v/cf-sm-aa32dd3f-e35a-486b-8f0e-f5ef6d88bb06.jpg" alt="Garmin Fenix 8 AMOLED" loading="lazy">
+      <div class="card-body">
+        <h3>Garmin Fenix 8</h3>
+        <div class="card-price">$1,000 <small style="font-size:.7rem;color:var(--muted)">(no subscription)</small></div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>Up to 29 days (solar)</span></li>
+          <li><span class="label">Display</span><span>AMOLED touchscreen + buttons</span></li>
+          <li><span class="label">Sensors</span><span>HR, SpO2, ECG, Temp, Accel, Gyro, Baro, Compass, GPS</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">HRV Status + Training Readiness</span></li>
+          <li><span class="label">Recovery</span><span>Body Battery, Training Load, Recovery Time, sleep score</span></li>
+          <li><span class="label">Export</span><span>FIT files via USB (no cloud needed), garminexport tool</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Partial (pairing + activity sync works)</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-yellow">Exportable</span>
+          <a href="https://www.garmin.com/en-US/p/1228171/" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- RingConn Gen 2 -->
+    <div class="card">
+      <img class="card-img" src="https://ringconn.com/cdn/shop/files/gen2-color-moonlit-silver.png" alt="RingConn Gen 2" loading="lazy">
+      <div class="card-body">
+        <h3>RingConn Gen 2</h3>
+        <div class="card-price">$299 <small style="font-size:.7rem;color:var(--muted)">(no subscription)</small></div>
+        <ul class="card-specs">
+          <li><span class="label">Form</span><span>Ring (screen-free), 12-day battery</span></li>
+          <li><span class="label">Sensors</span><span>HR, HRV, SpO2, Temp</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">24/7 continuous (unique)</span></li>
+          <li><span class="label">Recovery</span><span>Sleep stages, resp rate, stress, sleep apnea</span></li>
+          <li><span class="label">Export</span><span>Apple Health / Google Fit sync only</span></li>
+          <li><span class="label">Privacy</span><span style="color:var(--yellow);">Chinese company, AWS UK hosting</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Not supported</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-yellow">Exportable</span>
+          <a href="https://ringconn.com/" target="_blank" rel="noopener">Product page &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Luna Band -->
+    <div class="card">
+      <img class="card-img" src="https://cdn.mos.cms.futurecdn.net/PJeeUXFrdLjG3jJJCuCfzL.jpg" alt="Luna Band fitness tracker" loading="lazy">
+      <div class="card-body">
+        <h3>Luna Band</h3>
+        <div class="card-price">$149 <small style="font-size:.7rem;color:var(--muted)">(announced)</small></div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>TBD (multi-day expected)</span></li>
+          <li><span class="label">Display</span><span>None (screen-free, voice-led)</span></li>
+          <li><span class="label">Sensors</span><span>HR, Resp. Rate, Accel, Gyro, Temp</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">Dedicated (research-grade)</span></li>
+          <li><span class="label">Water</span><span>TBD</span></li>
+          <li><span class="label">App</span><span>LifeOS (cloud, AI coaching)</span></li>
+          <li><span class="label">Status</span><span>CES 2026 &mdash; not yet shipping</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Not supported</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-red">Cloud-Locked</span>
+          <span style="font-size:.78rem;color:var(--muted)">(no export announced yet)</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /cards -->
+
+  <!-- ======================== TIER 3 ======================== -->
+  <div class="tier">
+    <h2>Tier 3: Subscription-Required (Benchmark)</h2>
+    <p>Industry-leading recovery science, but your data is held hostage behind a recurring fee.</p>
+  </div>
+
+  <div class="cards">
+
+    <!-- WHOOP 5.0 -->
+    <div class="card">
+      <img class="card-img" src="https://cdn.shopify.com/s/files/1/0750/6187/3853/files/W240-QUARTZ-SILVERALUMINUM-S-QUARTZ-SUPER-24_PDP_Front_2000x.png" alt="WHOOP 5.0" loading="lazy">
+      <div class="card-body">
+        <h3>WHOOP 5.0</h3>
+        <div class="card-price">$199/yr <small style="font-size:.7rem;color:var(--muted)">(hardware included)</small></div>
+        <ul class="card-specs">
+          <li><span class="label">Battery</span><span>14+ days</span></li>
+          <li><span class="label">Display</span><span>None (screen-free)</span></li>
+          <li><span class="label">Sensors</span><span>HR, SpO2, Accel, Gyro, Temp</span></li>
+          <li><span class="label">HRV</span><span style="color:var(--green);font-weight:600;">Gold standard (sleep-measured)</span></li>
+          <li><span class="label">Recovery</span><span>Best-in-class strain/recovery/sleep</span></li>
+          <li><span class="label">Export</span><span>CSV + REST API (OAuth2)</span></li>
+          <li><span class="label">Gadgetbridge</span><span>Not supported</span></li>
+        </ul>
+        <div class="card-footer">
+          <span class="badge badge-red">Cloud-Locked</span>
+          <span style="font-size:.78rem;color:var(--muted)">Data lost if subscription lapses</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /cards -->
+
+  <!-- ======================== COMPARISON TABLE ======================== -->
+  <div class="tier"><h2>Quick Comparison</h2></div>
+
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Device</th>
+        <th>Price</th>
+        <th>Form</th>
+        <th>HRV</th>
+        <th>Recovery</th>
+        <th>Export</th>
+        <th>Cloud-Free</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Movesense HR2</td><td>~$70</td><td>Chest pod</td><td style="color:var(--green);font-weight:600;">ECG gold std</td><td>Raw only (DIY)</td><td>Open API, BLE stream</td><td><span class="badge badge-green">Fully Local</span></td></tr>
+      <tr><td>PineTime</td><td>$27</td><td>Watch</td><td style="color:var(--red)">&mdash;</td><td>Basic sleep</td><td>Gadgetbridge full</td><td><span class="badge badge-green">Fully Local</span></td></tr>
+      <tr><td>Xiaomi Band 9</td><td>$35</td><td>Band</td><td>~Stress</td><td>Sleep + stress</td><td>Gadgetbridge full</td><td><span class="badge badge-green">Fully Local</span></td></tr>
+      <tr><td>Amazfit Band 7</td><td>$40</td><td>Band</td><td>~Stress</td><td>Sleep + stress</td><td>Gadgetbridge full</td><td><span class="badge badge-green">Fully Local</span></td></tr>
+      <tr><td>Bangle.js 2</td><td>$97</td><td>Watch</td><td>DIY (IBI)</td><td>DIY sleep</td><td>Gadgetbridge official</td><td><span class="badge badge-green">Fully Local</span></td></tr>
+      <tr><td>Helio Strap</td><td>$99</td><td>Strap &#127919;</td><td style="color:var(--green);font-weight:600;">Dedicated</td><td>Full suite</td><td>Gadgetbridge partial</td><td><span class="badge badge-yellow">Exportable</span></td></tr>
+      <tr><td>Garmin Vivosmart 5</td><td>$150</td><td>Band</td><td>Via Connect</td><td>Body Battery</td><td>FIT + python scraper</td><td><span class="badge badge-yellow">Exportable</span></td></tr>
+      <tr><td>Polar Loop</td><td>$199</td><td>Strap &#127919;</td><td style="color:var(--green);font-weight:600;">Precision Prime</td><td>Sleep + recovery</td><td>CSV/GPX + API</td><td><span class="badge badge-yellow">Exportable</span></td></tr>
+      <tr><td>RingConn Gen 2</td><td>$299</td><td>Ring &#127919;</td><td style="color:var(--green);font-weight:600;">24/7 continuous</td><td>Sleep + apnea</td><td>Health app sync only</td><td><span class="badge badge-yellow">Exportable</span></td></tr>
+      <tr><td>Oura Ring 4</td><td>$349+$6/mo</td><td>Ring &#127919;</td><td style="color:var(--green);font-weight:600;">r²=0.98</td><td>Readiness Score</td><td>CSV free + REST API</td><td><span class="badge badge-yellow">Exportable</span></td></tr>
+      <tr><td>Withings ScanWatch 2</td><td>$350</td><td>Hybrid watch</td><td style="color:var(--green);font-weight:600;">Medical ECG</td><td>Vitalite Score</td><td>CSV + public REST API</td><td><span class="badge badge-yellow">Exportable</span></td></tr>
+      <tr><td>Ultrahuman Ring Air</td><td>$350</td><td>Ring &#127919;</td><td style="color:var(--green);font-weight:600;">Dedicated</td><td>Recovery index</td><td>UltraSignal + Gadgetbridge</td><td><span class="badge badge-yellow">Exportable</span></td></tr>
+      <tr><td>Garmin Fenix 8</td><td>$1,000</td><td>Watch</td><td style="color:var(--green);font-weight:600;">HRV Status</td><td>Best-in-class</td><td>FIT via USB + Gadgetbridge</td><td><span class="badge badge-yellow">Exportable</span></td></tr>
+      <tr><td>Luna Band</td><td>$149*</td><td>Strap &#127919;</td><td style="color:var(--green);font-weight:600;">Research</td><td>Full suite*</td><td>&mdash; None</td><td><span class="badge badge-red">Cloud-Locked</span></td></tr>
+      <tr><td>WHOOP 5.0</td><td>$199/yr</td><td>Strap &#127919;</td><td style="color:var(--green);font-weight:600;">Gold standard</td><td>Best-in-class</td><td>CSV + REST API</td><td><span class="badge badge-red">Cloud-Locked</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:.8rem;color:var(--muted)">&#127919; = screen-free. * Luna Band not yet shipping; specs may change. WHOOP = annual subscription (hardware included). Oura = $6/mo for API access (CSV export is free). Ultrahuman Ring Air unavailable in US due to patent dispute.</p>
+
+  <!-- ======================== LOCAL DATA STACK ======================== -->
+  <div class="stack">
+    <h2>The Local Data Stack</h2>
+    <p>How to keep your fitness data entirely under your control &mdash; no cloud accounts required.</p>
+
+    <div class="pipeline">
+      <div class="pipeline-step">
+        <strong>Wearable</strong>
+        <small>PineTime, Xiaomi, Amazfit</small>
+      </div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-step">
+        <strong>Gadgetbridge</strong>
+        <small>Android app (F-Droid)</small>
+      </div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-step">
+        <strong>Local SQLite</strong>
+        <small>On-device database</small>
+      </div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-step">
+        <strong>Home Assistant</strong>
+        <small>Self-hosted dashboard</small>
+      </div>
+    </div>
+
+    <h3 style="margin-top:1.5rem;font-size:1.05rem;">Gadgetbridge</h3>
+    <ul>
+      <li><strong>What it is:</strong> Free, open-source Android app that replaces vendor companion apps for supported wearables.</li>
+      <li><strong>Data storage:</strong> All health data (steps, heart rate, sleep, SpO2) stored locally in a SQLite database on your phone.</li>
+      <li><strong>Export:</strong> Built-in CSV/DB export. Integrates with <a href="https://opentracksapp.com/" target="_blank" rel="noopener">OpenTracks</a> and FitoTrack for workout logging.</li>
+      <li><strong>Install:</strong> Available on <a href="https://f-droid.org/packages/nodomain.freeyourgadget.gadgetbridge/" target="_blank" rel="noopener">F-Droid</a> (recommended) or build from <a href="https://codeberg.org/Freeyourgadget/Gadgetbridge" target="_blank" rel="noopener">source</a>.</li>
+      <li><strong>Supported devices:</strong> PineTime, Xiaomi/Mi Band series, Amazfit Bip/Band/GTR/GTS series, Casio, Fossil, and <a href="https://gadgetbridge.org/gadgets/" target="_blank" rel="noopener">many more</a>.</li>
+    </ul>
+
+    <h3 style="margin-top:1.5rem;font-size:1.05rem;">Bridging to Home Assistant</h3>
+    <ul>
+      <li><strong>Tasker + MQTT:</strong> Use Gadgetbridge broadcast intents &rarr; Tasker &rarr; MQTT publish &rarr; Home Assistant sensor entities.</li>
+      <li><strong>Direct DB read:</strong> Periodically sync the Gadgetbridge SQLite file to your server and parse with a custom sensor.</li>
+      <li><strong>REST API:</strong> Export data from Gadgetbridge and POST to Home Assistant's REST API or a local InfluxDB for Grafana dashboards.</li>
+    </ul>
+  </div>
+
+  <!-- ======================== SCORING MODEL ======================== -->
+  <div class="stack">
+    <h2>Personalized Scoring Model</h2>
+    <p style="margin-bottom:.75rem;">Weighted formula tuned for: <strong>HRV tracking, no-cloud data, recovery/sleep, screen-free, community trust, and data security.</strong></p>
+
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1.25rem;font-family:monospace;font-size:.92rem;margin-bottom:1.5rem;overflow-x:auto;line-height:1.8;">
+      <strong>S = 0.22&middot;HRV + 0.18&middot;Cloud + 0.15&middot;Recovery + 0.15&middot;Tribal + 0.15&middot;Security + 0.10&middot;NoScreen + 0.05&middot;Value</strong>
+      <br><br>
+      <span style="color:var(--muted)">Each factor scored 0&ndash;10. Max possible score = 10.0</span>
+      <br><br>
+      HRV &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (0.22) &mdash; 10 = dedicated HRV/IBI sensor &nbsp;|&nbsp; 6 = derived from HR &nbsp;|&nbsp; 0 = none<br>
+      Cloud &nbsp;&nbsp;&nbsp;&nbsp; (0.18) &mdash; 10 = fully local (Gadgetbridge) &nbsp;|&nbsp; 5 = exportable &nbsp;|&nbsp; 0 = cloud-locked<br>
+      Recovery &nbsp;&nbsp;(0.15) &mdash; 10 = sleep stages + recovery score + resp rate &nbsp;|&nbsp; 5 = basic sleep &nbsp;|&nbsp; 0 = none<br>
+      Tribal &nbsp;&nbsp;&nbsp; (0.15) &mdash; 10 = beloved by self-hosted community &nbsp;|&nbsp; 5 = mixed &nbsp;|&nbsp; 0 = unknown/untested<br>
+      Security &nbsp; (0.15) &mdash; 10 = open-source, no cloud, auditable &nbsp;|&nbsp; 5 = vendor with API/export &nbsp;|&nbsp; 0 = opaque, poor track record<br>
+      NoScreen &nbsp; (0.10) &mdash; 10 = screen-free &nbsp;|&nbsp; 0 = has display<br>
+      Value &nbsp;&nbsp;&nbsp;&nbsp; (0.05) &mdash; 10 &minus; (price / 25), min 0
+    </div>
+
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Device</th>
+          <th>HRV<br><small style="font-weight:400">×.22</small></th>
+          <th>Cloud<br><small style="font-weight:400">×.18</small></th>
+          <th>Recov<br><small style="font-weight:400">×.15</small></th>
+          <th>Tribal<br><small style="font-weight:400">×.15</small></th>
+          <th>Secur<br><small style="font-weight:400">×.15</small></th>
+          <th>NoScr<br><small style="font-weight:400">×.10</small></th>
+          <th>Val<br><small style="font-weight:400">×.05</small></th>
+          <th style="min-width:72px;">Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Movesense HR2: 10*.22+10*.18+1*.15+7*.15+10*.15+10*.10+7*.05 = 2.2+1.8+0.15+1.05+1.5+1.0+0.35 = 8.05 -->
+        <tr style="background:var(--green-bg);">
+          <td>1</td><td>Movesense HR2</td>
+          <td>10</td><td>10</td><td>1</td><td>7</td><td>10</td><td>10</td><td>7</td>
+          <td><strong style="font-size:1.1rem;">8.05</strong></td>
+        </tr>
+        <!-- Oura Ring 4: 10*.22+4*.18+9*.15+7*.15+7*.15+10*.10+0*.05 = 2.2+0.72+1.35+1.05+1.05+1.0+0 = 7.37 -->
+        <tr style="background:var(--green-bg);">
+          <td>2</td><td>Oura Ring 4</td>
+          <td>10</td><td>4</td><td>9</td><td>7</td><td>7</td><td>10</td><td>0</td>
+          <td><strong style="font-size:1.1rem;">7.37</strong></td>
+        </tr>
+        <!-- Helio Strap: 10*.22+7*.18+9*.15+4*.15+4*.15+10*.10+6*.05 = 2.2+1.26+1.35+0.6+0.6+1.0+0.3 = 7.31 -->
+        <tr style="background:var(--green-bg);">
+          <td>3</td><td>Amazfit Helio Strap</td>
+          <td>10</td><td>7</td><td>9</td><td>4</td><td>4</td><td>10</td><td>6</td>
+          <td><strong style="font-size:1.1rem;">7.31</strong></td>
+        </tr>
+        <!-- Withings SW2: 8*.22+6*.18+8*.15+8*.15+8*.15+7*.10+0*.05 = 1.76+1.08+1.2+1.2+1.2+0.7+0 = 7.14 -->
+        <tr>
+          <td>4</td><td>Withings ScanWatch 2</td>
+          <td>8</td><td>6</td><td>8</td><td>8</td><td>8</td><td>7</td><td>0</td>
+          <td><strong style="font-size:1.1rem;">7.14</strong></td>
+        </tr>
+        <!-- Ultrahuman Ring Air: 8*.22+6*.18+7*.15+8*.15+7*.15+10*.10+0*.05 = 1.76+1.08+1.05+1.2+1.05+1.0+0 = 7.14 -->
+        <tr>
+          <td>5</td><td>Ultrahuman Ring Air</td>
+          <td>8</td><td>6</td><td>7</td><td>8</td><td>7</td><td>10</td><td>0</td>
+          <td><strong style="font-size:1.1rem;">7.14</strong></td>
+        </tr>
+        <!-- Polar Loop: 8*.22+5*.18+8*.15+6*.15+7*.15+10*.10+2*.05 = 1.76+0.9+1.2+0.9+1.05+1.0+0.1 = 6.91 -->
+        <tr>
+          <td>6</td><td>Polar Loop</td>
+          <td>8</td><td>5</td><td>8</td><td>6</td><td>7</td><td>10</td><td>2</td>
+          <td><strong style="font-size:1.1rem;">6.91</strong></td>
+        </tr>
+        <!-- Garmin Fenix 8: 8*.22+7*.18+10*.15+8*.15+7*.15+0*.10+0*.05 = 1.76+1.26+1.5+1.2+1.05+0+0 = 6.77 -->
+        <tr>
+          <td>7</td><td>Garmin Fenix 8</td>
+          <td>8</td><td>7</td><td>10</td><td>8</td><td>7</td><td>0</td><td>0</td>
+          <td><strong style="font-size:1.1rem;">6.77</strong></td>
+        </tr>
+        <!-- Xiaomi Band 9: 6*.22+10*.18+7*.15+7*.15+6*.15+0*.10+9*.05 = 1.32+1.8+1.05+1.05+0.9+0+0.45 = 6.57 -->
+        <tr>
+          <td>8</td><td>Xiaomi Smart Band 9</td>
+          <td>6</td><td>10</td><td>7</td><td>7</td><td>6</td><td>0</td><td>9</td>
+          <td><strong style="font-size:1.1rem;">6.57</strong></td>
+        </tr>
+        <!-- Amazfit Band 7: 6*.22+10*.18+6*.15+7*.15+6*.15+0*.10+8*.05 = 1.32+1.8+0.9+1.05+0.9+0+0.4 = 6.37 -->
+        <tr>
+          <td>9</td><td>Amazfit Band 7</td>
+          <td>6</td><td>10</td><td>6</td><td>7</td><td>6</td><td>0</td><td>8</td>
+          <td><strong style="font-size:1.1rem;">6.37</strong></td>
+        </tr>
+        <!-- WHOOP 5.0: 10*.22+2*.18+10*.15+5*.15+3*.15+10*.10+0*.05 = 2.2+0.36+1.5+0.75+0.45+1.0+0 = 6.26 -->
+        <tr>
+          <td>10</td><td>WHOOP 5.0</td>
+          <td>10</td><td>2</td><td>10</td><td>5</td><td>3</td><td>10</td><td>0</td>
+          <td><strong style="font-size:1.1rem;">6.26</strong></td>
+        </tr>
+        <!-- Bangle.js 2: 3*.22+10*.18+4*.15+9*.15+10*.15+0*.10+6*.05 = 0.66+1.8+0.6+1.35+1.5+0+0.3 = 6.21 -->
+        <tr>
+          <td>11</td><td>Bangle.js 2</td>
+          <td>3</td><td>10</td><td>4</td><td>9</td><td>10</td><td>0</td><td>6</td>
+          <td><strong style="font-size:1.1rem;">6.21</strong></td>
+        </tr>
+        <!-- RingConn Gen 2: 9*.22+3*.18+7*.15+4*.15+4*.15+10*.10+0*.05 = 1.98+0.54+1.05+0.6+0.6+1.0+0 = 5.77 -->
+        <tr>
+          <td>12</td><td>RingConn Gen 2</td>
+          <td>9</td><td>3</td><td>7</td><td>4</td><td>4</td><td>10</td><td>0</td>
+          <td><strong style="font-size:1.1rem;">5.77</strong></td>
+        </tr>
+        <!-- PineTime: 0*.22+10*.18+3*.15+9*.15+10*.15+0*.10+9*.05 = 0+1.8+0.45+1.35+1.5+0+0.45 = 5.55 -->
+        <tr>
+          <td>13</td><td>PineTime</td>
+          <td>0</td><td>10</td><td>3</td><td>9</td><td>10</td><td>0</td><td>9</td>
+          <td><strong style="font-size:1.1rem;">5.55</strong></td>
+        </tr>
+        <!-- Garmin VS5: 5*.22+5*.18+7*.15+7*.15+7*.15+0*.10+4*.05 = 1.1+0.9+1.05+1.05+1.05+0+0.2 = 5.35 -->
+        <tr>
+          <td>14</td><td>Garmin Vivosmart 5</td>
+          <td>5</td><td>5</td><td>7</td><td>7</td><td>7</td><td>0</td><td>4</td>
+          <td><strong style="font-size:1.1rem;">5.35</strong></td>
+        </tr>
+        <!-- Luna Band: 9*.22+0*.18+9*.15+1*.15+2*.15+10*.10+4*.05 = 1.98+0+1.35+0.15+0.3+1.0+0.2 = 4.98 -->
+        <tr>
+          <td>15</td><td>Luna Band</td>
+          <td>9</td><td>0</td><td>9</td><td>1</td><td>2</td><td>10</td><td>4</td>
+          <td><strong style="font-size:1.1rem;">4.98</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <details style="margin-top:1rem;">
+      <summary style="cursor:pointer;font-size:.88rem;font-weight:600;color:var(--muted);">Scoring rationale (click to expand)</summary>
+      <p style="font-size:.82rem;color:var(--muted);margin-top:.5rem;">
+        <strong>Tribal:</strong>
+        PineTime/Bangle.js (9) &mdash; FOSS darlings.
+        Withings (8) &mdash; public API beloved by quantified-self community.
+        Garmin (8) &mdash; python-garminconnect scraper, FIT files, DC Rainmaker gold standard.
+        Ultrahuman (8) &mdash; no-sub, Gadgetbridge protocol documented, strong privacy-community appeal.
+        Oura/Xiaomi/Amazfit bands/Movesense (7) &mdash; well-known, active communities.
+        Polar (6) &mdash; respected accuracy, no Gadgetbridge hurts.
+        WHOOP (5) &mdash; best science, "hostage data" deeply resented.
+        Helio Strap/RingConn (4) &mdash; mixed or limited community trust.
+        Luna (1) &mdash; CES vapor.
+      </p>
+      <p style="font-size:.82rem;color:var(--muted);margin-top:.4rem;">
+        <strong>Security:</strong>
+        PineTime/Bangle.js/Movesense (10) &mdash; open source, zero cloud.
+        Withings (8) &mdash; French, GDPR-native, public API, no ads.
+        Polar/Garmin/Oura/Ultrahuman (7) &mdash; EU/HIPAA compliant, API access, no data selling.
+        Xiaomi/Amazfit bands (6) &mdash; poor vendor privacy but Gadgetbridge eliminates cloud.
+        Helio Strap/RingConn (4) &mdash; poor/unknown vendor privacy.
+        WHOOP (3) &mdash; data lost on unsubscribe.
+        Luna (2) &mdash; unknown startup, cloud-locked.
+      </p>
+    </details>
+
+    <div style="margin-top:1.25rem;padding:1.25rem;background:var(--green-bg);border:1px solid var(--green-border);border-radius:8px;">
+      <strong style="font-size:1.15rem;">&#127942; #1: Movesense HR2 (8.05)</strong>
+      <p style="margin-top:.4rem;font-size:.9rem;">The technical user's dream. ECG-grade R-R intervals (gold standard HRV), zero cloud dependency, fully open firmware and API. The catch: no built-in recovery/sleep algorithms &mdash; you build your own pipeline. Chest-strap form factor. Perfect for developers and researchers who want absolute data sovereignty.</p>
+
+      <p style="margin-top:.8rem;"><strong style="font-size:1.05rem;">&#129351; #2: Oura Ring 4 (7.37)</strong></p>
+      <p style="font-size:.9rem;">Best consumer experience. r²=0.98 HRV accuracy vs ECG, excellent sleep/recovery, screen-free ring, GDPR+HIPAA, free CSV export. Trade-off: $6/mo for API access.</p>
+
+      <p style="margin-top:.6rem;"><strong style="font-size:1.05rem;">&#129352; #3: Amazfit Helio Strap (7.31)</strong></p>
+      <p style="font-size:.9rem;">Best value screen-free HRV strap. Dedicated BioTracker 6.0, full recovery suite, no subscription, $99. Held back by Amazfit's poor privacy and "tinkerer-only" Gadgetbridge.</p>
+
+      <p style="margin-top:.8rem;font-size:.9rem;"><strong>Best hybrid watch: Withings ScanWatch 2 (7.14)</strong> &mdash; medical-grade ECG in a classy analog design, public REST API, French/EU privacy, polysomnography-calibrated sleep. Near screen-free aesthetics.</p>
+
+      <p style="margin-top:.5rem;font-size:.9rem;"><strong>Best ring (no US restriction): Ultrahuman Ring Air (7.14)</strong> &mdash; tied with Withings. No subscription, Gadgetbridge protocol documented, UltraSignal raw data. Not available in US currently.</p>
+
+      <p style="margin-top:.5rem;font-size:.9rem;"><strong>Best premium watch: Garmin Fenix 8 (6.77)</strong> &mdash; deepest recovery/training ecosystem, FIT files via USB without cloud, partial Gadgetbridge. Expensive and has a screen, but unmatched data accessibility.</p>
+
+      <p style="margin-top:.5rem;font-size:.9rem;"><strong>Best fully-local band: Xiaomi Smart Band 9 (6.57)</strong> &mdash; 21-day battery, full Gadgetbridge, cheapest path to local-only data.</p>
+
+      <p style="margin-top:.5rem;font-size:.9rem;"><strong>WHOOP 5.0 (6.26)</strong> &mdash; best recovery science in the industry, but subscription lock-in and data hostage model keep it mid-pack.</p>
+    </div>
+  </div>
+
+  <!-- ======================== RECOMMENDATIONS ======================== -->
+  <div class="stack">
+    <h2>Recommendations by Use Case</h2>
+    <ul>
+      <li><strong>HRV purist + technical:</strong> <strong>Movesense HR2</strong> &mdash; ECG-grade R-R intervals, zero cloud, fully open. Build your own analysis with raw data. The gold standard if you can handle DIY.</li>
+      <li><strong>Best consumer all-rounder:</strong> <strong>Oura Ring 4</strong> &mdash; best HRV accuracy (r²=0.98), polished sleep/recovery, screen-free ring, free CSV export, HIPAA/GDPR compliant.</li>
+      <li><strong>Best value screen-free strap:</strong> <strong>Amazfit Helio Strap</strong> &mdash; $99, dedicated HRV, full recovery suite, no subscription. Partial Gadgetbridge support trending toward full local.</li>
+      <li><strong>Best hybrid watch:</strong> <strong>Withings ScanWatch 2</strong> &mdash; looks like a regular watch, medical-grade ECG, public REST API, French/EU privacy. Best for professionals who want discreet health tracking.</li>
+      <li><strong>Best premium watch:</strong> <strong>Garmin Fenix 8</strong> &mdash; deepest training/recovery ecosystem, FIT files via USB (no cloud needed), partial Gadgetbridge. For serious athletes with budget.</li>
+      <li><strong>Best fully-local band:</strong> <strong>Xiaomi Smart Band 9</strong> &mdash; $35, 21-day battery, full Gadgetbridge, strongest local-only story among consumer bands.</li>
+      <li><strong>Best no-sub ring outside US:</strong> <strong>Ultrahuman Ring Air</strong> &mdash; Gadgetbridge protocol documented, UltraSignal raw data, no subscription. Unavailable in US due to patent dispute.</li>
+      <li><strong>Most open / hackable:</strong> <strong>Bangle.js 2</strong> &mdash; JavaScript-programmable, 543+ community apps, official Gadgetbridge, 4-week battery. Perfect for building your own health stack.</li>
+    </ul>
+  </div>
+
+</div><!-- /container -->
+
+<footer>
+  <p>Last updated: March 2026. Prices and specs may vary. Gadgetbridge compatibility status from <a href="https://gadgetbridge.org/gadgets/" target="_blank" rel="noopener">gadgetbridge.org</a>.</p>
+</footer>
+
+</body>
+</html>

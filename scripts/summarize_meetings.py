@@ -18,9 +18,9 @@ Backfilling the current council term (see
 
 ``--force`` is required because every meeting already has a cached
 summary from before the ItemSummary aggregate existed.  Meetings older
-than the current term keep their Legacy ItemSummary on purpose: the
-cleanup prompt's name roster only covers councils from 2020 on, so on
-older meetings it would "correct" proper nouns toward the wrong people.
+than the current term keep their Legacy ItemSummary on purpose: they are
+outside the scope this plan set out to fix, and re-summarizing them costs
+a chip call each.
 """
 
 import argparse
@@ -38,13 +38,10 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from app.cache_git import PushAccessError, verify_push_access
-from app.clean_transcript_cache import CleanTranscriptCache
-from app.clean_transcript_cache import CLEAN_TRANSCRIPT_BRANCH
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.item_categorizer import (
-    clean_meeting_transcripts,
-    cleanup_fingerprint,
     extract_item_summaries,
+    item_transcript_text,
     is_eligible_for_summary,
     GeminiExtractor,
 )
@@ -60,7 +57,6 @@ def summarize_meeting(
     meeting_id: str,
     extractor,
     transcript_cache,
-    clean_cache,
 ) -> dict[str, ItemSummary]:
     """Run the extractor across every eligible agenda item in the meeting."""
     transcript = transcript_cache.load(meeting_id)
@@ -79,22 +75,11 @@ def summarize_meeting(
         for i in items if not is_eligible_for_summary(i)
     }
 
-    # Cleanup is the expensive half and chip-prompt changes don't affect
-    # it, so reuse whatever the cache still considers current.
-    cached_clean = clean_cache.load(meeting_id)
-    if cached_clean:
-        print(f"    Reusing {len(cached_clean)} cached CleanTranscripts", flush=True)
-    clean = clean_meeting_transcripts(
-        eligible, transcript_segments, extractor, cached=cached_clean,
-    )
-    if clean != (cached_clean or {}):
-        clean_cache.save(meeting_id, clean)
-
     def run(item: dict) -> tuple[dict, dict]:
         return item, extract_item_summaries(
             item, transcript_segments,
             gemini_extractor=extractor,
-            cleaned_transcript_text=clean[str(item["item_id"])],
+            transcript_text=item_transcript_text(item, transcript_segments),
         )
 
     missing_description = 0
@@ -144,9 +129,8 @@ def main() -> None:
         help=(
             "Only process meetings on or after this date.  The backfill "
             "scope is the current council term: --since 2024-11-01.  Older "
-            "meetings keep their Legacy ItemSummary -- the cleanup prompt's "
-            "name roster only covers councils from 2020 on, so it would "
-            "'correct' older proper nouns toward the wrong people."
+            "meetings keep their Legacy ItemSummary -- they are outside "
+            "the scope of the summary-quality work."
         ),
     )
     parser.add_argument(
@@ -170,8 +154,7 @@ def main() -> None:
     # failure discovered at the end costs the whole run's tokens and
     # discards everything it produced.
     try:
-        for branch in ("summaries", CLEAN_TRANSCRIPT_BRANCH):
-            verify_push_access(branch)
+        verify_push_access("summaries")
     except PushAccessError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         print(
@@ -187,8 +170,7 @@ def main() -> None:
 
     source: MeetingSource = EscribeMeetingSource(LiveEscribeTransport())
     with TranscriptCache.open() as transcript_cache, \
-            ItemSummariesCache.open() as summaries_cache, \
-            CleanTranscriptCache.open(cleanup_fingerprint()) as clean_cache:
+            ItemSummariesCache.open() as summaries_cache:
         for tab in tabs:
             slug = tab["slug"]
             print(f"\n--- {tab['label']} ({slug}) ---")
@@ -228,7 +210,7 @@ def main() -> None:
                 print(f"  [{m.date}] {mid[:8]}... summarizing...", flush=True)
                 try:
                     summaries = summarize_meeting(
-                        source, mid, extractor, transcript_cache, clean_cache,
+                        source, mid, extractor, transcript_cache,
                     )
                     summaries_cache.save(mid, summaries)
                     summarized += 1

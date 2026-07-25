@@ -13,9 +13,10 @@ shaped by one city wearing a neutral name.
 Where the specificity currently lives, as a starting list for whoever
 does the generalization:
 
-- `_SASKATOON_NAMES` (`app/item_categorizer.py`) — councillors,
-  neighbourhoods, and local vocabulary fed to the cleanup pass. Per-city
-  by nature. Note that changing it busts every cached CleanTranscript.
+- `_KNOWN_NAMES` (`scripts/add_eval_fixture.py`) — councillors,
+  neighbourhoods, and local vocabulary. Per-city by nature. Only used to
+  rank candidate eval fixtures by how many *unfamiliar* names they carry;
+  it is never shown to a model (ADR `0005`).
 - The prompts in `app/item_categorizer.py` and `app/summary_judge.py`
   name Saskatoon and its council structure directly.
 - `EscribeMeetingSource` / `EscribeTransport` assume eSCRIBE. Many
@@ -52,7 +53,7 @@ swapping values, not untangling branches.
 
   "In Plain Terms" was formerly a 23rd, soft category. It is **retired** — what it tried to express is now the mandatory Description. A declinable description is what produced title-echo summaries.
 - **Eval Fixture** — a real Meeting trimmed to a handful of agenda items, committed under `tests/fixtures/eval` as a `.detail.json` / `.transcript.json` pair. **Not a whole meeting**: the three original fixtures carry 1, 5 and 6 items. The trim is what keeps a full eval to seconds and a dozen Gemini calls, and it means fixture item counts say nothing about real meeting sizes.
-- **Arm** — one side of a summarization A/B. Currently the **clean arm** (summarized from the CleanTranscript) and the **raw arm** (summarized from the untouched transcript slice). An arm is a property of *an item's* comparison, not of a label: `pairs.md` randomizes the A/B labels per item, so "A" is the clean arm on some items and the raw arm on others. Cross-item claims about "A" are meaningless — aggregate only after unblinding.
+- **Arm** — one side of a summarization A/B. An arm is a property of *an item's* comparison, not of a label: the blind pairs randomize the A/B labels per item, so "A" is one arm on some items and the other arm on the rest. Cross-item claims about "A" are meaningless — aggregate only after unblinding. The cleanup A/B (clean arm vs raw arm) is settled and its harness is gone; the term stays because the next A/B will re-use the shape.
 - **MeetingTopics** — LLM-derived high-level topics for a Meeting. Currently not cached.
 - **Procedural Item** — an agenda item whose title matches a fixed set of ceremonial/housekeeping keywords (call to order, adjournment, roll call, adoption of minutes, etc.). Procedural items are filtered out of topic ranking and short-circuited to a fixed "Procedural item." summary.
 - **Consent Item** — an agenda item approved inside the consent-agenda block, in one motion, without individual debate. Detected by an inherited timestamp: it shares its parent section's time span because no distinct span exists for it.
@@ -73,14 +74,10 @@ swapping values, not untangling branches.
   - Per-key storage on disk (one file per meeting), not all-at-once blobs.
 - **TranscriptCache** — `Cache[Transcript]`. Owns Transcript (de)serialization.
 - **ItemSummariesCache** — `Cache[list[ItemSummary]]`. Owns ItemSummary (de)serialization.
-- **CleanTranscriptCache** — `Cache[dict[item_id, str]]`. Holds the **CleanTranscript** for each agenda item of a Meeting.
-- **CleanTranscript** — one agenda item's transcript slice after the Gemini cleanup pass: fillers and false starts removed, sentences punctuated, garbled proper nouns corrected against a fixed Saskatoon name list. Plain text, not a typed Transcript — the time alignment is spent by this point.
-
-  It is cached because it is the expensive half of summarization: cleanup must *emit* the whole slice, ~68k output tokens for one council meeting, which is what made prompt iteration unworkable. Caching it splits the cost in two — changing the **cleanup** prompt busts the cache and costs a full re-run; changing the **chip** prompt does not and costs seconds. Cache-busting is therefore a correctness requirement, not an optimization.
+- **CleanTranscript** / **CleanTranscriptCache** — **retired** (ADR `0005`). A CleanTranscript was an agenda item's transcript slice rewritten by Gemini before summarization. Blind judges preferred summaries made from the untouched slice, so the pass and its cache are deleted and the chip call reads the raw slice. The cached text still sits on the `clean-transcripts` branch, which no code reads.
 - **Cache adapters:**
   - `GitBranchCache` — production adapter; persists to a git orphan branch, pushes on flush.
   - `InMemoryCache` — test adapter; no I/O, no git.
-  - `LocalDirCache` — fixture adapter; file-per-key JSON in a plain local directory, written through immediately, no remote. Exists so committed fixtures can back a cache: the eval loop reads CleanTranscripts out of `tests/fixtures/eval` instead of re-deriving them, which keeps the loop fast and CI free of cleanup calls. Because the directory is version-controlled, what the cleanup pass produced is reviewable in a diff.
 
 Scraped upstream data (escribemeetings) is **not** routed through Cache — it's a TTL/invalidation problem with different semantics.
 

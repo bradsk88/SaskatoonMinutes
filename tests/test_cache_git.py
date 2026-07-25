@@ -269,7 +269,7 @@ class TestPushPreflight:
         """The first run of a new cache creates its branch."""
         from app.cache_git import verify_push_access
 
-        verify_push_access("clean-transcripts")  # must not raise
+        verify_push_access("a-branch-that-does-not-exist")  # must not raise
 
     def test_absent_branch_is_not_confused_with_an_unreachable_remote(
         self, repo_with_remote,
@@ -279,7 +279,7 @@ class TestPushPreflight:
 
         _git("remote", "set-url", "origin", "/nonexistent/remote.git")
         with pytest.raises(PushAccessError):
-            verify_push_access("clean-transcripts")
+            verify_push_access("a-branch-that-does-not-exist")
 
     def test_raises_when_the_remote_is_unreachable(self, repo_with_remote):
         from app.cache_git import (

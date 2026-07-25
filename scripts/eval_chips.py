@@ -21,8 +21,7 @@ chips say something the agenda item's title doesn't already say.
 ``--diff`` is the iteration loop.  Reviewing a handful of deltas against
 ``tests/fixtures/eval/baseline.json`` is tractable in a way that re-reading
 every summary each pass is not; unchanged items cost one line of footer.
-Because CleanTranscripts are cached beside the fixtures, a diff run spends
-nothing on the cleanup pass.
+A run costs one chip call per item and nothing else.
 """
 
 import argparse
@@ -39,8 +38,6 @@ EXTRACT_WORKERS = 8
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from app.cache import LocalDirCache  # noqa: E402
-from app.clean_transcript_cache import CleanTranscriptCache  # noqa: E402
 from app.summary_judge import (  # noqa: E402
     FAITHFULNESS_CONCERN,
     FAITHFULNESS_FLOOR,
@@ -53,19 +50,12 @@ from app.item_categorizer import (  # noqa: E402
     MAX_DESCRIPTION_CHARS,
     SEMANTIC_CATEGORIES,
     GeminiExtractor,
-    clean_meeting_transcripts,
-    cleanup_fingerprint,
     extract_item_summaries,
+    item_transcript_text,
     is_eligible_for_summary,
 )
 
 FIXTURE_DIR = os.path.join(PROJECT_ROOT, "tests", "fixtures", "eval")
-
-# CleanTranscripts are committed alongside the fixtures they belong to,
-# so an eval run costs only the chip calls.  They regenerate whenever the
-# cleanup prompt changes (the fingerprint stops matching) — and because
-# they live in the repo, what cleanup produced is reviewable in a diff.
-CLEAN_SUFFIX = ".clean.json"
 
 # Minimum share of items that must carry at least one soft (LLM) chip
 # before we call the semantic pass healthy.  Deliberately low: some items
@@ -238,33 +228,23 @@ def run_eval(extractor: GeminiExtractor) -> dict:
     snapshot diffs cleanly and item identity survives fixtures being
     added or reordered.
     """
-    clean_cache = CleanTranscriptCache(
-        cleanup_fingerprint(),
-        inner=LocalDirCache(FIXTURE_DIR, suffix=CLEAN_SUFFIX),
-    )
     results: dict = {}
     for mid, detail, segments in load_fixtures():
         items = [i for i in detail["agenda_items"] if is_eligible_for_summary(i)]
         if not items:
             continue
 
-        cached = clean_cache.load(mid)
-        if cached is None and extractor.enabled:
-            print(
-                f"  {mid[:8]}: cleanup fingerprint changed or missing — "
-                f"re-cleaning {len(items)} items",
-                file=sys.stderr,
-            )
-        clean = clean_meeting_transcripts(items, segments, extractor, cached=cached)
-        if clean != (cached or {}):
-            clean_cache.save(mid, clean)
+        transcripts = {
+            str(it["item_id"]): item_transcript_text(it, segments)
+            for it in items
+        }
 
         with ThreadPoolExecutor(max_workers=EXTRACT_WORKERS) as pool:
             extracted = list(pool.map(
                 lambda it: (it, extract_item_summaries(
                     it, segments,
                     gemini_extractor=extractor,
-                    cleaned_transcript_text=clean[str(it["item_id"])],
+                    transcript_text=transcripts[str(it["item_id"])],
                 )),
                 items,
             ))
@@ -274,7 +254,9 @@ def run_eval(extractor: GeminiExtractor) -> dict:
                 "title": item.get("title") or "",
                 # Kept out of the baseline (see save_baseline): it is the
                 # judge's input, not part of what we diff.
-                "_source": _source_material(item, clean.get(str(item["item_id"]), "")),
+                "_source": _source_material(
+                    item, transcripts[str(item["item_id"])]
+                ),
                 "description": payload.get("description"),
                 "chips": [
                     {"category": c["category"], "text": c["text"]}
@@ -284,7 +266,7 @@ def run_eval(extractor: GeminiExtractor) -> dict:
     return results
 
 
-def _source_material(item: dict, clean_transcript: str) -> str:
+def _source_material(item: dict, transcript: str) -> str:
     """Everything the summary was allowed to draw on, for the judge."""
     parts = []
     for label, key in (
@@ -297,8 +279,8 @@ def _source_material(item: dict, clean_transcript: str) -> str:
         value = (item.get(key) or "").strip()
         if value:
             parts.append(f"{label}: {value}")
-    if clean_transcript.strip():
-        parts.append(f"Transcript:\n{clean_transcript}")
+    if transcript.strip():
+        parts.append(f"Transcript:\n{transcript}")
     return "\n\n".join(parts)
 
 

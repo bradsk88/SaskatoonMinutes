@@ -168,7 +168,7 @@ class TestConsentPrompt:
             captured["allowed"] = list(allowed_cats)
             return '{"description": "Accepts a $250,000 research grant.", "chips": []}'
 
-        ex = GeminiExtractor(api_key="k", generate=generate, clean_generate=lambda t: t)
+        ex = GeminiExtractor(api_key="k", generate=generate)
         extract_item_summaries(consent(), [], gemini_extractor=ex)
         assert DISCUSSION_ONLY_CATEGORIES.isdisjoint(captured["allowed"])
         # The categories that survive are the ones derivable from official text.
@@ -181,7 +181,7 @@ class TestConsentPrompt:
             captured["allowed"] = list(allowed_cats)
             return '{"description": "Adopts the transit bylaw.", "chips": []}'
 
-        ex = GeminiExtractor(api_key="k", generate=generate, clean_generate=lambda t: t)
+        ex = GeminiExtractor(api_key="k", generate=generate)
         extract_item_summaries(
             discussed(), [{"start_ms": 0, "end_ms": 600_000, "text": "debate"}],
             gemini_extractor=ex,
@@ -197,7 +197,6 @@ class TestConsentItemsProduceSummaries:
                 '{"description": "Accepts a $250,000 Carthy Foundation grant for '
                 'urban green infrastructure research.", "chips": []}'
             ),
-            clean_generate=lambda t: t,
         )
         out = extract_item_summaries(consent(), [], gemini_extractor=ex)
         assert out["description"].startswith("Accepts a $250,000")
@@ -206,7 +205,6 @@ class TestConsentItemsProduceSummaries:
         ex = GeminiExtractor(
             api_key="k",
             generate=lambda p, c: '{"description": "Does a thing.", "chips": []}',
-            clean_generate=lambda t: t,
         )
         out = extract_item_summaries(
             consent(vote_result="CARRIED UNANIMOUSLY",

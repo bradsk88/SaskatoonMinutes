@@ -34,7 +34,7 @@ class TestNameCandidates:
         assert "Kobussen" in name_candidates("The delegate was Karen Kobussen.")
 
     def test_ignores_names_the_roster_already_has(self):
-        """A transcript that already says "Meewasin" gives cleanup nothing to do."""
+        """A name the site can already spell is not what the ranking wants."""
         found = name_candidates("She thanked the Meewasin Valley Authority.")
         assert "Meewasin" not in found
 
