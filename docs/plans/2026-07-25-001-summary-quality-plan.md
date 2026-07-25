@@ -234,6 +234,262 @@ The alternative is to run it from an authenticated local shell, where the full t
 python scripts/summarize_meetings.py --since 2024-11-01 --pages 3 --limit 30 --force
 ```
 
+### U8 — Prompt critique applied + cleanup A/B — **validated**
+
+Written offline under the Gemini spending cap, then measured once the
+cap was raised. Baseline re-snapshotted.
+
+**It took two iterations, and the first one was a regression** —
+faithfulness **4.00** (on the 4.0 gate), 6/11 overruns, five flagged
+items. Finding that required isolating the comparison: the committed
+baseline predated `2752c7f`, so the first diff's `Outcome: Approved →
+Received as information` flips were that fix, not the prompt work.
+Stashing only `app/item_categorizer.py` and snapshotting at the same
+HEAD gave a true prompt-vs-prompt diff. What the first attempt got
+wrong, all four fixed in the second:
+
+- **35 words was a bad conversion.** Civic-agenda prose runs nearer 7
+  characters per word, so 35 words ≈ 245 characters — *looser* than the
+  220 it replaced. Now 30.
+- **The document-opening ban was too narrow.** Listing only "The report
+  highlights" left "The item approves funding for 13 non-profit
+  initiatives", which also cost the specifics ("native plant
+  restoration, bicycle redistribution"). The ban is now on the item,
+  report, or motion being the sentence's *subject*.
+- **The `Who's Affected` tie-break deterred rather than redirected.**
+  Phrased "use this only when…", it lost the category on 6 of 11 items
+  while only 3 moved to `Equity Impact`. The neighbours now *replace*
+  the chip explicitly.
+- **A number lost its period to fit the budget** — "$14,000 a year"
+  became "$14,000", the exact error U6 fixed. The rule now says to cut
+  clauses, never units.
+
+Measured at the same HEAD, pre-U8 prompt vs post-U8 prompt:
+
+| | pre-U8 | post-U8 |
+|---|---|---|
+| descriptions over 220 chars | 7/11 | **0/11** |
+| faithfulness | 4.82 | **4.82** |
+| specificity / non-redundancy | — | 5.00 / 5.00 |
+| chips | 55 | 49–52 |
+| items with a soft chip | 11/11 | 9–10/11 |
+
+Read that honestly: **faithfulness recovered, it did not improve.** U8's
+wins are the overruns, the `Colbison` name bug, truncated chips
+("The new 31st Street shelter, requiring this extension"), and
+descriptions that open "Saskatoon will build a storm sewer…" instead of
+"The item approves…". The cost is ~10% fewer chips — partly the
+non-redundancy rule working as intended, but at least two good chips
+died with it (a flood-risk `Who's Affected` on 8.1.1, `Legal Risk
+Flagged` on the body-camera item). n=11, and consecutive runs gave 52 vs
+49 chips, so ±3 is noise.
+
+Prompt changes (`_build_prompt`, `SEMANTIC_DEFINITIONS`):
+
+- **Budgets are stated in words, not characters.** A model has no access
+  to its own tokenization and cannot count characters, so `220
+  characters` was an instruction it could only guess at — 7 of 11
+  descriptions overran. `MAX_DESCRIPTION_WORDS = 35` and
+  `MAX_SUMMARY_WORDS = 16` are what the prompt asks for; the character
+  constants stay as the unit the eval *measures* in, so overrun counts
+  remain comparable across the change.
+- **Category definitions now say which neighbour wins.** `Who's
+  Affected` defers to `Equity Impact` and `Environmental Impact`;
+  `Debate Highlight` and `Public Sentiment` split on whether the speaker
+  is a decision-maker. Overlapping definitions were not producing more
+  coverage, they were producing one fact under two labels.
+- **Usefulness is gated in code only.** The prompt rated chips *and*
+  told the model to withhold anything it would rate "low", so a
+  borderline chip had two independent chances to disappear and resolved
+  differently on each run. That flapping was a large share of the churn
+  `--diff` kept reporting. The model now rates and never withholds on
+  usefulness grounds. The *accuracy* gate ("a chip you inferred rather
+  than found is worse than no chip") stays in the prompt — only the
+  model can know that.
+- **Chips must be checked against the description before emission.**
+  Restating the description in different words was the most common
+  failure in the U5 critique.
+- **Two new description bans**: opening by describing the document
+  ("The report highlights…") rather than the decision, and spelling
+  proper nouns as the transcript heard them. Official text wins; a name
+  that appears only in the transcript and looks phonetically garbled is
+  dropped rather than guessed at. This is the `Kobussen`/`Colbison` bug.
+
+`scripts/ab_cleanup.py` — the harness for the open question below.
+Extracts every eligible fixture item twice, once from the cached
+CleanTranscript and once from the raw slice, and writes blind A/B pairs
+for a sub-agent or a human to judge. Notes:
+
+- It **refuses to re-clean**. A missing CleanTranscript is a skip with a
+  loud message, because re-cleaning would spend the exact tokens the
+  script exists to question, and would do it silently.
+- The blind is balanced across the run, not flipped per item — eleven
+  independent coin flips land 9-2 often enough that the judge would
+  frequently be grading a set that is nine-tenths one arm.
+- It is **not** judged by Gemini. Asking the model family whose
+  preprocessing step is on trial to grade that step invites the bias
+  being tested for.
+
+**The cleanup A/B ran. Cleanup shows no measurable benefit.**
+
+9 comparable fixture items, each summarized twice — once from the cached
+CleanTranscript, once from the raw slice — and scored by the Gemini
+judge, both arms against the **raw** transcript so cleanup's own
+inventions cannot vouch for themselves.
+
+| dimension | clean | raw | delta |
+|---|---|---|---|
+| faithfulness | 4.56 | 4.11 | +0.44 |
+| specificity | 5.00 | 5.00 | 0.00 |
+| non-redundancy | 5.00 | 5.00 | 0.00 |
+
+Head-to-head on faithfulness: clean 3, raw 2, tie 4.
+
+**The entire +0.44 is one item.** Excluding item 41, the arms are exactly
+equal at 4.50 and 4.50. And item 41 is a bad witness for cleanup: the
+raw arm scored 1 on a summary that names the 8-month property tax
+exemption, the $14,000 annual cost, and the Saskatchewan Housing
+Corporation — all of which the clean arm omits entirely. The judge has
+misfired on that same `$14,000` fact before (U6, and again in the U8
+run). On the strength of this, cleanup buys nothing measurable for ~99%
+of the backfill's token cost.
+
+**The blind judging then ran, and it goes against cleanup.** Three
+independent non-Gemini judges, each reading only `pairs.md`, scored all
+nine items. Unblinded and aggregated:
+
+| judge | raw | clean | tie |
+|---|---|---|---|
+| 1 | 4 | 2 | 3 |
+| 2 | 4 | 3 | 2 |
+| 3 | 4 | 3 | 2 |
+| **majority per item** | **4** | **2** | **3** |
+
+All three picked raw on the **same four items** (10.3.1, 5.3, 5.4, 5.7)
+and were unanimous on six of nine. Across 27 item-judgements: raw 12,
+clean 8, tie 7.
+
+**Cleanup lost on proper nouns — the one thing ADR `0004` keeps it for.**
+All three judges independently flagged the same three failures, every
+one of them on the *cleaned* arm:
+
+- it invented **"Remai Modern"** as the letter-writer on 10.3.1, from
+  the Rumely condo corporation (ASR "Remly"). Not a failure to correct a
+  name — cleanup manufacturing a plausible wrong one, which is the worst
+  failure shape for a civic record.
+- it shipped **"Kakaushita Hall First Nation"** verbatim on 5.4
+  (Kahkewistahaw).
+- it kept **"Councillor Long"** on 5.7 where the raw arm resolved it to
+  Loewen.
+
+Two methodological notes, both mine to own:
+
+- **The judges' own "is this systematic?" paragraphs are unusable.**
+  `blind_orders` randomizes the A/B label *per item*, so "A" is the
+  cleaned arm on some items and the raw arm on others. All three
+  reasoned about A and B as stable identities and concluded "neither arm
+  is reliably cleaner on names" — they were comparing labels. Per-item
+  verdicts are sound; cross-item generalization has to happen after
+  unblinding, and cannot be delegated to anyone still blind.
+- **The transcripts were largely unreadable to the judges.**
+  `render_pairs` wrote each slice as one unbroken line, ~34k tokens on
+  the longest item, past a single-read cap. Two judges fell back to
+  judging on official text alone. Fixed (`wrap_transcript`), but it
+  means these verdicts lean on official text and proper-noun
+  plausibility more than on transcript fidelity. The proper-noun
+  findings are unaffected — those are checkable against official text —
+  and it hit both arms equally, so it does not bias the comparison.
+
+### U9 — Widen the A/B and settle cleanup — **pre-registered, not yet run**
+
+Settled with Brad on 2026-07-25, **before** any of the data below
+exists. Written down first on purpose: I had already argued for
+deleting cleanup, so I do not get to choose the bar after seeing the
+numbers.
+
+- **Widen the sample.** n=9 is too thin to retire a subsystem on. Add
+  ~3 delegate-heavy meetings, taking n to roughly 25.
+- **Pick meetings by tab, not by scanning.** Public-hearing meetings are
+  delegate-heavy by construction. Two of those plus one body with First
+  Nations engagement. No transcript-branch scan needed, and the
+  selection rationale is auditable.
+- **Pick items by name density.** Rank each meeting's eligible items by
+  distinct capitalized tokens absent from `_SASKATOON_NAMES`, take the
+  top ~5. Mechanical, so the fixture set is not hand-chosen by someone
+  with a stated position on the outcome.
+- **New fixtures join `tests/fixtures/eval`**, not a separate A/B set.
+  Part of the ±3-chip run-to-run churn is simply n=11. Accepted cost:
+  CI runs `--diff --judge --check` per prompt push, so ~25 items roughly
+  doubles per-push Gemini spend.
+- **Measure the disputed dimension instead of voting on it.** Primary
+  metric is the **roster-attractor rate**: entries of `_SASKATOON_NAMES`
+  appearing in a summary but in neither the official text nor the raw
+  transcript. No NLP, no fuzzy matching, and the raw arm should score 0
+  by construction — a useful check on the harness itself.
+- **Flag, do not auto-score.** A correct fix and a bad substitution have
+  the *same signature*: roster name present, absent from raw text.
+  `Meewasin ← "Me was in"` and `Remai Modern ← "Remly"` are
+  indistinguishable to the metric. Each is emitted as a flagged
+  substitution beside its nearest raw-transcript token, for a human to
+  rule on. Edit distance cannot arbitrate this — "Remly" and "Remai" are
+  close, so a distance rule scores the known failure as a success.
+
+**Pre-registered decision rule.** Cleanup survives only if it wins
+**both** gates:
+
+1. good corrections outnumber bad substitutions, and
+2. the blind judges give clean ≥ raw.
+
+Anything else, including a tie, deletes it. The asymmetry is
+deliberate: a pass consuming ~99% of the backfill's cost has to earn its
+place, not merely avoid being disproven.
+
+**Standing recommendation: delete the cleanup pass and
+`CleanTranscriptCache` with it.** Two independent methods agree it buys
+nothing: the Gemini judge showed a dead-even 4.50 vs 4.50 once the one
+unreliable item was set aside, and blind judges put raw ahead 4-2. It
+costs ~99% of the backfill. The counter-argument in ADR `0004` is
+specifically refuted rather than merely unsupported. Remaining caveat is
+sample size: n=9.
+
+Two harness bugs were found and fixed while getting there, both of which
+had produced confident wrong numbers:
+
+- The judge source omitted `motion_text`, `vote_result` and
+  `vote_detail`, so every description asserting the body approved
+  something was unsupported by construction — faithfulness collapsed to
+  1 for both arms. `ab_judge.py` now reuses the eval's
+  `_source_material`.
+- One arm of one item lost its judge call, and the surviving arm was
+  averaged in unpaired. That free score was enough to **reverse the sign
+  of the headline delta** at n=9. `pair_up` now drops half-scored items,
+  with tests.
+
+**The roster-expansion item is cancelled.** The plan used to say: add
+delegates and First Nations to `_SASKATOON_NAMES` once the A/B settles.
+The `Remai Modern` finding kills that. Cleanup did what
+`_build_cleanup_prompt` tells it to — *"CORRECT garbled proper nouns to
+the closest match from this list"* — and snapped an out-of-roster condo
+corporation ("Remly", almost certainly Rumely) onto the nearest roster
+member. **Every name added to the roster is another attractor competing
+for every garbled token**, so expansion trades missed corrections for
+confident wrong ones, and a wrong name reads as correct where a garble
+reads as a garble.
+
+If cleanup survives U9's gates, the fix is to make correction
+*conservative* rather than the roster larger: only rewrite a token when
+its target also appears in that item's own official text. A councillor
+named in the minutes still gets fixed; a condo corporation never gets
+renamed to an art gallery.
+
+**Still true, and now moot unless cleanup survives: the roster has no
+delegates or First Nations.** Adding them changes the cleanup prompt,
+which changes `cleanup_fingerprint()`, which invalidates every cached
+CleanTranscript — the 15M tokens whose value the A/B is about to decide.
+Expanding the roster before that verdict risks paying for cleanup twice
+to improve a pass we may delete. Fix the roster after the A/B, and only
+if cleanup survives it.
+
 ---
 
 ## Open Questions

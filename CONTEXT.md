@@ -2,6 +2,33 @@
 
 Use these terms exactly. Drift creates re-litigation.
 
+## Scope
+
+**TODO — eventually this should serve other city councils.** Not yet.
+Saskatoon-specific detail is **accepted on purpose** for now: a second
+city is the only thing that reveals which of these details are actually
+municipal-generic, and generalizing before then produces abstractions
+shaped by one city wearing a neutral name.
+
+Where the specificity currently lives, as a starting list for whoever
+does the generalization:
+
+- `_SASKATOON_NAMES` (`app/item_categorizer.py`) — councillors,
+  neighbourhoods, and local vocabulary fed to the cleanup pass. Per-city
+  by nature. Note that changing it busts every cached CleanTranscript.
+- The prompts in `app/item_categorizer.py` and `app/summary_judge.py`
+  name Saskatoon and its council structure directly.
+- `EscribeMeetingSource` / `EscribeTransport` assume eSCRIBE. Many
+  Canadian municipalities use it, so this is the *most* portable layer —
+  but "the upstream agenda system" is the seam a second city would test.
+- The meeting bodies and tabs (`council`, `public-hearing`, `police`,
+  `governance`, …) are Saskatoon's committee structure.
+- Templates and site copy in `app/templates/`.
+
+Rule of thumb until then: keep Saskatoon facts in *data and prompts*
+rather than in control flow, so generalizing later is a matter of
+swapping values, not untangling branches.
+
 ## Domain
 
 - **Meeting** — a city council (or related body) meeting, identified by a `meeting_id` string assigned by the upstream escribemeetings system. `meeting_id` is the canonical key throughout the codebase.
@@ -24,6 +51,8 @@ Use these terms exactly. Drift creates re-litigation.
   - **Soft chips** (the remaining 11 categories — Debate Highlight, Who's Affected, Dissenting View, etc.) are interpretive. They are produced by a single Gemini call against a JSON schema of `{description, chips: [{category, text, usefulness}]}`.
 
   "In Plain Terms" was formerly a 23rd, soft category. It is **retired** — what it tried to express is now the mandatory Description. A declinable description is what produced title-echo summaries.
+- **Eval Fixture** — a real Meeting trimmed to a handful of agenda items, committed under `tests/fixtures/eval` as a `.detail.json` / `.transcript.json` pair. **Not a whole meeting**: the three original fixtures carry 1, 5 and 6 items. The trim is what keeps a full eval to seconds and a dozen Gemini calls, and it means fixture item counts say nothing about real meeting sizes.
+- **Arm** — one side of a summarization A/B. Currently the **clean arm** (summarized from the CleanTranscript) and the **raw arm** (summarized from the untouched transcript slice). An arm is a property of *an item's* comparison, not of a label: `pairs.md` randomizes the A/B labels per item, so "A" is the clean arm on some items and the raw arm on others. Cross-item claims about "A" are meaningless — aggregate only after unblinding.
 - **MeetingTopics** — LLM-derived high-level topics for a Meeting. Currently not cached.
 - **Procedural Item** — an agenda item whose title matches a fixed set of ceremonial/housekeeping keywords (call to order, adjournment, roll call, adoption of minutes, etc.). Procedural items are filtered out of topic ranking and short-circuited to a fixed "Procedural item." summary.
 - **Consent Item** — an agenda item approved inside the consent-agenda block, in one motion, without individual debate. Detected by an inherited timestamp: it shares its parent section's time span because no distinct span exists for it.
