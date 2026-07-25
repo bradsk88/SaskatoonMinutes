@@ -1002,3 +1002,104 @@ class TestMoneyPurposeParsing:
     def test_bare_amount_with_no_purpose_is_dropped(self):
         item = {"title": "", "content": "", "recommendation": "The cost is $500,000."}
         assert _extract_cost_funding(item) == []
+
+
+class TestPromptInputHygiene:
+    """The prompt calls the official text "clean and reliable" — so it must be."""
+
+    def test_html_entities_are_decoded_before_the_model_sees_them(self):
+        item = _summary_item(1, "Homelessness Action Plan")
+        item["recommendation"] = (
+            "That the Governance and Priorities Committee recommend to City "
+            "Council&#58; That the plan be received."
+        )
+        prompt = _build_prompt(item, "", ["Who's Affected"])
+        assert "&#58;" not in prompt
+        assert "recommend to City Council:" in prompt
+
+    def test_truncation_is_marked_not_silent(self):
+        """A silent mid-clause cut reads as though the motion ended there."""
+        item = _summary_item(2, "Long Item")
+        item["recommendation"] = "That Council approve " + ("x" * 3000)
+        prompt = _build_prompt(item, "", ["Who's Affected"])
+        assert "[truncated]" in prompt
+
+    def test_short_fields_are_not_marked(self):
+        item = _summary_item(3, "Short Item")
+        item["recommendation"] = "That Council approve the rezoning."
+        assert "[truncated]" not in _build_prompt(item, "", ["Who's Affected"])
+
+    def test_the_transcript_is_fenced_and_named(self):
+        item = _summary_item(4, "Debated Item")
+        prompt = _build_prompt(item, "some spoken words", ["Who's Affected"])
+        assert "<<<TRANSCRIPT" in prompt
+        assert "<<<END TRANSCRIPT>>>" in prompt
+        assert "some spoken words" in prompt
+
+    def test_traceability_rule_names_the_transcript_fences(self):
+        """It used to say "the material above" — the transcript is below."""
+        prompt = _build_prompt(_summary_item(5, "X"), "words", ["Who's Affected"])
+        assert "material above" not in prompt
+        assert "TRANSCRIPT fences" in prompt
+
+
+class TestCommitteeAttributionGuard:
+    """A committee recommends to Council; Council has not decided."""
+
+    def _committee_item(self) -> dict:
+        item = _summary_item(10, "Saskatoon Homelessness Action Plan 2026")
+        item["recommendation"] = (
+            "That the Governance and Priorities Committee recommend to City "
+            "Council: That City Council reaffirm the City's leadership role."
+        )
+        item["vote_result"] = "CARRIED UNANIMOUSLY"
+        return item
+
+    def test_guard_fires_even_though_the_committee_vote_carried(self):
+        """The old guard keyed off the outcome label, which read "Approved",
+        so it never fired and the summary asserted Council had acted."""
+        prompt = _build_prompt(self._committee_item(), "", ["Who's Affected"])
+        assert "this is a COMMITTEE item" in prompt
+        assert "City Council has NOT decided it" in prompt
+
+    def test_guard_warns_about_copying_the_subjunctive_clause(self):
+        prompt = _build_prompt(self._committee_item(), "", ["Who's Affected"])
+        assert "ASKING Council to do" in prompt
+
+    def test_a_real_council_item_gets_the_decision_line_instead(self):
+        item = _summary_item(11, "Shaw Centre Score Clock")
+        item["recommendation"] = "That City Council approve an increase of $187,000."
+        item["vote_result"] = "CARRIED UNANIMOUSLY"
+        prompt = _build_prompt(item, "", ["Who's Affected"])
+        assert "this is a COMMITTEE item" not in prompt
+        assert "This body's decision: Approved." in prompt
+
+    def test_the_decision_line_tells_the_model_not_to_restate_it(self):
+        item = _summary_item(12, "Shaw Centre")
+        item["recommendation"] = "That City Council approve the purchase."
+        item["vote_result"] = "CARRIED UNANIMOUSLY"
+        prompt = _build_prompt(item, "", ["Who's Affected"])
+        assert "do NOT restate it in the description" in prompt
+
+
+class TestOneChipPerCategory:
+    def test_a_second_chip_in_the_same_category_is_dropped(self):
+        parsed = [
+            {"category": "Who's Affected", "text": "Residents of Nutana",
+             "usefulness": "high"},
+            {"category": "Who's Affected", "text": "Businesses on Broadway",
+             "usefulness": "high"},
+        ]
+        out = _sanitize_chips(parsed, ["Who's Affected"])
+        assert len(out) == 1
+        assert out[0]["text"] == "Residents of Nutana"
+
+    def test_different_categories_both_survive(self):
+        parsed = [
+            {"category": "Who's Affected", "text": "Residents of Nutana",
+             "usefulness": "high"},
+            {"category": "Equity Impact", "text": "Helps low-income riders",
+             "usefulness": "high"},
+        ]
+        out = _sanitize_chips(parsed, ["Who's Affected", "Equity Impact"])
+        assert len(out) == 2

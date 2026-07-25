@@ -928,6 +928,30 @@ def _summary_schema(allowed_cats: list[str]) -> dict:
     }
 
 
+_RECOMMENDS_TO_COUNCIL_RE = re.compile(
+    r"\brecommend(?:s|ed)?\s+to\s+(?:city\s+)?council\b", re.IGNORECASE,
+)
+
+
+def _field(text: str, limit: int) -> str:
+    """Prepare one official-text field for the prompt.
+
+    Two fixes over raw interpolation:
+
+    * HTML entities are decoded.  ``clean_entities`` was applied only to
+      model *output*, so the prompt told the model the official text was
+      "clean and reliable" and then handed it
+      ``"recommend to City Council&#58;"``.
+    * Truncation is marked.  A silent mid-clause cut looks to the model
+      like the recommendation simply ended there, so it summarises a
+      fragment as though it were the whole motion.
+    """
+    cleaned = clean_entities(text).strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return f"{cleaned[:limit]}… [truncated]"
+
+
 def _build_prompt(
     item: dict, transcript_text: str, allowed_cats: list[str],
 ) -> str:
@@ -961,7 +985,7 @@ def _build_prompt(
     else:
         lines = [
             "You are extracting a summary of a Saskatoon city council "
-            "meeting agenda item. Use ALL the context below — the "
+            "meeting agenda item. Draw on the context below — the "
             "official recommendation and motion text are clean and reliable; "
             "the transcript is rough automatic speech-to-text and may contain "
             "errors, but captures discussion not in the official text.",
@@ -969,30 +993,45 @@ def _build_prompt(
             f"Agenda item title: {title}",
         ]
     if rec:
-        lines.extend(["", f"Official recommendation: {rec[:500]}"])
+        lines.extend(["", f"Official recommendation: {_field(rec, 2000)}"])
     if motion and motion != rec:
-        lines.extend(["", f"Motion text: {motion[:300]}"])
+        lines.extend(["", f"Motion text: {_field(motion, 1000)}"])
     if vote:
-        lines.append(f"Vote result: {vote}")
+        lines.extend(["", f"Vote result: {vote}"])
     if vote_detail:
-        lines.append(f"Vote detail: {vote_detail[:300]}")
+        lines.append(f"Vote detail: {_field(vote_detail, 600)}")
 
     # Which body decided, and whether it decided at all.  Without this the
     # model asserts "City Council approved …" on Standing Policy Committee
     # items, where the committee only *recommends* to Council — a real
     # civic error a reader cannot detect.
+    #
+    # Keyed off the recommendation text, not the vote.  A committee item
+    # normally *has* a carried vote, so testing the outcome label alone
+    # let every committee item fall through to "This body's decision:
+    # Approved" — which is how the baseline came to assert that City
+    # Council reaffirmed a plan it had never seen.
     outcome = format_outcome(vote, rec)
-    if outcome == "Recommended":
+    if outcome.startswith("Recommended") or _RECOMMENDS_TO_COUNCIL_RE.search(rec):
         lines.extend([
             "",
-            "IMPORTANT: this body RECOMMENDED this to City Council. It is "
-            "not yet approved. Do not write that City Council approved, "
-            "adopted, or funded anything — write what was recommended.",
+            "IMPORTANT: this is a COMMITTEE item. The committee voted to "
+            "RECOMMEND this to City Council. City Council has NOT decided "
+            "it. Do not write that City Council approved, adopted, "
+            "reaffirmed, endorsed, or funded anything. The recommendation "
+            "text below contains clauses like \"That City Council reaffirm "
+            "X\" — that is what the committee is ASKING Council to do, not "
+            "something Council did. Write what the committee is "
+            "recommending, in future or conditional voice.",
         ])
     elif outcome and outcome != "Discussed":
-        lines.extend(["", f"This body's decision: {outcome}."])
+        lines.extend([
+            "",
+            f"This body's decision: {outcome}. (This is already recorded "
+            f"as the Outcome chip — do NOT restate it in the description.)",
+        ])
     if content:
-        lines.extend(["", f"Item content (from agenda notes): {content[:800]}"])
+        lines.extend(["", f"Item content (from agenda notes): {_field(content, 2000)}"])
 
     lines.extend([
         "",
@@ -1050,7 +1089,8 @@ def _build_prompt(
         "already covers what the item is, so do not repeat it in a chip.",
         "",
         "Every chip must be traceable to something actually said or "
-        "written in the material above. A chip you inferred rather than "
+        "written in the item metadata or between the TRANSCRIPT fences. "
+        "A chip you inferred rather than "
         "found is worse than no chip — omit the category instead.",
         "",
         "Rate each chip's `usefulness`:",
@@ -1076,7 +1116,16 @@ def _build_prompt(
             "`chips` list and focus on the description)"
         )
     if transcript_text.strip():
-        lines.extend(["", "Transcript (rough, may contain errors):", transcript_text])
+        # Fenced and labelled.  The rules refer to "the material above",
+        # but the transcript is the one source that appears below them —
+        # naming it explicitly stops the traceability rule from reading
+        # as though the transcript does not count as a source.
+        lines.extend([
+            "",
+            "<<<TRANSCRIPT — rough automatic speech-to-text, may contain errors>>>",
+            transcript_text,
+            "<<<END TRANSCRIPT>>>",
+        ])
     lines.extend([
         "",
         "Return a JSON object with `description` and `chips`. An empty "
@@ -1107,6 +1156,10 @@ def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
     allowed = set(allowed_cats)
     results: list[dict] = []
     seen_texts: set[str] = set()
+    # The prompt asks for at most one chip per category, but nothing
+    # enforced it: dedup was on exact trimmed text, so two differently
+    # worded Debate Highlights both survived.
+    seen_categories: set[str] = set()
     for entry in parsed:
         if not isinstance(entry, dict):
             continue
@@ -1117,10 +1170,13 @@ def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
             continue
         if usefulness not in ACCEPTED_USEFULNESS:
             continue
+        if cat in seen_categories:
+            continue
         chip = _transcript_chip(text)
         if not chip or chip in seen_texts:
             continue
         seen_texts.add(chip)
+        seen_categories.add(cat)
         results.append({"category": cat, "text": chip})
     return results
 
@@ -1220,11 +1276,24 @@ def extract_item_summaries(
     results.extend(_extract_cost_funding(item))
     results.extend(_extract_procedural_note(item))
 
-    # Transcript-based regex extractors — only run when Gemini is disabled
-    # because raw automatic transcript produces too much noise (garbled
-    # fragments, mismatched keywords).  When Gemini is enabled, it handles
-    # these categories far more reliably from the combined metadata +
-    # transcript context.
+    # Transcript-based regex extractors — only run when Gemini is disabled.
+    #
+    # NOTE: this means Declared Conflict, Delegation, Next Step, Related
+    # Item, Deferred From and Data Cited are produced by NOTHING in
+    # production.  They are not in SEMANTIC_CATEGORIES either, so the LLM
+    # never sees them.  Six of the twenty-two categories are unreachable.
+    #
+    # Running them on the CleanTranscript was tried and is worse, not
+    # better: on the eval fixtures they emit sentence fragments ("McDonald,
+    # and we will understand by the end of it…") and — because eSCRIBE
+    # bookmarks lag what was said — facts belonging to adjacent items
+    # ("445 hectares" from the Homewood concept plan landing on the 210
+    # Pacific Avenue shelter).  Cleaning the input does not fix a slice
+    # that contains the wrong item.
+    #
+    # Fixing this is a design decision, not a code tweak: either delete
+    # the six categories, move them to the LLM's remit, or fix the item
+    # boundaries.  See the plan's open questions.
     if not extractor.enabled:
         results.extend(_extract_declared_conflict(transcript_text))
         results.extend(_extract_delegation(transcript_text))

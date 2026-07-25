@@ -114,9 +114,21 @@ def format_outcome(vote_result: str, recommendation: str) -> str:
         return "Deferred"
     if "WITHDRAWN" in upper:
         return "Withdrawn"
-    # A motion to defer/table that carried is a deferral, not an approval
+    # What kind of action was moved is in the RECOMMENDATION; whether it
+    # happened is in the vote.  The motion has to be read first, or every
+    # carried motion looks like an approval regardless of what it did.
+    #
+    # A motion to defer/table that carried is a deferral, not an approval.
     if re.search(r"\bDEFER(?:RED)?\b", rec_upper) or "TABLED" in rec_upper:
         return "Deferred"
+    # A committee that carried a motion to recommend something has
+    # recommended it.  City Council has not acted, and saying "Approved"
+    # tells a resident the opposite of what happened.
+    if re.search(r"\bRECOMMEND(?:S|ED)?\s+TO\s+(?:CITY\s+)?COUNCIL\b", rec_upper):
+        return f"Recommended to Council{tally}"
+    # "That the information be received" is council declining to decide.
+    if re.search(r"\bBE\s+(?:RECEIVED|NOTED|FILED)\b", rec_upper):
+        return "Received as information"
     if "UNANIMOUSLY" in upper:
         return "Approved"
     if "CARRIED" in upper:

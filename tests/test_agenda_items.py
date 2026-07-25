@@ -185,3 +185,77 @@ class TestIsMajorDecision:
 
     def test_routine(self):
         assert is_major_decision("Routine Report", "", False) is False
+
+
+class TestOutcomeReadsTheMotionNotJustTheVote:
+    """What kind of action was moved is in the recommendation.
+
+    format_outcome checked the vote for CARRIED/UNANIMOUSLY before looking
+    at what the motion actually did, so every carried motion came out as
+    "Approved" -- including committee recommendations and motions to
+    merely receive a report.  Seven of eleven eval-fixture items were
+    mislabelled, and Outcome is a hard chip: the one the design promises
+    is auditable.
+    """
+
+    def test_committee_recommendation_is_not_an_approval(self):
+        """A committee recommends to Council; Council has not acted."""
+        out = format_outcome(
+            "CARRIED UNANIMOUSLY",
+            "That the Standing Policy Committee on Planning, Development and "
+            "Community Services recommend to City Council that a temporary "
+            "pause of the Civic Naming Program be approved.",
+        )
+        assert out == "Recommended to Council"
+
+    def test_recommendation_keeps_a_split_tally(self):
+        out = format_outcome(
+            "CARRIED (7 to 4)",
+            "That the Committee recommend to City Council that the plan be adopted.",
+        )
+        assert out == "Recommended to Council (7-4)"
+
+    def test_governance_committee_phrasing(self):
+        out = format_outcome(
+            "CARRIED UNANIMOUSLY",
+            "That the Governance and Priorities Committee recommend to City "
+            "Council: That City Council reaffirm the City's leadership role.",
+        )
+        assert out == "Recommended to Council"
+
+    def test_receiving_information_is_not_an_approval(self):
+        assert format_outcome(
+            "CARRIED UNANIMOUSLY", "That the information be received.",
+        ) == "Received as information"
+
+    def test_report_be_received(self):
+        assert format_outcome(
+            "CARRIED UNANIMOUSLY", "That the report be received as information.",
+        ) == "Received as information"
+
+    def test_noted_and_filed_are_also_non_decisions(self):
+        for rec in ("That the minutes be noted.", "That the letter be filed."):
+            assert format_outcome("CARRIED", rec) == "Received as information"
+
+    def test_a_real_council_approval_is_still_approved(self):
+        assert format_outcome(
+            "CARRIED UNANIMOUSLY",
+            "That City Council approve an increase of $187,000 to the Shaw "
+            "Centre Score Clock project.",
+        ) == "Approved"
+
+    def test_a_split_council_approval_keeps_its_tally(self):
+        assert format_outcome(
+            "CARRIED (8 to 3)", "That Council approve the rezoning.",
+        ) == "Approved (8-3)"
+
+    def test_deferral_still_wins_over_recommendation(self):
+        assert format_outcome(
+            "CARRIED", "That the Committee recommend the matter be deferred.",
+        ) == "Deferred"
+
+    def test_defeated_still_wins(self):
+        assert format_outcome(
+            "DEFEATED (2 to 9)",
+            "That the Committee recommend to City Council that it be approved.",
+        ) == "Defeated (2-9)"

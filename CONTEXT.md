@@ -13,6 +13,12 @@ Use these terms exactly. Drift creates re-litigation.
   An ItemSummary with chips but no Description is invalid. Restating the agenda item's title is not a Description.
 - **Legacy ItemSummary** — a summary cached before the aggregate format: a bare `list[{category, text}]` with no Description. Structurally distinguishable on load, so no migration is needed. Meetings outside the current council term keep theirs until backfilled, and the UI marks them as lower-confidence rather than pretending they meet the current bar.
 - **Chip** — a `(category, text)` pair emitted by the categorizer for one agenda item. `category` is drawn from a closed list of 22 labels. `text` is trimmed to ≤100 characters at a natural clause break.
+- **Outcome vocabulary** — the Outcome chip records *what kind of action was taken*, which lives in the recommendation, not in the vote. A carried vote is not automatically an approval:
+  - `Approved` — the deciding body authorized, funded, or directed something.
+  - `Recommended to Council` — a committee carried a motion recommending something **to City Council**. Council has not acted. Reporting this as `Approved` tells a resident the opposite of what happened.
+  - `Received as information` — the body declined to decide ("That the information be received").
+  - `Deferred`, `Defeated`, `Withdrawn` as named.
+
 - **Hard chip / soft chip** — chips split by extraction trust, not by cost:
   - **Hard chips** (11 categories: Outcome, Vote Breakdown, Cost & Funding, Amendment Made, Procedural Note, Delegation, Next Step, Related Item, Deferred From, Declared Conflict, Data Cited) carry civic/legal weight. They are extracted deterministically (regex + structured eSCRIBE fields) so the source of truth is auditable. **LLMs do not produce hard chips.**
   - **Soft chips** (the remaining 11 categories — Debate Highlight, Who's Affected, Dissenting View, etc.) are interpretive. They are produced by a single Gemini call against a JSON schema of `{description, chips: [{category, text, usefulness}]}`.
