@@ -400,7 +400,7 @@ Two methodological notes, both mine to own:
   findings are unaffected — those are checkable against official text —
   and it hit both arms equally, so it does not bias the comparison.
 
-### U9 — Widen the A/B and settle cleanup — **pre-registered, not yet run**
+### U9 — Widen the A/B and settle cleanup — **ran; cleanup fails the rule**
 
 Settled with Brad on 2026-07-25, **before** any of the data below
 exists. Written down first on purpose: I had already argued for
@@ -517,6 +517,62 @@ CleanTranscript — the 15M tokens whose value the A/B is about to decide.
 Expanding the roster before that verdict risks paying for cleanup twice
 to improve a pass we may delete. Fix the roster after the A/B, and only
 if cleanup survives it.
+
+### U9 results — the measurement ran, and cleanup fails the rule
+
+Ran 2026-07-25 against the widened fixtures. Baseline re-snapshotted
+(24 items, 118 chips, 21/24 items carrying a substantive soft chip,
+1/118 title echoes) — `--check` still passes at the wider sample, so the
+thresholds tuned at 11 items did not need moving. The A/B compared 22
+items; 2 have no transcript and 1 was byte-identical under both arms.
+
+**Gate 2 — blind judges: raw ahead again, 11 to 9.** Twelve independent
+non-Gemini judges, three per item, each reading only its own slice of
+`pairs.md` and forbidden from reasoning across items (the labels are
+re-randomized per item, which is what spoiled the cross-item paragraphs
+last time).
+
+| judge set | raw | clean | tie |
+|---|---|---|---|
+| 1 | 11 | 9 | 2 |
+| 2 | 11 | 8 | 3 |
+| 3 | 12 | 9 | 1 |
+| **majority per item** | **11** | **9** | **2** |
+
+Across 66 item-judgements: raw 34, clean 26, tie 6. Agreement was high —
+19 of 22 items were unanimous. Doubling the sample moved the result from
+4-2 to 11-9: the same direction, and no longer attributable to thin data.
+
+**Gate 1 — roster attractors: 3 flags in the cleaned arm, 1 in the raw.**
+`scripts/roster_attractors.py` (new) is the metric, and it flags rather
+than scores. Ruling on the three cleaned-arm flags:
+
+- `Nutana ← "Nutanic"/"Nutanite"` — correction.
+- `Caswell Hill ← "Casual Hill"` — correction.
+- `Remai Modern ← "Remly"` — fabrication, and the same one as before.
+  An art gallery is still standing in for the Rumely condo corporation
+  on the 210 Pacific Avenue shelter item.
+
+So corrections outnumber fabrications 2-1 and gate 1 passes. It does not
+matter: the gates are conjunctive and gate 2 failed.
+
+**The raw arm scored 1, and that is the more interesting number.** The
+raw arm produced `Nutana` from a transcript that only ever says
+"Nutanic" — on the same item where the cleaned arm did. The chip model
+corrects Saskatoon proper nouns on its own, from the item's own official
+text and its own knowledge, with no cleaned transcript in front of it.
+That is not a harness fault; it is cleanup's remaining justification
+being done for free downstream.
+
+Two more names the judges caught, now unblinded, both in the **cleaned**
+arm: `Kakaushita Hall First Nation` (Kahkewistahaw, uncorrected because
+no First Nation is on the roster) and `Councillor Long` (Loewen; the raw
+arm got it right on the neighbouring item).
+
+**Verdict: the pre-registered rule deletes the cleanup pass.** Clean did
+not reach parity with raw at the wider sample, so cleanup does not earn
+~99% of the backfill's cost. Deleting `CleanTranscriptCache` with it is
+the follow-up unit; nothing has been removed yet.
 
 ---
 

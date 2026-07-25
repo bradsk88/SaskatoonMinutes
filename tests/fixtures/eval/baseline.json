@@ -7,28 +7,290 @@
    },
    {
     "category": "Debate Highlight",
-    "text": "Councillor Donauer questioned rent control inclusion"
+    "text": "Karen Kobussen argued most homelessness funding serves, not solves, the problem."
    },
    {
     "category": "Who's Affected",
-    "text": "People with severe mental illness, substance use"
+    "text": "Saskatoon Crisis Intervention Service supports 80 high-complexity individuals with wrap-around care."
    },
    {
     "category": "Staff vs. Council",
-    "text": "Administration clarified they only recommend reaffirming city's role"
+    "text": "Administration clarified it cannot endorse the full plan due to items outside city jurisdiction."
    },
    {
     "category": "Unanswered Question",
-    "text": "Councillor Ford noted the lack of historical KPIs for homelessness"
+    "text": "A delegate asked if an immediate triage response team is being developed."
+   },
+   {
+    "category": "Public Sentiment",
+    "text": "Multiple delegates supported the plan but urged better data, basic shelters, and income focus."
+   },
+   {
+    "category": "Equity Impact",
+    "text": "The plan includes Indigenous leadership and culturally appropriate responses for affected people."
    },
    {
     "category": "Promise Made",
-    "text": "Committee moved for annual progress reports and a full plan review every four years."
+    "text": "Committee moved to request annual KPI reports and a comprehensive homelessness data framework."
    }
   ],
-  "description": "The Governance and Priorities Committee recommends City Council reaffirm its leadership role in the Saskatoon Homelessness Action Plan 2026 and endorse its performance indicators for monitoring progress.",
+  "description": "The committee recommends Council reaffirm its leadership role in the Saskatoon Homelessness Action Plan, endorse performance indicators, and consider future budget requests to coordinate efforts addressing homelessness.",
   "section_number": "6.2.1",
   "title": "Saskatoon Homelessness Action Plan 2026 [CC2026-0301]"
+ },
+ "314006fe-3c46-4d0d-b1d5-0961d795e858/11": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Approved"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "9 for, 0 against"
+   },
+   {
+    "category": "Debate Highlight",
+    "text": "Councillor Dubois clarified that massing controls remain"
+   },
+   {
+    "category": "Who's Affected",
+    "text": "Category 2 neighborhoods, like Mayfair, can now build two-story suites."
+   },
+   {
+    "category": "Public Sentiment",
+    "text": "A resident opposed, citing concerns about massing, accessibility, and homeowner rights."
+   },
+   {
+    "category": "Promise Made",
+    "text": "Administration will bring amendments for primary dwellings, including sidewalk setbacks"
+   }
+  ],
+  "description": "Saskatoon now permits two-story garden and garage suites city-wide on lots with rear lanes, and allows up to four units on certain sites, increasing infill housing options.",
+  "section_number": "5.1.6",
+  "title": "Zoning Bylaw Text Amendments – Garden and Garage Suites Secondary Suites [MPC2026-0402]"
+ },
+ "314006fe-3c46-4d0d-b1d5-0961d795e858/13": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Approved"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "9 for, 0 against"
+   },
+   {
+    "category": "Debate Highlight",
+    "text": "Administration clarified short-term rental rules for the new building"
+   },
+   {
+    "category": "Who's Affected",
+    "text": "Residents of the Nutana neighborhood and the adjacent Marr Residence."
+   },
+   {
+    "category": "Public Sentiment",
+    "text": "Public raised concerns about local traffic, rear lane use, and construction impact."
+   },
+   {
+    "category": "Environmental Impact",
+    "text": "Project includes a green roof system and considers mature trees on 11th Street."
+   }
+  ],
+  "description": "Council approved changing the land use for 702 and 706 Victoria Avenue in Nutana, allowing a six-story condominium building instead of four stories.",
+  "section_number": "5.1.4",
+  "title": "Proposed Official Community Plan Amendment – 702 and 706 Victoria Avenue [MPC2026-0403]"
+ },
+ "314006fe-3c46-4d0d-b1d5-0961d795e858/16": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Approved"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "9 for, 0 against"
+   }
+  ],
+  "description": "Council approved rezoning land in the west portion of the Aspen Ridge neighbourhood from Future Urban Development to low-density residential, allowing for new housing development this year.",
+  "section_number": "5.1.3",
+  "title": "Proposed Aspen Ridge Neighbourhood Rezoning [MPC2026-0401]"
+ },
+ "314006fe-3c46-4d0d-b1d5-0961d795e858/17": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Approved"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "9 for, 0 against"
+   }
+  ],
+  "description": "Rezoning 702 and 706 Victoria Avenue in Nutana from medium to high-density allows for a six-story building with dwelling units and short-term rentals.",
+  "section_number": "5.1.5",
+  "title": "Proposed Rezoning by Agreement – 702 and 706 Victoria Avenue [MPC2026-0403]"
+ },
+ "314006fe-3c46-4d0d-b1d5-0961d795e858/18": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Approved"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "9 for, 0 against"
+   },
+   {
+    "category": "Debate Highlight",
+    "text": "Councillor Parker opposed parking plans, arguing the city should not regulate vehicle storage."
+   },
+   {
+    "category": "Who's Affected",
+    "text": "Residents in the Transit Development Area."
+   },
+   {
+    "category": "Precedent Set",
+    "text": "This could set a precedent for future delegation of similar discretionary uses."
+   },
+   {
+    "category": "Unanswered Question",
+    "text": "Councillor Pearce questioned if the new units would be affordable housing."
+   }
+  ],
+  "description": "Saskatoon now allows six-unit dwellings on corner lots in the Transit Development Area as a discretionary use, increasing density from four units.",
+  "section_number": "5.1.7",
+  "title": "Zoning Bylaw Text Amendments – Development on Corner Lots in the Transit Development Area [MPC2026-0402]"
+ },
+ "a4d94b69-5a74-4829-a7b5-d6d852846715/18": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Recommended to Council"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "5 for, 0 against"
+   },
+   {
+    "category": "Debate Highlight",
+    "text": "Investing in legal clinics like CLASSIC saves $6 to $10 for every dollar spent."
+   },
+   {
+    "category": "Public Sentiment",
+    "text": "Delegates from CLASSIC and Foundations Learning praised the city's vital investment in non-profits."
+   },
+   {
+    "category": "Equity Impact",
+    "text": "Grants support services for low-income residents, newcomers, and those facing housing instability."
+   }
+  ],
+  "description": "The committee approved $630,600 in cash grants for 29 non-profit social service agencies, supporting programs for families, seniors, and health.",
+  "section_number": "6.2.2",
+  "title": "2026 Assistance to Community Groups – Cash Awards [PDCS2026-0501]"
+ },
+ "a4d94b69-5a74-4829-a7b5-d6d852846715/20": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Received as information"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "5 for, 0 against"
+   },
+   {
+    "category": "Who's Affected",
+    "text": "The petition requires 79 business signatures and 50% of taxable assessment."
+   },
+   {
+    "category": "Precedent Set",
+    "text": "This would be the first new Business Improvement District since 2014."
+   },
+   {
+    "category": "Public Sentiment",
+    "text": "Businesses are 'thrilled' with the proposal, with no opposition reported."
+   }
+  ],
+  "description": "Saskatoon West Business Association is proposing a new Business Improvement District for the Confederation Urban Centre, funded by a business levy. Businesses are engaging to support the initiative for unified voice and placemaking.",
+  "section_number": "6.3.1",
+  "title": "Proposal for Creation of Confederation Urban Centre Business Improvement District [GPC2026-0105]"
+ },
+ "a4d94b69-5a74-4829-a7b5-d6d852846715/21": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Recommended to Council"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "5 for, 0 against"
+   },
+   {
+    "category": "Who's Affected",
+    "text": "The tax abatement is $810,000; the adaptive reuse grant is $40,000."
+   }
+  ],
+  "description": "The committee recommends a 5-year tax abatement for an 83-unit apartment building at 410-420 3rd Ave N and a grant for adaptive reuse at 324 24th St W.",
+  "section_number": "6.2.4",
+  "title": "Vacant Lot and Adaptive Reuse Incentive Program – 410 to 420 3rd Avenue North and 324 24th Street West [PDCS2026-0503]"
+ },
+ "a4d94b69-5a74-4829-a7b5-d6d852846715/22": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Recommended to Council"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "5 for, 0 against"
+   },
+   {
+    "category": "Who's Affected",
+    "text": "Organizations like The Broadway Theatre and Saskatchewan Craft Council benefit from abatements."
+   },
+   {
+    "category": "Public Sentiment",
+    "text": "Two delegates advocated for the tax abatement program's economic, cultural, and community benefits."
+   },
+   {
+    "category": "Equity Impact",
+    "text": "The program helps provide platforms and opportunities for Indigenous creators."
+   }
+  ],
+  "description": "The committee recommends City Council approve $1,206,680.30 in tax abatements for 31 eligible recreation, social services, and culture groups, supporting their operations.",
+  "section_number": "6.2.3",
+  "title": "2026 Community Services Tax Abatements [PDCS2026-0504]"
+ },
+ "a4d94b69-5a74-4829-a7b5-d6d852846715/24": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Approved"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "5 for, 0 against"
+   },
+   {
+    "category": "Debate Highlight",
+    "text": "Councillor Timon cautioned against discarding the existing naming policy"
+   },
+   {
+    "category": "Precedent Set",
+    "text": "The targeted community engagement was an exception to existing policy"
+   },
+   {
+    "category": "Public Sentiment",
+    "text": "Senator Nora Cummings advocated for the name Sunrise"
+   },
+   {
+    "category": "Equity Impact",
+    "text": "The name Sunrise was chosen after targeted engagement with the Indigenous community."
+   }
+  ],
+  "description": "The University Heights 3 Neighbourhood will be named Sunrise, and both Sunrise and Hawthorn will be added to the city's master list of approved names for future use.",
+  "section_number": "11.2",
+  "title": "Proposed Name – Sunrise – University Heights 3 Neighbourhood [ADV2026-0405]"
  },
  "b71ff753-0016-4ae9-95e4-4c598ae42d06/41": {
   "chips": [
@@ -65,7 +327,7 @@
    },
    {
     "category": "Who's Affected",
-    "text": "Global Institute for Water Security at University of Saskatchewan leads the funding application."
+    "text": "The Global Institute for Water Security at the University of Saskatchewan leads the application."
    }
   ],
   "description": "Saskatoon will participate in a funding application to the Carthy Foundation for urban green infrastructure research, led by the University of Saskatchewan.",
@@ -77,9 +339,13 @@
    {
     "category": "Outcome",
     "text": "Approved"
+   },
+   {
+    "category": "Who's Affected",
+    "text": "Residents near 46th Street East and 1st Avenue North will experience reduced flooding."
    }
   ],
-  "description": "Saskatoon will proceed with the detailed design and construction of a storm sewer along 46th Street East to the RCAF Memorial Storm Pond to mitigate flooding.",
+  "description": "Saskatoon will build a storm sewer along 46th Street East to the RCAF Memorial Storm Pond, mitigating flooding near 46th Street East and 1st Avenue North.",
   "section_number": "8.1.1",
   "title": "Flood Control Strategy Update – 46th Street and 1st Avenue Intersection [EUCS2026-0603]"
  },
@@ -145,26 +411,22 @@
    },
    {
     "category": "Debate Highlight",
-    "text": "Councillor Gough questioned the lack of public engagement for body cameras, unlike police services."
+    "text": "Councillors questioned body-worn cameras for Parking Services"
    },
    {
     "category": "Who's Affected",
-    "text": "Expanded residential parking permit zones affect Nutana, Varsity View, and City Park residents."
-   },
-   {
-    "category": "Staff vs. Council",
-    "text": "Council directed staff to report back sooner on body camera evaluation, privacy, and costs."
+    "text": "Expanded parking permit zones affect residents in Nutana, Varsity View, and City Park."
    },
    {
     "category": "Unanswered Question",
-    "text": "The cost of the body-worn camera program was not available during the meeting."
+    "text": "Objective evaluation metrics and program costs for body-worn cameras are unclear."
    },
    {
     "category": "Promise Made",
-    "text": "Administration will report back on body camera implementation, evaluation, privacy, and costs."
+    "text": "Administration will report back on body-worn camera implementation, privacy, and costs."
    }
   ],
-  "description": "Saskatoon's Community Standards Department reported on 2021 activities, including new parking rules for Nutana, Varsity View, and City Park, and the use of body cameras by parking enforcement.",
+  "description": "The Community Standards Department's year-end report details operations, including the implementation of body-worn cameras for Parking Services staff.",
   "section_number": "5.3",
   "title": "2021 Year-End Report – Community Standards Department [File No. CK 430-34]"
  },
@@ -198,19 +460,23 @@
     "text": "5 for, 0 against"
    },
    {
+    "category": "Debate Highlight",
+    "text": "Councillor Loewen questioned the process for distributing public art to multiple locations."
+   },
+   {
     "category": "Precedent Set",
-    "text": "The decision to place public art from one project in multiple city locations is new."
+    "text": "This decision will inform future public art allocation processes."
    },
    {
     "category": "Environmental Impact",
-    "text": "Public art will serve as an education tool for environmental sustainability."
+    "text": "Artworks will educate on recycling and environmental sustainability."
    },
    {
     "category": "Promise Made",
-    "text": "Administration will ask earlier about distributing public art in future project negotiations."
+    "text": "Administration will ask about art distribution in future project negotiations."
    }
   ],
-  "description": "The city will now commission three public artworks for Recovery Park, with two placed in other city locations, to enhance awareness of the waste diversion facility and environmental sustainability.",
+  "description": "Saskatoon will now have three public artworks for Recovery Park, with two placed in different city locations, instead of a single piece at the facility. The project budget remains $275,000.",
   "section_number": "5.5",
   "title": "Recovery Park Public Art Scope Change [File No. CK 4040-4]"
  },
@@ -249,27 +515,128 @@
    },
    {
     "category": "Debate Highlight",
-    "text": "Councillor Loewen worried the pause might limit enthusiasm from diverse communities."
+    "text": "Councillor Long worried the pause might limit enthusiasm from diverse communities."
+   },
+   {
+    "category": "Who's Affected",
+    "text": "Newcomer and diverse communities hoping to submit names will be affected."
    },
    {
     "category": "Staff vs. Council",
-    "text": "Staff stated broader renaming of alphabet streets was not in scope due to resident impact."
+    "text": "Staff cautioned against broad renaming of alphabet streets due to resident impact."
+   },
+   {
+    "category": "Unanswered Question",
+    "text": "Review scope does not include a full assessment of all naming tools."
+   },
+   {
+    "category": "Public Sentiment",
+    "text": "Newcomer communities are actively working to bring forward name suggestions."
    },
    {
     "category": "Legal Risk Flagged",
-    "text": "Legal implication to renaming streets was noted as a challenge."
-   },
-   {
-    "category": "Equity Impact",
-    "text": "Pause may frustrate newcomer and diverse communities hoping to submit names."
+    "text": "Renaming streets has legal implications for individual residents."
    },
    {
     "category": "Promise Made",
     "text": "Administration promised interim reports on the legacy review project."
    }
   ],
-  "description": "The committee recommends pausing new submissions to the Civic Naming Program for one to two years, allowing staff to develop a new policy aligned with the legacy review project.",
+  "description": "The committee recommends pausing new submissions to the Civic Naming Program for up to two years. This allows staff to update policies and focus on the legacy review project.",
   "section_number": "5.7",
   "title": "Temporary Pause of Civic Naming Program [File No. CK 6310-0]"
+ },
+ "dd7a2c77-9a35-4c47-95a9-341c7e469603/11": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Approved"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "10 for, 0 against"
+   },
+   {
+    "category": "Debate Highlight",
+    "text": "Administration recommended denial, citing incompatibility with neighborhood infill policies."
+   },
+   {
+    "category": "Who's Affected",
+    "text": "Holiday Park residents expressed concerns about increased density and traffic."
+   },
+   {
+    "category": "Staff vs. Council",
+    "text": "Municipal Planning Commission voted against administration's recommendation to deny."
+   },
+   {
+    "category": "Precedent Set",
+    "text": "Administration warned approval could set a precedent for other large corner sites."
+   },
+   {
+    "category": "Unanswered Question",
+    "text": "The development group could not confirm if the project would proceed as a four-unit dwelling."
+   },
+   {
+    "category": "Public Sentiment",
+    "text": "69 of 75 residents expressed concerns about increased density."
+   },
+   {
+    "category": "Legal Risk Flagged",
+    "text": "Community association warned approval would result in 'spot zoning'."
+   },
+   {
+    "category": "Equity Impact",
+    "text": "Community association feared loss of affordable homes and small-town feel."
+   }
+  ],
+  "description": "A proposal to rezone 1401 11th Street West in Holiday Park from R2 to RM2, allowing a six-unit dwelling, was considered.",
+  "section_number": "5.1.1",
+  "title": "Proposed Rezoning – 1401 11th Street West [MPC2026-0301]"
+ },
+ "dd7a2c77-9a35-4c47-95a9-341c7e469603/12": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Approved"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "10 for, 0 against"
+   },
+   {
+    "category": "Who's Affected",
+    "text": "Future residents will occupy higher-density housing at 902-938 3rd Avenue North."
+   }
+  ],
+  "description": "The item rezones properties at 902-938 3rd Avenue North from light industrial to corridor residential, allowing for higher-density housing. This aligns with the Official Community Plan.",
+  "section_number": "5.1.2",
+  "title": "Proposed Rezoning – 902 through 938 3rd Avenue North – From M1 District to CR2 District [MPC2026-0302]"
+ },
+ "dd7a2c77-9a35-4c47-95a9-341c7e469603/13": {
+  "chips": [
+   {
+    "category": "Outcome",
+    "text": "Approved"
+   },
+   {
+    "category": "Vote Breakdown",
+    "text": "10 for, 0 against"
+   },
+   {
+    "category": "Debate Highlight",
+    "text": "Councillor Donauer questioned if the new lane could handle waste removal trucks and moving vans."
+   },
+   {
+    "category": "Who's Affected",
+    "text": "Ronald McDonald House Saskatchewan Inc. and its families will gain improved safety and amenities."
+   },
+   {
+    "category": "Promise Made",
+    "text": "City staff confirmed there would be no cost to the City for the lane closure or new construction."
+   }
+  ],
+  "description": "Saskatoon will close a lane in the 1000 block of University Drive, transferring it to Ronald McDonald House Saskatchewan for improved safety. A new lane will be built, with the applicant covering all costs.",
+  "section_number": "5.2.1",
+  "title": "Proposed Lane Closure –1000 Block University Drive Varsity View Neighbourhood [CC2026-0404]"
  }
 }
