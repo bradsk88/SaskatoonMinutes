@@ -236,14 +236,23 @@ class TestExtractAcceptsPreCleanedText:
         extract_item_summaries(item(1), segments("raw"), gemini_extractor=ex)
         assert ex.clean_calls == ["raw"]
 
-    def test_supplied_text_is_what_reaches_the_extractors(self):
-        """Money in the pre-cleaned text is found; money in the raw text is not."""
-        ex = RecordingExtractor()
-        out = extract_item_summaries(
-            item(1), segments("nothing here"), gemini_extractor=ex,
+    def test_supplied_text_is_what_reaches_the_prompt(self):
+        """The pre-cleaned text is what the semantic pass sees, not the raw slice."""
+        captured: dict = {}
+
+        def generate(prompt, cats):
+            captured["prompt"] = prompt
+            return '{"description": "A concrete summary.", "chips": []}'
+
+        ex = GeminiExtractor(
+            api_key="k", generate=generate, clean_generate=lambda t: t,
+        )
+        extract_item_summaries(
+            item(1), segments("raw slice text"), gemini_extractor=ex,
             cleaned_transcript_text="Council approved $250,000 for the new pathway.",
         )
-        assert any(c["category"] == "Cost & Funding" for c in out["chips"])
+        assert "Council approved $250,000" in captured["prompt"]
+        assert "raw slice text" not in captured["prompt"]
 
     def test_empty_string_is_honoured_rather_than_treated_as_absent(self):
         ex = RecordingExtractor()

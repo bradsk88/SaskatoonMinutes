@@ -242,14 +242,36 @@ class TestAmendment:
 class TestCostFunding:
     def test_single_amount(self):
         item = {"title": "", "recommendation": "Approve $2,500,000 for cycling", "content": ""}
-        out = _extract_cost_funding(item, "")
+        out = _extract_cost_funding(item)
         assert len(out) == 1
         assert "$2.5M" in out[0]["text"]
 
-    def test_transcript_mention(self):
+    def test_transcript_money_is_not_a_hard_chip(self):
+        """Cost & Funding reads official text only.
+
+        Agenda-item boundaries in the transcript come from eSCRIBE
+        bookmarks that lag what was said, so a transcript-derived money
+        chip lands on the wrong item.  A hard chip has to cite a source
+        that can be checked.
+        """
         item = {"title": "Report", "recommendation": "", "content": ""}
-        out = _extract_cost_funding(item, "We allocated $750,000 for snow removal.")
-        assert any("$750K" in o["text"] for o in out)
+        assert _extract_cost_funding(item) == []
+
+    def test_purpose_preposition_is_preserved(self):
+        item = {
+            "title": "", "content": "",
+            "recommendation": "Approve an additional $187,000 to complete the project.",
+        }
+        out = _extract_cost_funding(item)
+        assert out and out[0]["text"] == "$187K to complete the project"
+
+    def test_money_from_content_is_found(self):
+        item = {
+            "title": "", "recommendation": "",
+            "content": "A loan of $3,800,000 for the Lorne Avenue purchase.",
+        }
+        out = _extract_cost_funding(item)
+        assert any("$3.8M" in o["text"] for o in out)
 
 
 class TestDeclaredConflict:
@@ -690,7 +712,7 @@ class TestCleanupPass:
         ex = _stub_extractor([], clean_response="should not be used")
         assert ex.clean("   ") == "   "
 
-    def test_extract_summaries_uses_cleaned_text_for_extractors(self):
+    def test_extract_summaries_feeds_cleaned_text_to_the_prompt(self):
         captured: dict = {}
         item = {
             "item_id": 99,
@@ -704,39 +726,17 @@ class TestCleanupPass:
             "time_start_ms": 0,
             "time_end_ms": 600_000,
         }
-        # Raw transcript: rambling, no clear money mention.
+        # Raw transcript: rambling. Cleaned: coherent sentences.
         raw = "um yeah so we, you know, talked about funding stuff."
-        # Cleaned transcript: introduces a clean dollar amount.
         cleaned = "Council allocated $750,000 for snow removal."
         segments = [_seg(0, raw)]
         stub = _stub_extractor([], captured=captured, clean_response=cleaned)
-        out = extract_item_summaries(item, segments, gemini_extractor=stub)
-        # The cleanup hook saw the raw text.
-        assert captured["clean_input"] == raw
-        # The Cost & Funding deterministic extractor only finds the
-        # amount because it ran against the cleaned text.
-        assert any(o["category"] == "Cost & Funding" for o in out["chips"])
-
-    def test_extract_summaries_passes_cleaned_text_to_gemini(self):
-        captured: dict = {}
-        item = {
-            "item_id": 100,
-            "title": "Discussion",
-            "recommendation": "",
-            "motion_text": "",
-            "vote_result": "",
-            "vote_detail": "",
-            "content": "",
-            "section_number": "1.",
-            "time_start_ms": 0,
-            "time_end_ms": 600_000,
-        }
-        cleaned = "The council unanimously supported the proposal."
-        segments = [_seg(0, "um yeah they all liked it ok")]
-        stub = _stub_extractor([], captured=captured, clean_response=cleaned)
         extract_item_summaries(item, segments, gemini_extractor=stub)
+        # The cleanup hook saw the raw text...
+        assert captured["clean_input"] == raw
+        # ...and the semantic prompt saw the cleaned text, not the raw.
         assert cleaned in captured["prompt"]
-
+        assert raw not in captured["prompt"]
 
 class TestNextStepSliceQuality:
     def test_no_midword_start(self):
@@ -755,23 +755,23 @@ class TestNextStepSliceQuality:
 class TestMoneyMinimum:
     def test_bare_tiny_amount_skipped(self):
         item = {"title": "", "recommendation": "It costs $3 to do this. Also $4 million overall.", "content": "", "motion_text": ""}
-        out = _extract_cost_funding(item, "")
+        out = _extract_cost_funding(item)
         texts = [o["text"] for o in out]
         assert not any("$3" in t and "million" not in t.lower() for t in texts)
 
     def test_hundreds_with_purpose_kept(self):
         item = {"title": "", "recommendation": "Set aside $500 for permit admin fees.", "content": "", "motion_text": ""}
-        out = _extract_cost_funding(item, "")
+        out = _extract_cost_funding(item)
         assert out and any("500" in o["text"] for o in out)
 
     def test_bare_amount_without_purpose_dropped(self):
         item = {"title": "", "recommendation": "The budget is $500,000.", "content": "", "motion_text": ""}
-        out = _extract_cost_funding(item, "")
+        out = _extract_cost_funding(item)
         assert out == []
 
     def test_suffix_keeps_small_value(self):
         item = {"title": "", "recommendation": "Allocate $2 million for snow removal.", "content": "", "motion_text": ""}
-        out = _extract_cost_funding(item, "")
+        out = _extract_cost_funding(item)
         assert out and any("2M" in o["text"] or "million" in o["text"].lower() for o in out)
 
 
@@ -947,3 +947,30 @@ class TestCleanupPromptNameNormalization:
             assert name in _SASKATOON_NAMES, f"Missing: {name}"
 
 
+
+
+class TestMoneyPurposeParsing:
+    """Official agenda text is full of en dashes and bracketed file numbers."""
+
+    def test_en_dash_terminates_the_purpose(self):
+        item = {
+            "title": "", "content": "",
+            "recommendation": (
+                "That City Council approve an increase of $187,000 to Shaw "
+                "Centre – Score Clock and Timing Equipment Capital Project."
+            ),
+        }
+        out = _extract_cost_funding(item)
+        assert out == [{"category": "Cost & Funding", "text": "$187K to Shaw Centre"}]
+
+    def test_for_purposes_still_work(self):
+        item = {
+            "title": "", "content": "",
+            "recommendation": "Approve $2,500,000 for cycling infrastructure.",
+        }
+        out = _extract_cost_funding(item)
+        assert out[0]["text"] == "$2.5M for cycling infrastructure"
+
+    def test_bare_amount_with_no_purpose_is_dropped(self):
+        item = {"title": "", "content": "", "recommendation": "The cost is $500,000."}
+        assert _extract_cost_funding(item) == []

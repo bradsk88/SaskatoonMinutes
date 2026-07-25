@@ -57,35 +57,19 @@
     "text": "11 for, 0 against"
    },
    {
-    "category": "Cost & Funding",
-    "text": "$187K for the Shaw Centre score clock"
-   },
-   {
-    "category": "Cost & Funding",
-    "text": "$187K for complete the project"
-   },
-   {
     "category": "Debate Highlight",
-    "text": "Council questioned the city's limited control over the new shelter's timeline and budget"
+    "text": "City incurs approximately $14,000 annually in property tax exemptions for the shelter extension."
    },
    {
     "category": "Who's Affected",
-    "text": "Nearby residents and businesses, including Remai Modern, are affected by the shelter's presence."
-   },
-   {
-    "category": "Public Sentiment",
-    "text": "Public feedback from nearby properties was generally positive, citing timely issue resolution."
+    "text": "Residents near 210 Pacific Avenue reported positive experiences with the current shelter operation."
    },
    {
     "category": "Equity Impact",
     "text": "The extension ensures continued emergency shelter services for vulnerable residents."
-   },
-   {
-    "category": "Promise Made",
-    "text": "Staff confirmed community safety plan services will remain in place for the shelter area."
    }
   ],
-  "description": "The city council approved extending the temporary emergency shelter at 210 Pacific Avenue until May 2027, allowing time for a new purpose-built shelter on 31st Street to be completed. This extension costs the city about $14,000 annually in tax exemptions.",
+  "description": "The city extended the temporary use of 210 Pacific Avenue as an emergency shelter until May 2027, allowing time for a new purpose-built shelter on 31st Street to be completed. This extension costs the city about $14,000 in tax exemptions.",
   "section_number": "10.3.1",
   "title": "210 Pacific Avenue – Extension of Timeframe for Emergency Residential Shelter [GPC2023-1002, CC2024-0202]"
  },
@@ -138,11 +122,11 @@
     "text": "11 for, 0 against"
    },
    {
-    "category": "Who's Affected",
-    "text": "Users of the Shaw Centre will benefit from updated score clock and timing equipment."
+    "category": "Cost & Funding",
+    "text": "$187K to Shaw Centre"
    }
   ],
-  "description": "City Council approved an additional $187,000 for new score clock and timing equipment at the Shaw Centre, funded by the Leisure Services Equipment Replacement Reserve.",
+  "description": "City Council approved an additional $187,000 for the Shaw Centre's score clock and timing equipment, funded by the Leisure Services Equipment Replacement Reserve. This upgrade will benefit users of the facility.",
   "section_number": "10.3.2",
   "title": "Shaw Centre – Score Clock and Timing Equipment – Request for Additional Funding [CC2026-0605]"
  },
@@ -189,22 +173,22 @@
    },
    {
     "category": "Who's Affected",
-    "text": "Parking enforcement agents now use body-worn cameras for de-escalation and safety."
+    "text": "Residential parking permit zones expanded in Nutana, Varsity View, and City Park neighborhoods."
    },
    {
     "category": "Staff vs. Council",
-    "text": "Council requested a separate report on body-worn cameras, not just inclusion in next year's report."
+    "text": "Council directed staff to report back on body-worn cameras, including privacy and costs"
    },
    {
     "category": "Precedent Set",
-    "text": "Body-worn cameras for parking enforcement may set a precedent for non-police city staff."
+    "text": "Body-worn cameras were implemented for city parking enforcement staff, a potential precedent."
    },
    {
-    "category": "Promise Made",
-    "text": "Administration will report back on body-worn cameras, privacy considerations, and program costs."
+    "category": "Unanswered Question",
+    "text": "The cost of the body-worn camera program for parking enforcement was not provided."
    }
   ],
-  "description": "The Community Standards Department's 2021 report highlighted new by-laws, expanded parking zones, and year-round parking patios. Council requested a detailed report on the new body-worn cameras for parking enforcement, including privacy and costs.",
+  "description": "The Community Standards Department's 2021 report detailed by-law enforcement, licensing, and parking revenue. Council requested a follow-up report on the new body-worn cameras for parking enforcement, including privacy and costs.",
   "section_number": "5.3",
   "title": "2021 Year-End Report – Community Standards Department [File No. CK 430-34]"
  },
@@ -234,15 +218,11 @@
     "text": "5 for, 0 against"
    },
    {
-    "category": "Who's Affected",
-    "text": "Residents across the city will see public art promoting recycling and environmental sustainability."
-   },
-   {
     "category": "Environmental Impact",
     "text": "The public art aims to educate residents on recycling and environmental sustainability."
    }
   ],
-  "description": "The city will now commission three public artworks for Recovery Park, instead of one, to be placed at the facility and two other city locations, aiming to boost awareness of recycling and environmental sustainability.",
+  "description": "The public art plan for the Recovery Park waste facility was updated to include three artworks instead of one, with two placed in other city locations to boost city-wide awareness of recycling and environmental sustainability, at no additional cost.",
   "section_number": "5.5",
   "title": "Recovery Park Public Art Scope Change [File No. CK 4040-4]"
  },

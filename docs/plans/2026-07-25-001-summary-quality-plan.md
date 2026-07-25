@@ -148,14 +148,20 @@ The format change. ADR `0003`.
 - **The description echo test was a chip heuristic.** `is_title_echo` fires on verbatim containment, which for a description just means naming its subject — "the Saskatoon Homelessness Action Plan 2026" is what the plan is called. Descriptions now use `is_description_echo`, which measures word novelty (≥50% novel) instead.
 - **The prompt now bans opening with process.** "Council received the report as information", "Council considered…" — the Outcome chip already records the verdict, so the sentence a reader actually reads must open with what changes in the city.
 
-### U5 — Prompt and extractor quality
+### U5 — Prompt and extractor quality — **done**
 
 This is the unit we actually collaborate on, using U1–U2. Expect several passes.
 
 - Rewrite the chip prompt around the new aggregate: description first, chips as supporting specifics.
 - Fix `Cost & Funding` cross-item bleed (R10) — the `$187K` Shaw Centre score clock currently lands on the 210 Pacific Avenue shelter item.
 - Re-examine `usefulness` gating now that description is mandatory: soft chips no longer have to carry the "what is this" burden, so the bar for a chip can rise.
-- **Exit check:** soft-chip coverage materially above the current 118-per-655-meetings floor, reviewed by diff.
+- **Exit check:** soft-chip coverage materially above the current 118-per-655-meetings floor, reviewed by diff. **Met: 54 chips across 11 items, 9/11 carrying a substantive soft chip — against 118 soft chips across 655 meetings before.**
+
+**What U5 turned up:**
+
+- **The Cost & Funding bleed was never a slicing bug.** The Shaw Centre score-clock presentation begins at 20530660 ms — three minutes *inside* item 10.3.1's bookmarked span, which ends at 20751866. The eSCRIBE bookmark for 10.3.2 lags what was actually said, so no slicing rule can separate them. `Cost & Funding` now reads the item's official text only and never the transcript. That matches what CONTEXT.md already claimed about hard chips ("regex + structured eSCRIBE fields … so the source of truth is auditable") — it was the one hard chip drawing on Whisper output. Money spoken in debate still reaches the reader through the Description and soft chips; what changed is that a chip carrying civic weight now cites a checkable source.
+- **`_money_purpose_snippet` rewrote every preposition as "for"**, turning "to complete the project" into the ungrammatical "for complete the project". It now preserves what it matched.
+- **En dashes silently killed money chips.** `$187,000 to Shaw Centre – Score Clock and Timing Equipment` matched nothing, because the purpose pattern had no terminator for `–`. Official agenda text is full of them, so this was dropping real chips, not just malformed ones.
 
 ### U6 — LLM-as-judge gate
 

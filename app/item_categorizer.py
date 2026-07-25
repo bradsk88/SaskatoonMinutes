@@ -285,11 +285,28 @@ _MONEY_RE = re.compile(
 )
 
 
-def _extract_cost_funding(item: dict, transcript_text: str) -> list[dict]:
+def _extract_cost_funding(item: dict) -> list[dict]:
+    """Money figures from the item's own official text.
+
+    Deliberately does **not** read the transcript.  Cost & Funding is a
+    hard chip, which means its source has to be auditable — and agenda
+    item boundaries in the transcript come from eSCRIBE bookmarks that
+    routinely lag what was actually said.  On the 2026-06-24 council
+    meeting the Shaw Centre score-clock presentation begins three minutes
+    inside the *previous* item's bookmarked span, so a transcript-derived
+    money chip put "$187K for the Shaw Centre score clock" on the 210
+    Pacific Avenue emergency shelter.  No slicing rule fixes that; the
+    timestamps are simply wrong.
+
+    Money spoken in debate but absent from the official text is not lost —
+    the Description and the soft chips still draw on the transcript.  What
+    changes is that a chip claiming civic/legal weight now cites a source
+    that can be checked.
+    """
     combined = " ".join(
         str(item.get(k) or "")
         for k in ("title", "recommendation", "motion_text", "content")
-    ) + " " + transcript_text
+    )
     results: list[dict] = []
     seen: set[str] = set()
     for m in _MONEY_RE.finditer(combined):
@@ -302,7 +319,7 @@ def _extract_cost_funding(item: dict, transcript_text: str) -> list[dict]:
         # Require contextual words — a bare amount is not a useful chip.
         if not purpose:
             continue
-        label = _transcript_chip(f"{formatted} {purpose}".strip())
+        label = _chip(f"{formatted} {purpose}".strip())
         if not label or label in seen:
             continue
         seen.add(label)
@@ -328,18 +345,29 @@ def _money_too_small(raw: str) -> bool:
         return True
 
 
+# The terminator set includes en/em dashes because official agenda text
+# is full of them — "$187,000 to Shaw Centre – Score Clock and Timing
+# Equipment" previously matched nothing at all, so the chip was dropped.
 _PURPOSE_RE = re.compile(
-    r"\s*(?:for|to(?:\s+the)?|toward(?:s)?)\s+([a-z][\w\s-]{2,40}?)"
-    r"(?=[.,;]|\s+(?:and|that|which)\b|$)",
+    r"\s*(for|to(?:\s+the)?|towards?)\s+([a-z][\w\s'&-]{2,40}?)"
+    r"(?=[.,;:–—()\[\]]|\s+(?:and|that|which|to|be)\b|$)",
     re.IGNORECASE,
 )
 
 
 def _money_purpose_snippet(tail: str) -> str:
+    """Return the "for X" / "to X" phrase following a money amount.
+
+    The preposition is preserved rather than normalized to "for": the
+    original code rewrote every match as "for …", which turned "to
+    complete the project" into the ungrammatical "for complete the
+    project".
+    """
     m = _PURPOSE_RE.match(tail)
     if not m:
         return ""
-    return "for " + m.group(1).strip()
+    preposition = re.sub(r"\s+", " ", m.group(1).strip().lower())
+    return f"{preposition} {m.group(2).strip()}"
 
 
 def _extract_declared_conflict(transcript_text: str) -> list[dict]:
@@ -1152,7 +1180,7 @@ def extract_item_summaries(
     results.extend(_extract_outcome(item))
     results.extend(_extract_vote_breakdown(item))
     results.extend(_extract_amendment(item))
-    results.extend(_extract_cost_funding(item, transcript_text))
+    results.extend(_extract_cost_funding(item))
     results.extend(_extract_procedural_note(item))
 
     # Transcript-based regex extractors — only run when Gemini is disabled
