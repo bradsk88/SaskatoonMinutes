@@ -30,6 +30,7 @@ of ``extract_item_summaries``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -181,29 +182,49 @@ def _extract_outcome(item: dict) -> list[dict]:
     return [{"category": "Outcome", "text": _chip(outcome)}]
 
 
-_VOTE_TALLY_RE = re.compile(
-    r"In\s+Favour:\s*\((\d+)\).*?Against:\s*\((\d+)\)",
-    re.IGNORECASE | re.DOTALL,
-)
+# The two sides are matched independently because a unanimous vote has no
+# "Against:" section at all — eSCRIBE renders only the sides that have
+# members, e.g. "In Favour: (5) ... Absent: (1) ... CARRIED UNANIMOUSLY".
+# Requiring both sides in one pattern silently dropped the Vote Breakdown
+# chip for every unanimous committee vote.  "Absent" is deliberately not
+# counted: an absent member did not vote against.
+_VOTE_FOR_RE = re.compile(r"In\s+Favour:\s*\((\d+)\)", re.IGNORECASE)
+_VOTE_AGAINST_RE = re.compile(r"\bAgainst:\s*\((\d+)\)", re.IGNORECASE)
+_VOTE_RESULT_TALLY_RE = re.compile(r"\((\d+)\s*(?:to|-)\s*(\d+)\)")
+
+
+def _parse_vote_tally(item: dict) -> tuple[int, int] | None:
+    """Return ``(for, against)`` for the item's vote, or ``None``.
+
+    Prefers the structured ``vote_detail`` sides, then falls back to an
+    "(N to M)" tally embedded in ``vote_result``.
+    """
+    detail = item.get("vote_detail") or ""
+    for_m = _VOTE_FOR_RE.search(detail)
+    against_m = _VOTE_AGAINST_RE.search(detail)
+    if for_m or against_m:
+        for_n = int(for_m.group(1)) if for_m else 0
+        against_n = int(against_m.group(1)) if against_m else 0
+        if for_n or against_n:
+            return for_n, against_n
+
+    m = _VOTE_RESULT_TALLY_RE.search(item.get("vote_result") or "")
+    if m:
+        for_n, against_n = int(m.group(1)), int(m.group(2))
+        if for_n or against_n:
+            return for_n, against_n
+    return None
 
 
 def _extract_vote_breakdown(item: dict) -> list[dict]:
-    detail = item.get("vote_detail") or ""
-    m = _VOTE_TALLY_RE.search(detail)
-    if not m:
-        # Fall back to "(N to M)" embedded in vote_result
-        vote = item.get("vote_result") or ""
-        m2 = re.search(r"\((\d+)\s*(?:to|-)\s*(\d+)\)", vote)
-        if not m2:
-            return []
-        for_n, against_n = int(m2.group(1)), int(m2.group(2))
-    else:
-        for_n, against_n = int(m.group(1)), int(m.group(2))
-    total = for_n + against_n
-    if total == 0:
+    tally = _parse_vote_tally(item)
+    if tally is None:
         return []
-    text = f"{for_n} for, {against_n} against"
-    return [{"category": "Vote Breakdown", "text": _chip(text)}]
+    for_n, against_n = tally
+    return [{
+        "category": "Vote Breakdown",
+        "text": _chip(f"{for_n} for, {against_n} against"),
+    }]
 
 
 _AMENDMENT_RE = re.compile(
@@ -498,7 +519,12 @@ class GeminiExtractor:
             config={
                 "response_mime_type": "application/json",
                 "response_json_schema": _chip_list_schema(allowed_cats),
-                "temperature": 0.2,
+                # Zero, not 0.2: the eval loop diffs one run against a
+                # committed baseline, and sampling noise buries the signal
+                # from an actual prompt change under a screenful of
+                # rewording.  Chips are extraction, not composition —
+                # there is nothing here that variety improves.
+                "temperature": 0.0,
             },
         )
         return response.text or "[]"
@@ -524,10 +550,25 @@ class GeminiExtractor:
                 contents=prompt,
                 config={"temperature": 0.0},
             )
-            return (response.text or "").strip() or transcript_text
+            cleaned = (response.text or "").strip()
         except Exception as exc:
-            print(f"    Gemini cleanup failed, using raw transcript: {exc}")
+            print(f"    Gemini cleanup failed, using raw transcript: {exc}", flush=True)
             return transcript_text
+        if not cleaned:
+            return transcript_text
+        if _cleanup_looks_truncated(response, transcript_text, cleaned):
+            # A truncated CleanTranscript is the dangerous case: it reads as
+            # clean prose, so nothing downstream can tell that the tail of
+            # the item is missing — and it would be cached under a valid
+            # fingerprint.  Prefer the raw transcript, loudly.
+            print(
+                f"    Gemini cleanup truncated "
+                f"({len(transcript_text):,} chars in, {len(cleaned):,} out) "
+                f"— using raw transcript",
+                flush=True,
+            )
+            return transcript_text
+        return cleaned
 
     def _has_metadata(self, item: dict) -> bool:
         """True when the item has enough metadata to run the LLM without transcript."""
@@ -613,6 +654,184 @@ def _build_cleanup_prompt(transcript_text: str) -> str:
         "\n"
         "Cleaned transcript:"
     )
+
+
+# Cleanup removes fillers and false starts, so the output is legitimately
+# shorter than the input — but not by this much.  Below this ratio the
+# model stopped early rather than tightened prose.
+_MIN_CLEANUP_RETENTION = 0.5
+
+
+def _cleanup_looks_truncated(response, raw: str, cleaned: str) -> bool:
+    """True when the cleanup response stopped short of covering the input.
+
+    Two signals: the API telling us it hit the output cap, and the output
+    being far shorter than filler-removal alone can explain.  The second
+    matters because a long slice can exhaust the output budget without
+    the finish reason surviving the SDK's response shaping.
+    """
+    finish = ""
+    try:
+        finish = str(response.candidates[0].finish_reason or "")
+    except (AttributeError, IndexError, TypeError):
+        pass
+    if "MAX_TOKENS" in finish.upper():
+        return True
+    return len(cleaned) < len(raw) * _MIN_CLEANUP_RETENTION
+
+
+# Cleanup is bounded by how fast the model can *emit* text, so one call
+# per agenda item does not scale: a 100-minute item is ~117k characters,
+# which is both far too slow serially and close enough to the output cap
+# to risk silent truncation.  Slices are split into chunks on segment
+# boundaries and cleaned concurrently instead.
+CLEANUP_CHUNK_CHARS = 8000
+
+
+def cleanup_fingerprint() -> str:
+    """Identity of the cleanup prompt, the model, and the chunking.
+
+    Cached CleanTranscripts are stored under this fingerprint so that
+    editing the cleanup prompt — or switching models, or re-chunking —
+    cannot read through to text produced by the old one.  A stale
+    fingerprint is a cache miss, not a silently-wrong hit.
+
+    Chunk size belongs in the basis because it changes how much context
+    the model sees per call, and therefore the text it produces.
+
+    The transcript itself is excluded (an empty slice is rendered)
+    because it varies per item; only the instructions and the name roster
+    define the prompt's identity.
+    """
+    basis = f"{GEMINI_MODEL}\n{CLEANUP_CHUNK_CHARS}\n{_build_cleanup_prompt('')}"
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+
+
+def _cleanup_chunks(
+    item: dict,
+    transcript_segments: list[dict],
+    max_chars: int = CLEANUP_CHUNK_CHARS,
+) -> list[str]:
+    """Split *item*'s transcript slice into chunks for the cleanup pass.
+
+    Splits on segment boundaries so a chunk never begins or ends mid-way
+    through a spoken phrase.  A single segment longer than *max_chars*
+    becomes its own oversized chunk rather than being cut.
+    """
+    texts = [
+        s.get("text", "")
+        for s in _slice_transcript(transcript_segments, item)
+        if s.get("text", "").strip()
+    ]
+    chunks: list[str] = []
+    current: list[str] = []
+    size = 0
+    for text in texts:
+        if current and size + len(text) > max_chars:
+            chunks.append(" ".join(current))
+            current, size = [], 0
+        current.append(text)
+        size += len(text) + 1
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
+
+
+def clean_item_transcript(
+    item: dict,
+    transcript_segments: list[dict],
+    gemini_extractor: GeminiExtractor,
+    max_workers: int = 8,
+) -> str:
+    """Slice the transcript to *item*, clean it, and return the CleanTranscript.
+
+    Split out of :func:`extract_item_summaries` so callers can cache the
+    result: cleanup is the expensive half of summarization and the half
+    that chip-prompt changes don't affect.
+    """
+    chunks = _cleanup_chunks(item, transcript_segments)
+    if not chunks:
+        return ""
+    if not gemini_extractor.enabled:
+        return " ".join(chunks)
+    return " ".join(_clean_chunks(chunks, gemini_extractor, max_workers))
+
+
+def _clean_chunks(
+    chunks: list[str], gemini_extractor: GeminiExtractor, max_workers: int,
+) -> list[str]:
+    if len(chunks) == 1:
+        return [gemini_extractor.clean(chunks[0])]
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        return list(pool.map(gemini_extractor.clean, chunks))
+
+
+DEFAULT_CLEAN_WORKERS = 8
+
+
+def clean_meeting_transcripts(
+    items: list[dict],
+    transcript_segments: list[dict],
+    gemini_extractor: GeminiExtractor,
+    cached: dict[str, str] | None = None,
+    max_workers: int = DEFAULT_CLEAN_WORKERS,
+) -> dict[str, str]:
+    """Return ``{item_id: CleanTranscript}`` for every item in *items*.
+
+    Entries already present in *cached* are reused untouched; the rest
+    are cleaned concurrently, since each is an independent network call.
+    Callers own the cache — this function neither reads nor writes one,
+    it just fills the gaps.
+    """
+    cached = cached or {}
+    result: dict[str, str] = {}
+    missing: list[dict] = []
+    for item in items:
+        key = str(item["item_id"])
+        if key in cached:
+            result[key] = cached[key]
+        else:
+            missing.append(item)
+
+    if not missing:
+        return result
+
+    # Chunk every outstanding item up front and clean the whole meeting's
+    # chunks through one pool.  Fanning out per item instead would nest
+    # pools (items x chunks) and multiply the concurrency limit; this way
+    # a single 100-minute item parallelises just as well as fifteen short
+    # ones, and the ceiling stays where the caller put it.
+    chunks_by_item = {
+        str(it["item_id"]): _cleanup_chunks(it, transcript_segments)
+        for it in missing
+    }
+    flat = [
+        (key, index, text)
+        for key, chunks in chunks_by_item.items()
+        for index, text in enumerate(chunks)
+    ]
+
+    if not gemini_extractor.enabled or not flat:
+        for key, chunks in chunks_by_item.items():
+            result[key] = " ".join(chunks)
+        return result
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        cleaned = list(pool.map(
+            lambda task: (task[0], task[1], gemini_extractor.clean(task[2])),
+            flat,
+        ))
+
+    parts: dict[str, list[tuple[int, str]]] = {k: [] for k in chunks_by_item}
+    for key, index, text in cleaned:
+        parts[key].append((index, text))
+    for key, indexed in parts.items():
+        result[key] = " ".join(text for _, text in sorted(indexed))
+    return result
 
 
 USEFULNESS_LEVELS: list[str] = ["high", "medium", "low"]
@@ -728,15 +947,11 @@ def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
 
 def _is_unanimous_tally(item: dict) -> bool:
     """True when the vote has no dissenting side (either all for or all against)."""
-    detail = item.get("vote_detail") or ""
-    m = _VOTE_TALLY_RE.search(detail)
-    if m and (int(m.group(1)) == 0 or int(m.group(2)) == 0):
-        return True
-    vote = item.get("vote_result") or ""
-    m2 = re.search(r"\((\d+)\s*(?:to|-)\s*(\d+)\)", vote)
-    if m2 and (int(m2.group(1)) == 0 or int(m2.group(2)) == 0):
-        return True
-    return False
+    tally = _parse_vote_tally(item)
+    if tally is None:
+        return False
+    for_n, against_n = tally
+    return for_n == 0 or against_n == 0
 
 
 def is_eligible_for_summary(item: dict) -> bool:
@@ -761,6 +976,7 @@ def extract_item_summaries(
     item: dict,
     transcript_segments: list[dict],
     gemini_extractor: GeminiExtractor | None = None,
+    cleaned_transcript_text: str | None = None,
 ) -> list[dict]:
     """Extract category chip summaries for a single agenda item.
 
@@ -768,18 +984,22 @@ def extract_item_summaries(
     canonical 23-category order.  The deterministic pass always runs.  The
     Gemini pass runs only when ``gemini_extractor`` is provided or
     ``GEMINI_API_KEY`` is set in the environment.
-    """
-    slice_segments = _slice_transcript(transcript_segments, item)
-    transcript_text = " ".join(s.get("text", "") for s in slice_segments)
 
+    Pass ``cleaned_transcript_text`` to supply an already-cleaned slice
+    (e.g. from ``CleanTranscriptCache``) and skip the cleanup call.
+    """
     extractor = gemini_extractor if gemini_extractor is not None else GeminiExtractor()
 
-    # Pre-process: turn raw automatic-transcription rambling into clean
-    # sentences so both the regex extractors and the semantic pass have
-    # well-punctuated input. Falls back to the raw text if cleanup fails
-    # or the extractor isn't enabled.
-    if extractor.enabled and transcript_text.strip():
-        transcript_text = extractor.clean(transcript_text)
+    if cleaned_transcript_text is not None:
+        transcript_text = cleaned_transcript_text
+    else:
+        # Pre-process: turn raw automatic-transcription rambling into clean
+        # sentences so both the regex extractors and the semantic pass have
+        # well-punctuated input. Falls back to the raw text if cleanup fails
+        # or the extractor isn't enabled.
+        transcript_text = clean_item_transcript(
+            item, transcript_segments, extractor,
+        )
 
     # Metadata-based deterministic extractors — always run because they
     # operate on clean structured data, not raw transcript.

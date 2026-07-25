@@ -15,14 +15,21 @@ import argparse
 import os
 import sys
 import traceback
+from concurrent.futures import ThreadPoolExecutor
+
+# Chip calls are I/O-bound, so run a meeting's items concurrently.
+EXTRACT_WORKERS = 8
 
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
+from app.clean_transcript_cache import CleanTranscriptCache
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.item_categorizer import (
+    clean_meeting_transcripts,
+    cleanup_fingerprint,
     extract_item_summaries,
     is_eligible_for_summary,
     GeminiExtractor,
@@ -35,7 +42,11 @@ from app.transcript_cache import TranscriptCache
 
 
 def summarize_meeting(
-    source: MeetingSource, meeting_id: str, extractor, transcript_cache,
+    source: MeetingSource,
+    meeting_id: str,
+    extractor,
+    transcript_cache,
+    clean_cache,
 ) -> dict[str, list[ItemSummary]]:
     """Run the extractor across every eligible agenda item in the meeting."""
     transcript = transcript_cache.load(meeting_id)
@@ -46,24 +57,40 @@ def summarize_meeting(
     items = [it.to_dict() for it in detail.agenda_items]
     transcript_segments = transcript.to_dict()
 
-    eligible = 0
-    summaries: dict[str, list[ItemSummary]] = {}
-    for item in items:
-        if not is_eligible_for_summary(item):
-            summaries[str(item["item_id"])] = []
-            continue
-        eligible += 1
-        title = (item.get("title") or "")[:60]
-        print(f"    Item {item['item_id']}: {title}", flush=True)
-        entries = extract_item_summaries(
-            item, transcript_segments, gemini_extractor=extractor,
+    eligible = [i for i in items if is_eligible_for_summary(i)]
+    summaries: dict[str, list[ItemSummary]] = {
+        str(i["item_id"]): [] for i in items if not is_eligible_for_summary(i)
+    }
+
+    # Cleanup is the expensive half and chip-prompt changes don't affect
+    # it, so reuse whatever the cache still considers current.
+    cached_clean = clean_cache.load(meeting_id)
+    if cached_clean:
+        print(f"    Reusing {len(cached_clean)} cached CleanTranscripts", flush=True)
+    clean = clean_meeting_transcripts(
+        eligible, transcript_segments, extractor, cached=cached_clean,
+    )
+    if clean != (cached_clean or {}):
+        clean_cache.save(meeting_id, clean)
+
+    def run(item: dict) -> tuple[dict, list[dict]]:
+        return item, extract_item_summaries(
+            item, transcript_segments,
+            gemini_extractor=extractor,
+            cleaned_transcript_text=clean[str(item["item_id"])],
         )
-        cats = [e["category"] for e in entries]
-        print(f"      → {len(entries)} chips: {cats}", flush=True)
-        summaries[str(item["item_id"])] = [
-            ItemSummary.from_dict(e) for e in entries
-        ]
-    print(f"    {eligible}/{len(items)} items eligible for summary", flush=True)
+
+    with ThreadPoolExecutor(max_workers=EXTRACT_WORKERS) as pool:
+        for item, entries in pool.map(run, eligible):
+            title = (item.get("title") or "")[:60]
+            cats = [e["category"] for e in entries]
+            print(f"    Item {item['item_id']}: {title}", flush=True)
+            print(f"      → {len(entries)} chips: {cats}", flush=True)
+            summaries[str(item["item_id"])] = [
+                ItemSummary.from_dict(e) for e in entries
+            ]
+
+    print(f"    {len(eligible)}/{len(items)} items eligible for summary", flush=True)
     return summaries
 
 
@@ -100,7 +127,8 @@ def main() -> None:
 
     source: MeetingSource = EscribeMeetingSource(LiveEscribeTransport())
     with TranscriptCache.open() as transcript_cache, \
-            ItemSummariesCache.open() as summaries_cache:
+            ItemSummariesCache.open() as summaries_cache, \
+            CleanTranscriptCache.open(cleanup_fingerprint()) as clean_cache:
         for tab in tabs:
             slug = tab["slug"]
             print(f"\n--- {tab['label']} ({slug}) ---")
@@ -131,7 +159,7 @@ def main() -> None:
                 print(f"  [{m.date}] {mid[:8]}... summarizing...", flush=True)
                 try:
                     summaries = summarize_meeting(
-                        source, mid, extractor, transcript_cache,
+                        source, mid, extractor, transcript_cache, clean_cache,
                     )
                     summaries_cache.save(mid, summaries)
                     summarized += 1

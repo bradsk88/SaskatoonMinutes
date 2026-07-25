@@ -21,6 +21,7 @@ from app.item_categorizer import (
     _extract_outcome,
     _extract_procedural_note,
     _extract_related_deferred,
+    _is_unanimous_tally,
     _extract_vote_breakdown,
     _is_boilerplate_rec,
     _sanitize_chips,
@@ -143,6 +144,61 @@ class TestVoteBreakdown:
 
     def test_no_vote(self):
         assert _extract_vote_breakdown({"vote_detail": "", "vote_result": ""}) == []
+
+    def test_unanimous_vote_has_no_against_section(self):
+        """eSCRIBE omits sides with no members, so a unanimous carry has no
+        "Against:" at all.  Requiring both sides dropped the chip entirely."""
+        item = {
+            "vote_detail": (
+                "In Favour: (5) Councillor Davies, Councillor Loewen, "
+                "Councillor Gough, Councillor Block, and Councillor Gersher "
+                "Absent: (1) Mayor C. Clark CARRIED UNANIMOUSLY"
+            ),
+            "vote_result": "CARRIED UNANIMOUSLY",
+        }
+        out = _extract_vote_breakdown(item)
+        assert out == [{"category": "Vote Breakdown", "text": "5 for, 0 against"}]
+
+    def test_absent_members_are_not_counted_as_against(self):
+        item = {"vote_detail": "In Favour: (9) A, B Absent: (2) C, D"}
+        out = _extract_vote_breakdown(item)
+        assert out == [{"category": "Vote Breakdown", "text": "9 for, 0 against"}]
+
+    def test_defeated_vote_with_no_in_favour_section(self):
+        item = {"vote_detail": "Against: (7) A, B, C"}
+        out = _extract_vote_breakdown(item)
+        assert out == [{"category": "Vote Breakdown", "text": "0 for, 7 against"}]
+
+    def test_vote_detail_wins_over_vote_result(self):
+        item = {
+            "vote_detail": "In Favour: (5) A Against: (2) B",
+            "vote_result": "CARRIED (8 to 3)",
+        }
+        out = _extract_vote_breakdown(item)
+        assert out == [{"category": "Vote Breakdown", "text": "5 for, 2 against"}]
+
+    def test_zero_zero_tally_is_not_a_chip(self):
+        assert _extract_vote_breakdown({"vote_detail": "In Favour: (0)"}) == []
+
+
+class TestUnanimousDetection:
+    """Unanimity suppresses the Dissenting View category — there is no dissent."""
+
+    def test_unanimous_without_an_against_section(self):
+        assert _is_unanimous_tally(
+            {"vote_detail": "In Favour: (5) A, B Absent: (1) C"}
+        )
+
+    def test_split_vote_is_not_unanimous(self):
+        assert not _is_unanimous_tally(
+            {"vote_detail": "In Favour: (5) A Against: (2) B"}
+        )
+
+    def test_split_vote_from_vote_result_is_not_unanimous(self):
+        assert not _is_unanimous_tally({"vote_result": "CARRIED (8 to 3)"})
+
+    def test_no_tally_at_all_is_not_unanimous(self):
+        assert not _is_unanimous_tally({"vote_detail": "", "vote_result": ""})
 
 
 class TestAmendment:

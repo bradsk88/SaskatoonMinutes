@@ -1,0 +1,53 @@
+name: Chip Quality Eval
+
+# Runs the chip extractor over committed fixtures — real agenda items and
+# real transcript slices — with the live Gemini key, and writes the chips
+# it produced to the job summary.  This is the iteration loop for summary
+# quality: push a prompt/extractor change, read the chips, adjust.
+#
+# Costs a dozen Gemini Flash calls and finishes in about a minute.
+
+on:
+  push:
+    paths:
+      - 'app/item_categorizer.py'
+      - 'app/agenda_text.py'
+      - 'app/transcript_text.py'
+      - 'scripts/eval_chips.py'
+      - 'tests/fixtures/eval/**'
+      - '.github/workflows/eval-chips.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: eval-chips-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install google-genai
+
+      # Fast, free, and key-free: the deterministic extractors and the
+      # chip-shape invariants.  Fails the job before we spend any tokens.
+      - name: Unit tests
+        run: python -m pytest tests/ -q
+
+      # --diff writes only the deltas against the committed baseline into
+      # the job summary, so a prompt change is reviewable without reading
+      # every summary again.  --check still gates on the quality floors.
+      - name: Chip quality eval
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/eval_chips.py --diff --check
