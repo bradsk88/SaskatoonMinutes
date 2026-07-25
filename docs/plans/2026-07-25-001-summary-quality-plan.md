@@ -187,11 +187,38 @@ Deferred until U5 stabilizes, per the eval decision.
 - **The worst error the judge found: attributing a committee's recommendation to City Council.** On a Standing Policy Committee meeting the description asserted "Saskatoon City Council approved funding" — but a committee *recommends* to Council and approves nothing. The prompt now receives the deterministic outcome label and, when it is `Recommended`, an explicit instruction that nothing has been approved yet. This is a civic accuracy failure no reader could have caught.
 - **The floor is set at 2, not 3, on purpose.** The rubric defines 1–2 as "asserts facts the source does not contain" (fabrication) and 3 as "something is overstated" (quality). Fabrication stops the build; overstatement is reported in the Flagged section and caught in aggregate by the mean gate. A single strict judgment on an eleven-item sample should not turn CI red, particularly when the judge is itself a sampled model.
 
-### U7 — UI + backfill
+### U7 — UI + backfill — **partially done**
 
-- Render `description` as the lede; mark Legacy ItemSummaries as lower-confidence (R11).
-- Re-summarize the 2024-2028 term forward, parallelized (R12).
+- Render `description` as the lede; mark Legacy ItemSummaries as lower-confidence (R11). **Done in U3** — `meeting.html` renders the description above the chip grid, and a summary with chips but no description shows "Older summary — no plain-language description available." `tests/test_summary_render_contract.py` pins the key names across the Python/JS boundary and asserts the template's `CHIP_GROUP` matches `CATEGORY_GROUP` exactly.
+- Re-summarize the 2024-2028 term forward, parallelized (R12). `--since` and `--pages` added to `scripts/summarize_meetings.py`.
 - **Not** in scope: splitting Outcome into a headline presentation (deferred in ADR `0003`).
+
+**Backfill status — the one piece deliberately left unfinished.**
+
+The current term is **226 meetings** with cached transcripts:
+
+| tab | in-term | tab | in-term |
+|---|---|---|---|
+| council | 20 | police | 18 |
+| public-hearing | 19 | finance | 18 |
+| governance | 20 | transportation | 18 |
+| environment | 17 | planning | 16 |
+| diversity | 16 | municipal-planning | 15 |
+| heritage | 15 | env-advisory | 13 |
+| public-art | 11 | accessibility | 8 |
+| budget | 2 | civic-naming | 1 |
+
+Cleanup dominates the cost and none of it is cached yet, so a full run is roughly 8–15 hours of wall clock and a large token spend, and it overwrites the live `summaries` branch.
+
+What was run: the **latest meeting of every body** (16 meetings, `--since 2024-11-01 --limit 1 --force`). That covers the highest-traffic content, exercises every tab's meeting shape, and validates the push path for all three caches including the brand-new `clean-transcripts` branch.
+
+To finish the term:
+
+```
+python scripts/summarize_meetings.py --since 2024-11-01 --pages 3 --limit 30 --force
+```
+
+`--pages 3` is needed because `list_past` returns one page at a time and 20 in-term meetings do not fit on page 1 for the busier tabs. Re-running is cheap for anything already done — the CleanTranscriptCache makes the expensive half a cache hit, so only the chip calls repeat.
 
 ---
 

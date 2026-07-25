@@ -9,6 +9,18 @@ already covered are skipped before any extraction work runs.
 
 Usage:
     python scripts/summarize_meetings.py [--limit 2] [--tabs council ...]
+
+Backfilling the current council term (see
+``docs/plans/2026-07-25-001-summary-quality-plan.md``, U7):
+
+    python scripts/summarize_meetings.py \
+        --since 2024-11-01 --pages 3 --limit 30 --force
+
+``--force`` is required because every meeting already has a cached
+summary from before the ItemSummary aggregate existed.  Meetings older
+than the current term keep their Legacy ItemSummary on purpose: the
+cleanup prompt's name roster only covers councils from 2020 on, so on
+older meetings it would "correct" proper nouns toward the wrong people.
 """
 
 import argparse
@@ -125,6 +137,20 @@ def main() -> None:
         "--force", action="store_true",
         help="Re-summarize meetings that already have cached summaries.",
     )
+    parser.add_argument(
+        "--since", default=None, metavar="YYYY-MM-DD",
+        help=(
+            "Only process meetings on or after this date.  The backfill "
+            "scope is the current council term: --since 2024-11-01.  Older "
+            "meetings keep their Legacy ItemSummary -- the cleanup prompt's "
+            "name roster only covers councils from 2020 on, so it would "
+            "'correct' older proper nouns toward the wrong people."
+        ),
+    )
+    parser.add_argument(
+        "--pages", type=int, default=1,
+        help="How many pages of past meetings to walk per tab (default: 1).",
+    )
     args = parser.parse_args()
 
     tabs = MEETING_TABS
@@ -149,14 +175,23 @@ def main() -> None:
         for tab in tabs:
             slug = tab["slug"]
             print(f"\n--- {tab['label']} ({slug}) ---")
+            meetings = []
             try:
-                meetings, _ = source.list_past(page=1, meeting_type=tab["type"])
+                for page in range(1, args.pages + 1):
+                    batch, _ = source.list_past(
+                        page=page, meeting_type=tab["type"],
+                    )
+                    if not batch:
+                        break
+                    meetings.extend(batch)
             except Exception as exc:
                 print(f"  Failed to fetch meetings: {exc}")
                 continue
 
             processed_this_tab = 0
             for m in meetings:
+                if args.since and (m.date or "") < args.since:
+                    continue
                 if processed_this_tab >= args.limit:
                     break
                 if not m.has_video:
