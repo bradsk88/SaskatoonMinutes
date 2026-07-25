@@ -472,8 +472,8 @@ Anything else, including a tie, deletes it. The asymmetry is
 deliberate: a pass consuming ~99% of the backfill's cost has to earn its
 place, not merely avoid being disproven.
 
-**Standing recommendation: delete the cleanup pass and
-`CleanTranscriptCache` with it.** Two independent methods agree it buys
+**Standing recommendation (since carried out — see U10): delete the
+cleanup pass and `CleanTranscriptCache` with it.** Two methods agree it buys
 nothing: the Gemini judge showed a dead-even 4.50 vs 4.50 once the one
 unreliable item was set aside, and blind judges put raw ahead 4-2. It
 costs ~99% of the backfill. The counter-argument in ADR `0004` is
@@ -571,8 +571,32 @@ arm got it right on the neighbouring item).
 
 **Verdict: the pre-registered rule deletes the cleanup pass.** Clean did
 not reach parity with raw at the wider sample, so cleanup does not earn
-~99% of the backfill's cost. Deleting `CleanTranscriptCache` with it is
-the follow-up unit; nothing has been removed yet.
+~99% of the backfill's cost.
+
+### U10 — Delete the cleanup pass — **done**
+
+Carried out the verdict. ADR `0005` records it and supersedes `0004`.
+Removed: the cleanup prompt, chunking, truncation guard and fingerprint;
+`CleanTranscriptCache`; `LocalDirCache`, which existed to back it; the
+committed `*.clean.json` fixtures; `_SASKATOON_NAMES`; and the three A/B
+scripts, each of which imports what was removed.
+
+The chip call now reads the item's raw slice joined exactly as cleanup
+received it, so production output is byte-identical to the arm the judges
+scored. The fixture ranker keeps a frozen copy of the roster as a
+stop-list — subtracted from a count, never shown to a model.
+
+Baseline re-snapshotted from raw. Same 24 items:
+
+| | with cleanup | without |
+|---|---|---|
+| chips | 118 | 111 |
+| items with a substantive soft chip | 21/24 | 22/24 |
+| title-echo chips | 1/118 | 0/111 |
+| descriptions over 220 chars | 1 | 0 |
+
+`--check` passes on both. A full eval run is now 1m17s and 24 chip calls.
+Cached CleanTranscripts are left on their branch, unread.
 
 ---
 
