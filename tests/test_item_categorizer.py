@@ -5,8 +5,13 @@ import pytest
 from app.item_categorizer import (
     CATEGORIES,
     CATEGORY_GROUP,
+    MAX_DESCRIPTION_CHARS,
+    MAX_DESCRIPTION_WORDS,
     MAX_SUMMARY_CHARS,
+    MAX_SUMMARY_WORDS,
     SEMANTIC_CATEGORIES,
+    SEMANTIC_DEFINITIONS,
+    USEFULNESS_LEVELS,
     _SASKATOON_NAMES,
     GeminiExtractor,
     _build_cleanup_prompt,
@@ -945,6 +950,123 @@ class TestSummarySchema:
             _summary_item(1, "Transit Bylaw"), "text", ["Who's Affected"],
         )
         assert "Do NOT restate the agenda item's title" in prompt
+
+
+# ── Prompt rules that keep regressing ──────────────────────────────
+
+
+def _rules_prompt(cats=None):
+    return _build_prompt(
+        _summary_item(1, "Transit Bylaw"),
+        "text",
+        cats if cats is not None else SEMANTIC_CATEGORIES,
+    )
+
+
+class TestBudgetsAreStatedInWords:
+    """A model cannot count characters, so it cannot obey a character budget.
+
+    Seven of eleven fixture descriptions overran the 220-character bound.
+    The budgets the model is *asked* for are in words; the character
+    constants remain the unit the eval measures in.
+    """
+
+    def test_description_budget_is_words(self):
+        prompt = _rules_prompt()
+        assert f"{MAX_DESCRIPTION_WORDS} words" in prompt
+        assert f"{MAX_DESCRIPTION_CHARS} characters" not in prompt
+
+    def test_chip_budget_is_words(self):
+        prompt = _rules_prompt()
+        assert f"{MAX_SUMMARY_WORDS} words" in prompt
+        assert f"{MAX_SUMMARY_CHARS} characters" not in prompt
+
+
+class TestDescriptionOpeningBans:
+    def test_bans_making_the_document_the_subject(self):
+        """"The item approves funding..." slipped past a ban that listed
+        only "The report ..." openings, and cost real specificity."""
+        prompt = _rules_prompt()
+        assert "The item approves" in prompt
+        assert "The report highlights" in prompt
+        assert "never make the agenda item" in prompt.lower()
+
+    def test_still_bans_opening_with_process(self):
+        assert "Council received the report as information" in _rules_prompt()
+
+
+class TestProperNounSpelling:
+    """We published a delegate's name as the ASR heard it.
+
+    The minutes said "Kobussen"; the transcript said "Colbison"; the chip
+    published "Colbison" with the correct spelling sitting in the same
+    prompt.
+    """
+
+    def test_official_text_wins_over_the_transcript(self):
+        prompt = _rules_prompt()
+        assert "Spell proper nouns as the official recommendation" in prompt
+
+    def test_a_transcript_only_garbled_name_is_dropped_not_guessed(self):
+        assert "leave the name out rather than publish a guess" in _rules_prompt()
+
+
+class TestUsefulnessIsGatedOnlyInCode:
+    """The model rates; the code cuts.  Two gates made borderline chips flap."""
+
+    def test_prompt_does_not_ask_the_model_to_withhold_low_chips(self):
+        prompt = _rules_prompt()
+        assert "Omit anything you would rate" not in prompt
+        assert "skip the category rather than emit a weak chip" not in prompt
+
+    def test_prompt_still_asks_for_a_rating(self):
+        prompt = _rules_prompt()
+        for level in USEFULNESS_LEVELS:
+            assert f'"{level}"' in prompt
+
+    def test_accuracy_gate_survives(self):
+        """Only *usefulness* moved to code — the model still drops inventions."""
+        assert "worse than no chip" in _rules_prompt()
+
+    def test_code_still_drops_low_chips(self):
+        chips = _sanitize_chips(
+            [
+                {"category": "Who's Affected", "text": "Riversdale residents",
+                 "usefulness": "low"},
+            ],
+            ["Who's Affected"],
+        )
+        assert chips == []
+
+
+class TestChipsDoNotRestateTheDescription:
+    def test_prompt_requires_checking_the_chip_against_the_description(self):
+        assert "if the description already states that fact, drop the chip" \
+            in _rules_prompt()
+
+
+class TestCategoryDefinitionsDisambiguate:
+    """Overlapping definitions yielded the same fact under two labels."""
+
+    def test_whos_affected_is_replaced_by_the_narrower_categories(self):
+        """Worded as "use this only when..." it read as a deterrent.
+
+        The first attempt lost the category on six of eleven items while
+        only three moved to Equity Impact -- the tie-break has to hand
+        the fact to a neighbour, not talk the model out of the fact.
+        """
+        definition = SEMANTIC_DEFINITIONS["Who's Affected"]
+        assert "REPLACE this chip rather than suppress it" in definition
+        assert "Equity Impact" in definition
+        assert "Environmental Impact" in definition
+        assert "Emit it whenever a concrete group is identifiable" in definition
+
+    def test_public_sentiment_and_debate_highlight_split_on_the_speaker(self):
+        assert "use Public Sentiment" in SEMANTIC_DEFINITIONS["Debate Highlight"]
+        assert "Debate Highlight" in SEMANTIC_DEFINITIONS["Public Sentiment"]
+
+    def test_the_tie_breaks_reach_the_prompt(self):
+        assert "REPLACE this chip rather than suppress it" in _rules_prompt()
 
 
 # ── Cleanup prompt name normalization ──────────────────────────────

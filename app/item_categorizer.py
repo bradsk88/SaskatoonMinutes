@@ -121,17 +121,24 @@ MAX_SUMMARY_CHARS = 100
 
 # Categories handled by the LLM pass.  Each maps to a plain-English
 # definition that is included verbatim in the Gemini prompt.
+# Each definition states what the category IS and, where a neighbouring
+# category could plausibly take the same fact, which one wins.  Without
+# those tie-breaks the model emitted the same fact twice: an impact on a
+# low-income neighbourhood arrived as both Who's Affected and Equity
+# Impact, and a delegate's objection as both Debate Highlight and Public
+# Sentiment.  Overlapping definitions do not produce more coverage, they
+# produce the same sentence wearing two labels.
 SEMANTIC_DEFINITIONS: dict[str, str] = {
-    "Debate Highlight": "a sharp or notable moment of debate — a memorable quote, a pointed exchange, or a striking argument from a named speaker. Do NOT use this category to restate the vote outcome (e.g. 'council unanimously opposed the proposal' belongs to Outcome, not here).",
-    "Who's Affected": "which specific residents, neighbourhoods, businesses, or groups are directly affected",
+    "Debate Highlight": "a sharp or notable moment of debate among the decision-makers — a memorable quote, a pointed exchange, or a striking argument from a named councillor or staff member. Do NOT use this to restate the vote outcome ('council unanimously opposed the proposal' is Outcome). If the speaker is a member of the public or a delegation, use Public Sentiment. If it is a councillor explaining a vote against, use Dissenting View.",
+    "Who's Affected": "name the specific residents, neighbourhoods, businesses, or organizations this decision lands on — \"residents of Nutana, Varsity View and City Park\", \"13 non-profit groups\", \"taxpayers, at about $14,000 a year\". Emit it whenever a concrete group is identifiable; a named group is exactly the fact a reader is looking for. Do not settle for \"residents\" or \"the community\" in general — if you cannot name who, omit the chip. Two categories take precedence and REPLACE this chip rather than suppress it: Equity Impact when the group is affected precisely because it is marginalized, low-income, Indigenous, or under-served, and Environmental Impact when what is affected is ecological rather than a group of people.",
     "Staff vs. Council": "a real disagreement between city administration and elected councillors (not just a clarifying question)",
     "Precedent Set": "a first-of-its-kind decision that will be referenced in future cases",
     "Unanswered Question": "a substantive question raised that was NOT answered (if it was answered or clarified, do NOT emit this)",
-    "Public Sentiment": "members of the public expressing clear support or opposition (not just 'public engagement is required')",
+    "Public Sentiment": "members of the public, delegations, or petitioners expressing clear support or opposition (not just 'public engagement is required'). This is the category for non-councillor voices; a councillor's argument is Debate Highlight.",
     "Dissenting View": "a councillor's stated reason for voting against the motion (omit if the vote was unanimous)",
     "Legal Risk Flagged": "legal liability, lawsuits, or statutory-risk being raised",
-    "Equity Impact": "concrete impact on marginalized, low-income, Indigenous, or under-served groups",
-    "Environmental Impact": "environmental, ecological, or emissions impact (not just the word 'environment' appearing)",
+    "Equity Impact": "concrete impact on marginalized, low-income, Indigenous, or under-served groups. Prefer this over Who's Affected whenever the affected group is one of those — do not emit both for the same group.",
+    "Environmental Impact": "environmental, ecological, or emissions impact (not just the word 'environment' appearing). Prefer this over Who's Affected for an ecological impact — do not emit both for the same effect.",
     "Promise Made": "a specific public commitment or promise from council or staff (not a question or wondering)",
 }
 
@@ -881,7 +888,20 @@ def clean_meeting_transcripts(
 
 USEFULNESS_LEVELS: list[str] = ["high", "medium", "low"]
 
-# Chips must clear this bar to survive sanitization.
+# Chips must clear this bar to survive sanitization.  This is the *only*
+# usefulness gate.  The prompt used to also tell the model to withhold
+# anything it would rate "low", which made the bar two gates deep: a chip
+# had to be both emitted and then rated above the floor, and the model
+# resolved a borderline chip differently on each run — sometimes by
+# withholding it, sometimes by emitting it as "low", sometimes as
+# "medium".  That flapping was a large share of the run-to-run churn the
+# eval's --diff kept reporting.  The model now rates and never withholds
+# on usefulness grounds; the cut happens here, deterministically.
+#
+# The prompt's *accuracy* gate ("a chip you inferred rather than found is
+# worse than no chip") is a different rule and stays where it is — the
+# model is the only thing that can tell whether it found a fact or
+# invented it.
 ACCEPTED_USEFULNESS: set[str] = {"high", "medium"}
 
 
@@ -896,6 +916,21 @@ ACCEPTED_USEFULNESS: set[str] = {"high", "medium"}
 # item into a title echo.  The tighter bound produces better writing; the
 # overruns are the model reaching for substance, which is fine.
 MAX_DESCRIPTION_CHARS = 220
+
+# What the *prompt* asks for.  A language model cannot count characters —
+# it has no access to its own tokenization — so a character budget is an
+# instruction it can only guess at, and 7 of 11 fixture descriptions
+# overran.  Words it can count.
+#
+# Calibrated, not guessed.  The first attempt converted 220 characters at
+# 6 chars/word and asked for 35, which still produced 6 overruns of 11:
+# civic-agenda prose runs nearer 7 characters per word once
+# "Administration", "recommendation" and department names are in it, so
+# 35 words is closer to 245 characters.  30 words is the honest
+# conversion.  The character constants stay as the *measurement* unit so
+# the eval's overrun count remains comparable across this change.
+MAX_DESCRIPTION_WORDS = 30
+MAX_SUMMARY_WORDS = 16
 
 
 def _summary_schema(allowed_cats: list[str]) -> dict:
@@ -1040,7 +1075,7 @@ def _build_prompt(
         "## description (required)",
         "",
         "One or two sentences, at most "
-        f"{MAX_DESCRIPTION_CHARS} characters, saying what this item "
+        f"{MAX_DESCRIPTION_WORDS} words, saying what this item "
         "actually does and why it matters to a resident of Saskatoon. "
         "This is the single most important field — it is what someone "
         "reads instead of the agenda.",
@@ -1059,6 +1094,22 @@ def _build_prompt(
         "\"Council approved the recommendation\" — all of these waste the "
         "sentence a reader actually reads. The Outcome chip already "
         "records the verdict. Open with what changes in the city.",
+        "- Never make the agenda item, the report, or the motion the "
+        "SUBJECT of your sentence. \"The item approves funding for 13 "
+        "groups\", \"The report highlights a shortage\", \"This item "
+        "outlines\", \"The report provides an update on\" — all of these "
+        "tell the reader a document exists, which they already assumed. "
+        "The subject is the city, the deciding body, or the thing that "
+        "changes: \"Saskatoon will fund 13 environmental projects\", "
+        "\"Shelters are full almost every night\".",
+        "- Spell proper nouns as the official recommendation and agenda "
+        "notes spell them, never as the transcript spells them. The "
+        "transcript is speech-to-text: a delegate written as \"Kobussen\" "
+        "in the official text may appear as \"Colbison\" in the "
+        "transcript. When the two disagree, the official text is right. If "
+        "a name appears ONLY in the transcript and looks phonetically "
+        "garbled, leave the name out rather than publish a guess at "
+        "someone's name.",
         "- If the official recommendation is boilerplate (\"that the report "
         "be received as information\"), it tells you nothing — get the "
         "substance from the agenda notes and the transcript instead.",
@@ -1067,7 +1118,9 @@ def _build_prompt(
         "- Carry a number's unit and period with it. \"$14,000 a year\" is "
         "not \"$14,000\"; \"an 8-month extension\" is not \"an "
         "extension\". Dropping the qualifier changes the fact, and the "
-        "reader has no way to notice.",
+        "reader has no way to notice. Never drop a unit or a period to "
+        "fit the word budget — cut adjectives, cut a clause, cut the "
+        "second sentence, but a number keeps its unit.",
         "- Plain language. No bureaucratic phrasing, no file numbers, no "
         "\"the Administration recommends that\".",
         "- State only what the source supports. If the material is thin, "
@@ -1083,17 +1136,27 @@ def _build_prompt(
         "",
         "For each relevant category below, emit at most ONE chip. Each chip "
         f"`text` must be a complete, self-contained phrase of at most "
-        f"{MAX_SUMMARY_CHARS} characters (no trailing ellipsis, no cut-off "
+        f"{MAX_SUMMARY_WORDS} words (no trailing ellipsis, no cut-off "
         "sentences). Paraphrase tightly — do not quote raw transcript "
-        "verbatim. A chip carries one specific fact; the description "
-        "already covers what the item is, so do not repeat it in a chip.",
+        "verbatim.",
+        "",
+        "A chip adds a fact the description does not already carry. Before "
+        "emitting a chip, check it against the description you just wrote: "
+        "if the description already states that fact, drop the chip. A chip "
+        "that restates the description in different words costs the reader "
+        "a second read for no new information — it is the most common way "
+        "these summaries go wrong. The exception is a number or name the "
+        "description mentions in passing and the chip pins down precisely.",
         "",
         "Every chip must be traceable to something actually said or "
         "written in the item metadata or between the TRANSCRIPT fences. "
         "A chip you inferred rather than "
         "found is worse than no chip — omit the category instead.",
         "",
-        "Rate each chip's `usefulness`:",
+        "Rate each chip you emit with an honest `usefulness`. Rate it, do "
+        "not act on it — emitting a chip and labelling it \"low\" is the "
+        "correct move for a weak chip, and something downstream decides "
+        "what to do with the label.",
         "- \"high\": adds a specific, concrete fact — a number, a named "
         "commitment, an identified impact, a real disagreement, a concrete "
         "next step, or a pointed quote.",
@@ -1102,9 +1165,6 @@ def _build_prompt(
         "debate.",
         "- \"low\": vague, procedural filler, truisms, or phrasing that "
         "could apply to any meeting (e.g. 'That the report be received').",
-        "",
-        "Include \"high\" and \"medium\" chips. Omit anything you would rate "
-        "\"low\" — skip the category rather than emit a weak chip.",
         "",
         "Categories:",
     ])
