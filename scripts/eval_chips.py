@@ -111,6 +111,27 @@ def is_title_echo(chip_text: str, title: str) -> bool:
     return len(chip_words - title_words) / len(chip_words) < 0.25
 
 
+# A description that merely names its subject is fine -- "the Saskatoon
+# Homelessness Action Plan 2026" is what the thing is called.  What is not
+# fine is a description that adds nothing beyond the title.  So novelty is
+# measured by word content, not by whether the title appears verbatim,
+# which is what is_title_echo (a chip heuristic) checks.
+MIN_DESCRIPTION_NOVELTY = 0.5
+
+
+def is_description_echo(description: str, title: str) -> bool:
+    """True when the description says little the title didn't already say."""
+    desc_n, title_n = _normalize(description), _normalize(title)
+    if not desc_n or not title_n:
+        return False
+    desc_words = desc_n.split()
+    if not desc_words:
+        return False
+    title_words = set(title_n.split())
+    novel = [w for w in desc_words if w not in title_words]
+    return len(novel) / len(desc_words) < MIN_DESCRIPTION_NOVELTY
+
+
 class Report:
     def __init__(self) -> None:
         self.rows: list[str] = []
@@ -132,7 +153,7 @@ class Report:
         title = item.get("title") or ""
         if description:
             self.descriptions += 1
-            if is_title_echo(description, title):
+            if is_description_echo(description, title):
                 self.description_echoes += 1
             if len(description) > MAX_DESCRIPTION_CHARS:
                 self.description_overruns += 1
@@ -150,7 +171,7 @@ class Report:
             f"<sub>{mid[:8]} · item {item['item_id']}</sub>\n"
         )
         if description:
-            flag = " ⚠️ title echo" if is_title_echo(description, title) else ""
+            flag = " ⚠️ title echo" if is_description_echo(description, title) else ""
             self.rows.append(f"> {description}{flag}\n")
         else:
             self.rows.append("> _**no description**_\n")

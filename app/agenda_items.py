@@ -32,6 +32,69 @@ def is_procedural(title: str) -> bool:
     return any(kw in title_lower for kw in PROCEDURAL_KEYWORDS)
 
 
+def _has_own_substance(item: dict) -> bool:
+    """True when the item carries official text of its own."""
+    return bool(
+        (item.get("recommendation") or "").strip()
+        or (item.get("content") or "").strip()
+    )
+
+
+# "That the report be received as information" records that council
+# resolved nothing.  An item whose recommendation is only this has no
+# substance to summarize, and with no transcript either there is nothing
+# to write but the title back at the reader.
+_BOILERPLATE_REC_RE = re.compile(
+    r"^that the (?:report|information|presentation|correspondence|"
+    r"communication|minutes|letter|petition) be (?:received|noted|filed)",
+    re.IGNORECASE,
+)
+
+
+def is_boilerplate_recommendation(text: str) -> bool:
+    """True when the recommendation says council resolved nothing specific."""
+    return bool(_BOILERPLATE_REC_RE.search(text.strip()))
+
+
+def is_section_header(item: dict) -> bool:
+    """True when the entry is a structural container, not an agenda item.
+
+    Headers like ``COMMITTEE REPORTS`` or ``Standing Policy Committee on
+    Finance`` carry no recommendation and no content, and they either have
+    no time span at all or borrow their parent's.  They exist to group the
+    items beneath them and never get an ItemSummary.
+    """
+    if _has_own_substance(item):
+        return False
+    return item.get("time_start_ms") is None or bool(item.get("timestamp_inherited"))
+
+
+def is_consent_item(item: dict) -> bool:
+    """True when the item passed in the consent block without individual debate.
+
+    Detected by an inherited timestamp: the item shares its parent
+    section's span because council approved the whole block in one motion,
+    so no distinct span exists for it.  A Consent Item still has real
+    official text — that is what separates it from a Section Header, which
+    also inherits a timestamp but says nothing of its own.
+    """
+    if not item.get("timestamp_inherited"):
+        return False
+    if item.get("is_recess"):
+        return False
+    if is_procedural(item.get("title") or ""):
+        return False
+    # The recommendation is what council actually resolved, and with no
+    # transcript it is the only account of what the item does.  If it is
+    # boilerplate there is nothing to summarize -- content alone is
+    # supporting material (attachments, letters of support), not a
+    # statement of the decision.  Length is not the signal: a 90-character
+    # "That Councillor MacDonald be appointed to the Meewasin Valley
+    # Authority" summarizes fine, while a longer boilerplate does not.
+    rec = (item.get("recommendation") or "").strip()
+    return bool(rec) and not is_boilerplate_recommendation(rec)
+
+
 def format_outcome(vote_result: str, recommendation: str) -> str:
     """Convert raw vote result + recommendation into a short outcome label."""
     if not vote_result and not recommendation:

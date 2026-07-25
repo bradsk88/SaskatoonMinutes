@@ -44,7 +44,9 @@ import re
 from app.agenda_items import (
     PROCEDURAL_KEYWORDS,
     format_outcome,
+    is_consent_item,
     is_procedural,
+    is_section_header,
 )
 from app.agenda_text import (
     clean_entities,
@@ -135,6 +137,19 @@ SEMANTIC_DEFINITIONS: dict[str, str] = {
 
 SEMANTIC_CATEGORIES: list[str] = list(SEMANTIC_DEFINITIONS.keys())
 
+# Categories that can only be observed in discussion.  A Consent Item was
+# approved in a block without individual debate, so these are withheld
+# from its prompt **by construction** rather than left for the model to
+# decline — an item that was never discussed cannot have a debate
+# highlight, and offering the category invites the model to invent one.
+DISCUSSION_ONLY_CATEGORIES: frozenset[str] = frozenset({
+    "Debate Highlight",
+    "Staff vs. Council",
+    "Unanswered Question",
+    "Public Sentiment",
+    "Dissenting View",
+})
+
 
 # ── Transcript slicing ──────────────────────────────────────────────────────
 
@@ -143,6 +158,13 @@ def _slice_transcript(
     segments: list[dict], item: dict
 ) -> list[dict]:
     """Return transcript segments that overlap [item.start, item.end]."""
+    # An inherited timestamp is the *parent section's* span, not this
+    # item's.  Slicing on it would hand every Consent Item the same audio
+    # — the clerk reading the consent block into the record — and attribute
+    # it to each item individually.  A borrowed timestamp identifies no
+    # audio, so there is none to return.
+    if item.get("timestamp_inherited"):
+        return []
     start = item.get("time_start_ms")
     end = item.get("time_end_ms")
     if start is None or end is None:
@@ -552,6 +574,8 @@ class GeminiExtractor:
         """
         if not transcript_text.strip() and not self._has_metadata(item):
             return None, []
+        if is_consent_item(item):
+            exclude = set(exclude) | DISCUSSION_ONLY_CATEGORIES
         allowed = [c for c in SEMANTIC_CATEGORIES if c not in exclude]
         prompt = _build_prompt(item, transcript_text, allowed)
         try:
@@ -878,15 +902,36 @@ def _build_prompt(
     vote_detail = (item.get("vote_detail") or "").strip()
     content = (item.get("content") or "").strip()
 
-    lines = [
-        "You are extracting short 'chip' summaries from a Saskatoon city "
-        "council meeting agenda item. Use ALL the context below — the "
-        "official recommendation and motion text are clean and reliable; "
-        "the transcript is rough automatic speech-to-text and may contain "
-        "errors, but captures discussion not in the official text.",
-        "",
-        f"Agenda item title: {title}",
-    ]
+    consent = is_consent_item(item)
+
+    if consent:
+        lines = [
+            "You are summarizing one item from a Saskatoon city council "
+            "meeting's CONSENT AGENDA. Council approved it as part of a "
+            "block, in a single motion, with NO individual discussion.",
+            "",
+            "This matters for what you can say:",
+            "- There is no transcript, because nothing was said about this "
+            "item specifically. That is expected, not missing data.",
+            "- Do NOT describe, infer, or imply any debate, questions, "
+            "concerns, speakers, or public input. None occurred.",
+            "- Work only from the official recommendation and agenda notes "
+            "below. They are clean and reliable.",
+            "- A resident reading this wants to know what the city just "
+            "agreed to do, since nobody discussed it out loud.",
+            "",
+            f"Agenda item title: {title}",
+        ]
+    else:
+        lines = [
+            "You are extracting a summary of a Saskatoon city council "
+            "meeting agenda item. Use ALL the context below — the "
+            "official recommendation and motion text are clean and reliable; "
+            "the transcript is rough automatic speech-to-text and may contain "
+            "errors, but captures discussion not in the official text.",
+            "",
+            f"Agenda item title: {title}",
+        ]
     if rec:
         lines.extend(["", f"Official recommendation: {rec[:500]}"])
     if motion and motion != rec:
@@ -919,6 +964,14 @@ def _build_prompt(
         "- Lead with the substance, not the process. Prefer \"Raises transit "
         "fare-evasion fines to $250 and lets inspectors issue tickets\" "
         "over \"Council considered a report about the transit bylaw\".",
+        "- Never open with what council did procedurally. \"Council "
+        "received the report as information\", \"Council considered\", "
+        "\"Council approved the recommendation\" — all of these waste the "
+        "sentence a reader actually reads. The Outcome chip already "
+        "records the verdict. Open with what changes in the city.",
+        "- If the official recommendation is boilerplate (\"that the report "
+        "be received as information\"), it tells you nothing — get the "
+        "substance from the agenda notes and the transcript instead.",
         "- Include the concrete specifics — amounts, dates, locations, "
         "who is affected — when the source supports them.",
         "- Plain language. No bureaucratic phrasing, no file numbers, no "
@@ -1019,20 +1072,43 @@ def _is_unanimous_tally(item: dict) -> bool:
     return for_n == 0 or against_n == 0
 
 
+MIN_DISCUSSED_MS = 60_000
+
+
 def is_eligible_for_summary(item: dict) -> bool:
-    """Only non-consent, non-procedural, non-brief items are worth analyzing."""
-    if item.get("timestamp_inherited"):
-        return False
+    """True when the item is worth summarizing at all.
+
+    Two kinds of item qualify, for different reasons:
+
+    * **Discussed items** — council spent real time on them, so they have
+      their own timed span and a transcript to draw on.
+    * **Consent Items** — approved in a block with no individual debate,
+      so they have no transcript, but they carry substantial official
+      recommendation text that is worth explaining to a resident.
+
+    Section Headers, procedural items, and recesses never qualify.
+    """
     if item.get("is_recess"):
         return False
-    title = item.get("title") or ""
-    if is_procedural(title):
+    if is_procedural(item.get("title") or ""):
         return False
+    if is_section_header(item):
+        return False
+
+    # Checked before the inherited-timestamp rejection below, because an
+    # inherited timestamp is exactly what identifies a Consent Item.
+    if is_consent_item(item):
+        return True
+
     start = item.get("time_start_ms")
     end = item.get("time_end_ms")
     if start is None or end is None:
         return False
-    if end - start < 60_000:
+    if item.get("timestamp_inherited"):
+        return False
+    # Too brief to have been discussed, and not a Consent Item, so there
+    # is neither transcript nor official text worth summarizing.
+    if end - start < MIN_DISCUSSED_MS:
         return False
     return True
 

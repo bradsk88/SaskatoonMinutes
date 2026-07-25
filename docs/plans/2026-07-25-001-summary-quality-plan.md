@@ -132,13 +132,21 @@ The format change. ADR `0003`.
 - **`--check` now fails on a missing or title-echoing description.** A missing description is a violated schema contract, not a soft quality miss, so it is not allowed to slide.
 - **The Cost & Funding bleed is reproducing in the fixtures** as intended: item 10.3.1 (the 210 Pacific Avenue shelter) carries `$187K for the Shaw Centre score clock` and `$187K for complete the project`, both belonging to 10.3.2. That is R10, still open in U5.
 
-### U4 — Consent Item coverage
+### U4 — Consent Item coverage — **done**
 
 - Name the concept in `app/agenda_items.py`: `is_consent_item(item)` (inherited timestamp), `is_section_header(item)`.
 - `is_eligible_for_summary` admits Consent Items, still rejects Section Headers (R5, R6).
 - Consent branch of the prompt: no transcript, states the item passed on consent without individual debate, restricted `allowed_cats`.
 - Skip cleanup entirely for Consent Items — no transcript to clean.
-- **Exit check:** 39/73 items on `b71ff753` produce an ItemSummary, up from 12.
+- **Exit check:** ~~39~~ **29**/73 items on `b71ff753` produce an ItemSummary, up from 12. The 39 estimate was wrong: it counted all 27 inherited-timestamp items, but 9 are section containers or procedural and 1 is boilerplate.
+
+**What U4 turned up:**
+
+- **An inherited timestamp identifies the parent's audio, not the item's.** `_slice_transcript` was happily slicing on it, which meant every Consent Item in a block would have been handed the same recording — the clerk reading the block into the record — and attributed it individually. It now refuses to slice on a borrowed timestamp. This also makes Consent Items free: no transcript, no cleanup.
+- **`"consent agenda"` was already a procedural keyword**, so the `8. CONSENT AGENDA` container excluded itself. Containers `8.1`–`8.5` fall out on having no recommendation and no content. That made a per-item predicate possible with no parent/child tree.
+- **One item is genuinely not summarizable.** `8.1.3 Update on the Office of the Matriarchs and Coming Home Centre` has `"That the report be received as information."` plus a note that a letter of support exists. Council resolved nothing and there is no transcript, so every description was the title restated — correctly, since there was nothing else to say. Rather than accept the echo, the item now gets no summary: `is_consent_item` requires a non-boilerplate recommendation. The boilerplate detector deleted in U3 came back for this, as an *eligibility* test rather than a way to fabricate a description.
+- **The description echo test was a chip heuristic.** `is_title_echo` fires on verbatim containment, which for a description just means naming its subject — "the Saskatoon Homelessness Action Plan 2026" is what the plan is called. Descriptions now use `is_description_echo`, which measures word novelty (≥50% novel) instead.
+- **The prompt now bans opening with process.** "Council received the report as information", "Council considered…" — the Outcome chip already records the verdict, so the sentence a reader actually reads must open with what changes in the city.
 
 ### U5 — Prompt and extractor quality
 

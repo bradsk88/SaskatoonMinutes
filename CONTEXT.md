@@ -22,9 +22,13 @@ Use these terms exactly. Drift creates re-litigation.
 - **Procedural Item** — an agenda item whose title matches a fixed set of ceremonial/housekeeping keywords (call to order, adjournment, roll call, adoption of minutes, etc.). Procedural items are filtered out of topic ranking and short-circuited to a fixed "Procedural item." summary.
 - **Consent Item** — an agenda item approved inside the consent-agenda block, in one motion, without individual debate. Detected by an inherited timestamp: it shares its parent section's time span because no distinct span exists for it.
 
-  A Consent Item **does** get an ItemSummary. It has substantial official recommendation text and no transcript, so its Description is derived from metadata alone and it is eligible only for Chip categories that don't require discussion. Debate Highlight, Dissenting View, and Public Sentiment are excluded **by construction**, not left for the model to decline — an item that was never discussed cannot have a debate highlight, and a prompt that offers the category invites invention.
+  A Consent Item **does** get an ItemSummary, provided its recommendation is substantive. It has no transcript, so its Description comes from official text alone, and the five **discussion-only categories** — Debate Highlight, Staff vs. Council, Unanswered Question, Public Sentiment, Dissenting View — are excluded **by construction**, not left for the model to decline. An item that was never discussed cannot have a debate highlight, and a prompt that offers the category invites invention.
 
-  Distinct from a **Section Header** — an agenda entry with no timestamp, no recommendation, and no content (`COMMITTEE REPORTS`, `ADMINISTRATIVE REPORTS`, `Standing Policy Committee on …`). Section Headers are structural containers and never get an ItemSummary.
+  A Consent Item whose recommendation is **boilerplate** ("That the report be received as information") is *not* summarizable: council resolved nothing, there is no transcript, and any description would be the title restated. It gets no ItemSummary. Length is not the signal — a 90-character "That Councillor MacDonald be appointed to the Meewasin Valley Authority" summarizes fine.
+
+  An inherited timestamp identifies the *parent's* audio, never the item's, so transcript slicing refuses it outright. Otherwise every Consent Item in a block would be handed the same recording of the clerk reading the block into the record.
+
+  Distinct from a **Section Header** — an agenda entry with no recommendation and no content, which either has no time span or borrows its parent's (`COMMITTEE REPORTS`, `ADMINISTRATIVE REPORTS`, `Standing Policy Committee on …`). Section Headers are structural containers and never get an ItemSummary.
 
 ## Architecture
 
