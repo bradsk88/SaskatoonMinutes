@@ -235,3 +235,59 @@ class TestTypedWrappers:
             '{"7":{"description":"Approves the plan.",'
             '"chips":[{"category":"Outcome","text":"Approved"}]}}'
         )
+
+
+class TestPushPreflight:
+    """GitBranchCache pushes on exit, so credential failures surface last.
+
+    Without a preflight, a backfill does all its work, spends whatever the
+    work costs, and discards everything when the temp worktree is removed.
+    """
+
+    def test_passes_when_the_remote_accepts_a_push(self, repo_with_remote):
+        from app.cache_git import GitBranchCache, verify_push_access
+
+        with GitBranchCache("summaries", "summaries") as cache:
+            cache.save("m1", {"7": []})
+        verify_push_access("summaries")  # must not raise
+
+    def test_passes_when_the_branch_does_not_exist_remotely_yet(
+        self, repo_with_remote,
+    ):
+        """The first run of a new cache creates its branch."""
+        from app.cache_git import verify_push_access
+
+        verify_push_access("clean-transcripts")  # must not raise
+
+    def test_absent_branch_is_not_confused_with_an_unreachable_remote(
+        self, repo_with_remote,
+    ):
+        """Both look like a failed fetch, but only one is safe to proceed on."""
+        from app.cache_git import PushAccessError, verify_push_access, _git
+
+        _git("remote", "set-url", "origin", "/nonexistent/remote.git")
+        with pytest.raises(PushAccessError):
+            verify_push_access("clean-transcripts")
+
+    def test_raises_when_the_remote_is_unreachable(self, repo_with_remote):
+        from app.cache_git import (
+            GitBranchCache, PushAccessError, verify_push_access, _git,
+        )
+
+        with GitBranchCache("summaries", "summaries") as cache:
+            cache.save("m1", {"7": []})
+        # Point origin at a path that cannot accept a push.
+        _git("remote", "set-url", "origin", "/nonexistent/remote.git")
+        with pytest.raises(PushAccessError):
+            verify_push_access("summaries")
+
+    def test_the_error_names_the_branch(self, repo_with_remote):
+        from app.cache_git import (
+            GitBranchCache, PushAccessError, verify_push_access, _git,
+        )
+
+        with GitBranchCache("summaries", "summaries") as cache:
+            cache.save("m1", {"7": []})
+        _git("remote", "set-url", "origin", "/nonexistent/remote.git")
+        with pytest.raises(PushAccessError, match="summaries"):
+            verify_push_access("summaries")

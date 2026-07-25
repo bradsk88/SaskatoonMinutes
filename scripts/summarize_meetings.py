@@ -37,7 +37,9 @@ os.environ.setdefault("PYTHONUNBUFFERED", "1")
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
+from app.cache_git import PushAccessError, verify_push_access
 from app.clean_transcript_cache import CleanTranscriptCache
+from app.clean_transcript_cache import CLEAN_TRANSCRIPT_BRANCH
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.item_categorizer import (
     clean_meeting_transcripts,
@@ -163,6 +165,21 @@ def main() -> None:
             "WARNING: GEMINI_API_KEY is not set — only deterministic chips "
             "will be produced (no LLM pass)."
         )
+
+    # Checked before any work: the caches push on exit, so a credential
+    # failure discovered at the end costs the whole run's tokens and
+    # discards everything it produced.
+    try:
+        for branch in ("summaries", CLEAN_TRANSCRIPT_BRANCH):
+            verify_push_access(branch)
+    except PushAccessError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        print(
+            "Run this where credentials exist — the summarize.yml workflow "
+            "has contents: write — or authenticate this shell first.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     summarized = 0
     skipped = 0

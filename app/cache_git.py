@@ -31,6 +31,51 @@ def _git(*args: str, cwd: str | None = None) -> str:
     return result.stdout.strip()
 
 
+class PushAccessError(RuntimeError):
+    """Raised when the remote will not accept a push from this environment."""
+
+
+def verify_push_access(branch: str) -> None:
+    """Fail now if we could not push *branch* later.
+
+    ``GitBranchCache`` pushes on context **exit**, so without this a long
+    run does all its work, spends whatever the work costs, and only then
+    discovers it has no credentials — losing everything it computed when
+    the temporary worktree is removed.  A dry-run push of the branch onto
+    itself is a no-op that still exercises authentication.
+
+    A branch that does not exist on the remote yet is fine — the first run
+    of a new cache creates it — but "branch absent" and "remote
+    unreachable" must not be confused, or an unauthenticated environment
+    passes the check and loses its work anyway.  They are told apart by
+    asking the remote for its heads first.
+    """
+    try:
+        heads = _git("ls-remote", "--heads", "origin", branch)
+    except RuntimeError as exc:
+        raise PushAccessError(
+            f"cannot reach origin to check push access for {branch}.\n  {exc}"
+        ) from exc
+
+    if heads.strip():
+        # Push the remote branch onto itself: a no-op that cannot be
+        # rejected as non-fast-forward, so a failure here is about access.
+        _git("fetch", "origin", f"{branch}:refs/remotes/origin/{branch}")
+        refspec = f"refs/remotes/origin/{branch}:refs/heads/{branch}"
+    else:
+        # Nothing to push onto, so dry-run creating it. --dry-run writes
+        # nothing, so this cannot actually create the branch.
+        refspec = f"HEAD:refs/heads/{branch}"
+
+    try:
+        _git("push", "--dry-run", "origin", refspec)
+    except RuntimeError as exc:
+        raise PushAccessError(
+            f"cannot push to origin/{branch} from this environment — work "
+            f"would be computed and then discarded on exit.\n  {exc}"
+        ) from exc
+
+
 class GitBranchCache:
     """A :class:`~app.cache.Cache` adapter backed by a git orphan branch.
 
