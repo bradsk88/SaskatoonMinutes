@@ -89,6 +89,7 @@ class GitBranchCache:
         self.dir_name = dir_name
         self._tmpdir: tempfile.TemporaryDirectory | None = None
         self._worktree: str | None = None
+        self._saved = False
 
     # ------------------------------------------------------------------
     # Context-manager lifecycle
@@ -102,7 +103,11 @@ class GitBranchCache:
     def __exit__(self, exc_type, exc, tb) -> None:
         push_exc: Exception | None = None
         try:
-            if self._has_commits():
+            # A session that saved nothing has nothing of its own to push.
+            # Pushing anyway makes every read-only consumer require write
+            # credentials — a fixture builder that only reads transcripts
+            # would fail at exit having done its work correctly.
+            if self._saved and self._has_commits():
                 self._push_branch()
         except RuntimeError as e:
             push_exc = e
@@ -141,6 +146,7 @@ class GitBranchCache:
             f"Add {self.dir_name} for {key}",
             cwd=self._worktree,
         )
+        self._saved = True
 
     # ------------------------------------------------------------------
     # Internals

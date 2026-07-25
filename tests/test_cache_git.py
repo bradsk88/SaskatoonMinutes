@@ -118,6 +118,18 @@ class TestGitBranchCacheLifecycle:
         )
         assert result.returncode != 0
 
+    def test_a_read_only_session_does_not_push(self, repo_with_remote, monkeypatch):
+        """Reading an existing branch must not require write credentials."""
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("k1", {"x": 1})
+
+        def _refuse(self):
+            raise AssertionError("pushed after a read-only session")
+
+        monkeypatch.setattr(GitBranchCache, "_push_branch", _refuse)
+        with GitBranchCache("test-cache", "data") as c:
+            assert c.load("k1") == {"x": 1}
+
     def test_worktree_cleaned_up_on_push_failure(
         self, repo_with_remote, monkeypatch,
     ):
