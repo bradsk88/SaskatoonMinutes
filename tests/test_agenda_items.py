@@ -48,6 +48,38 @@ class TestFormatOutcome:
     def test_unknown_passthrough(self):
         assert format_outcome("SOME OTHER THING", "") == "SOME OTHER THING"
 
+    # ── Public-hearing first readings ──
+
+    def test_consider_bylaw_is_not_an_approval(self):
+        """The vote is on first reading; the application is not decided."""
+        result = format_outcome(
+            "CARRIED UNANIMOUSLY (10 to 0)",
+            "That City Council consider Bylaw No. 10169.",
+        )
+        assert result == "First reading passed (10-0)"
+
+    def test_spelled_out_first_reading_motion(self):
+        result = format_outcome(
+            "CARRIED UNANIMOUSLY",
+            "That Bylaw No. 10169 be given first reading.",
+        )
+        assert result == "First reading passed"
+
+    def test_a_defeated_first_reading_is_still_defeated(self):
+        """The vote outcome outranks what the motion was for."""
+        result = format_outcome(
+            "DEFEATED (4 to 7)",
+            "That City Council consider Bylaw No. 10169.",
+        )
+        assert result == "Defeated (4-7)"
+
+    def test_an_ordinary_bylaw_approval_is_unaffected(self):
+        result = format_outcome(
+            "CARRIED UNANIMOUSLY",
+            "That Bylaw No. 9999 be approved.",
+        )
+        assert result == "Approved"
+
     # ── Deferral regression tests ──
 
     def test_carried_but_motion_to_defer(self):

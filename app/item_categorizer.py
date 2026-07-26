@@ -791,6 +791,22 @@ def _build_prompt(
             "something Council did. Write what the committee is "
             "recommending, in future or conditional voice.",
         ])
+    elif outcome.startswith("First reading passed"):
+        # Same failure as the committee case, one step earlier: the vote
+        # on record is the motion to put the bylaw before council, not the
+        # decision on the application.  Told only "Approved", the model
+        # wrote "City Council denied a rezoning request" beneath it —
+        # picking the transcript over the label, and contradicting the
+        # Outcome chip in the same summary.
+        lines.extend([
+            "",
+            "IMPORTANT: this is a PUBLIC HEARING item. The recorded vote "
+            "gave the bylaw FIRST READING — it put the matter before "
+            "council so the hearing could be held. Council has NOT decided "
+            "the application here. Do not write that it was approved, "
+            "denied, passed, or rejected, even if the discussion points "
+            "one way. Describe what is proposed and what was heard.",
+        ])
     elif outcome and outcome != "Discussed":
         lines.extend([
             "",

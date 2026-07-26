@@ -95,6 +95,15 @@ def is_consent_item(item: dict) -> bool:
     return bool(rec) and not is_boilerplate_recommendation(rec)
 
 
+# "That City Council consider Bylaw No. 10169" is the standing form of a
+# public-hearing recommendation, and the clerk's own note calls the vote
+# on it first reading.  "That Bylaw No. X be given first reading" is the
+# same motion written out.
+_FIRST_READING_RE = re.compile(
+    r"\bCONSIDER\s+BYLAW\b|\bFIRST\s+READING\b",
+)
+
+
 def format_outcome(vote_result: str, recommendation: str) -> str:
     """Convert raw vote result + recommendation into a short outcome label."""
     if not vote_result and not recommendation:
@@ -129,6 +138,18 @@ def format_outcome(vote_result: str, recommendation: str) -> str:
     # "That the information be received" is council declining to decide.
     if re.search(r"\bBE\s+(?:RECEIVED|NOTED|FILED)\b", rec_upper):
         return "Received as information"
+    # A public-hearing item's recorded vote is on FIRST READING -- the
+    # motion that puts the bylaw in front of council so the hearing can
+    # happen.  Whether the rezoning passes is decided by later readings,
+    # which eSCRIBE records elsewhere or not at all.  Labelling that vote
+    # "Approved" tells a resident the application succeeded when the
+    # record does not say so: on the 2026-04-29 hearing, "Approved" sat
+    # above a description reporting that council denied the application.
+    #
+    # A third of the eval fixtures are these, because a public-hearing
+    # agenda is almost entirely bylaws.
+    if _FIRST_READING_RE.search(rec_upper):
+        return f"First reading passed{tally}"
     if "UNANIMOUSLY" in upper:
         return "Approved"
     if "CARRIED" in upper:

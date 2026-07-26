@@ -1157,6 +1157,40 @@ class TestCommitteeAttributionGuard:
         assert "do NOT restate it in the description" in prompt
 
 
+class TestPublicHearingGuard:
+    """First reading puts the bylaw before council; it decides nothing."""
+
+    def _hearing_item(self) -> dict:
+        item = _summary_item(20, "Proposed Rezoning - 1401 11th Street West")
+        item["recommendation"] = "That City Council consider Bylaw No. 10169."
+        item["vote_result"] = "CARRIED UNANIMOUSLY (10 to 0)"
+        return item
+
+    def test_the_outcome_chip_does_not_claim_approval(self):
+        chips = _extract_outcome(self._hearing_item())
+        assert chips == [
+            {"category": "Outcome", "text": "First reading passed (10-0)"}
+        ]
+
+    def test_the_prompt_forbids_asserting_a_decision(self):
+        """The model wrote "City Council denied a rezoning request" under an
+        Outcome chip reading "Approved" — a summary contradicting itself."""
+        prompt = _build_prompt(self._hearing_item(), "", ["Who's Affected"])
+        assert "this is a PUBLIC HEARING item" in prompt
+        assert "Council has NOT decided the application here" in prompt
+
+    def test_the_hearing_guard_replaces_the_decision_line(self):
+        prompt = _build_prompt(self._hearing_item(), "", ["Who's Affected"])
+        assert "This body's decision:" not in prompt
+
+    def test_an_ordinary_council_item_is_unaffected(self):
+        item = _summary_item(21, "Shaw Centre Score Clock")
+        item["recommendation"] = "That City Council approve an increase of $187,000."
+        item["vote_result"] = "CARRIED UNANIMOUSLY"
+        prompt = _build_prompt(item, "", ["Who's Affected"])
+        assert "PUBLIC HEARING item" not in prompt
+
+
 class TestOneChipPerCategory:
     def test_a_second_chip_in_the_same_category_is_dropped(self):
         parsed = [
