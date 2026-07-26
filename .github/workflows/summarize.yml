@@ -21,9 +21,9 @@ on:
         required: false
         default: false
       since:
-        description: 'Only meetings on or after this date (backfill: 2024-11-01)'
+        description: 'Only meetings on or after this date. Set an older date to reach the archive.'
         required: false
-        default: ''
+        default: '2024-11-01'
       pages:
         description: 'Pages of past meetings to walk per tab'
         required: false
@@ -39,11 +39,12 @@ permissions:
 jobs:
   summarize:
     runs-on: ubuntu-latest
-    # The current-term backfill is ~226 meetings and will not fit in one
-    # run.  That is fine: a meeting whose summaries are already in the
-    # current format is skipped, so dispatching repeatedly walks forward
-    # instead of redoing the last batch.  Leave `force` off for the
-    # backfill -- it turns that skip off and the run stops converging.
+    # The current term is ~227 meetings and will not fit in one run.
+    # That is fine, and needs no manual backfill: a meeting whose
+    # summaries are already in the current format is skipped, so the
+    # scheduled run walks forward two meetings per tab per day and covers
+    # the term in about ten days.  Leave `force` off -- it turns that
+    # skip off and the run stops converging.
     timeout-minutes: 350
 
     steps:
@@ -72,7 +73,13 @@ jobs:
           LIMIT="${{ inputs.limit || '2' }}"
           TABS="${{ inputs.tabs || '' }}"
 
-          SINCE="${{ inputs.since || '' }}"
+          # Defaulted, not left empty.  The scheduled run passes no
+          # inputs, and every cached summary in the archive predates the
+          # ItemSummary aggregate -- so an empty --since would have the
+          # daily job walk backwards through ~429 pre-term meetings that
+          # are meant to keep their Legacy summaries.  A dispatch can
+          # still reach further back by setting `since` explicitly.
+          SINCE="${{ inputs.since || '2024-11-01' }}"
           PAGES="${{ inputs.pages || '1' }}"
 
           ARGS="--limit $LIMIT --pages $PAGES"
