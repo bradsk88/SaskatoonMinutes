@@ -3,6 +3,7 @@ import pytest
 from app.escribe import (
     _clean_html,
     _extract_bookmarks,
+    _extract_meeting_info,
     _extract_minutes,
     _extract_recommendations,
     _extract_votes,
@@ -431,3 +432,139 @@ class TestInsertRecesses:
         recess = [i for i in result if i.title == "Recess"][0]
         d = recess.to_dict()
         assert d.get("is_recess") is True
+
+
+# ── _extract_meeting_info ────────────────────────────────────────────
+
+
+class TestExtractMeetingInfo:
+    """A detail page has to say which meeting it is showing.
+
+    Every page used to read "City Council Meeting", including the ones
+    for committees that are not council.
+    """
+
+    HEADER = (
+        "<HEADER class='AgendaHeader'>"
+        "<H1 Id='AgendaHeaderTitle' class='AgendaHeaderTitle'>"
+        "PUBLIC AGENDA<br/>MUNICIPAL HERITAGE ADVISORY COMMITTEE</H1>"
+        "<DIV class='AgendaTimeContainer'>"
+        "<SPAN><TIME datetime='2025-06-17 11:30'></TIME></SPAN>"
+        "<SPAN><TIME datetime='13:30'></TIME></SPAN>"
+        "</DIV></HEADER>"
+    )
+
+    def test_reads_the_body_from_the_agenda_header(self):
+        name, _, _ = _extract_meeting_info(self.HEADER)
+        assert name == "Municipal Heritage Advisory Committee"
+
+    def test_drops_the_agenda_kind_line(self):
+        """"PUBLIC AGENDA" is the kind of document, not the body."""
+        name, _, _ = _extract_meeting_info(self.HEADER)
+        assert "Public Agenda" not in name
+
+    def _name(self, heading: str) -> str:
+        return _extract_meeting_info(
+            f"<h1 Id='AgendaHeaderTitle'>{heading}</h1>"
+        )[0]
+
+    def test_a_name_wrapped_across_lines_is_kept_whole(self):
+        """The heading is hard-wrapped at the template's width.
+
+        Keeping only the last line turned the transportation committee
+        into "On Transportation" on twenty pages.
+        """
+        assert self._name(
+            "PUBLIC AGENDA <br/>STANDING POLICY COMMITTEE<br/>ON TRANSPORTATION"
+        ) == "Standing Policy Committee on Transportation"
+
+    def test_a_name_wrapped_across_three_lines(self):
+        assert self._name(
+            "PUBLIC AGENDA<br/>STANDING POLICY COMMITTEE<br/>"
+            "ON ENVIRONMENT, UTILITIES<br/>AND CORPORATE SERVICES"
+        ) == "Standing Policy Committee on Environment, Utilities and Corporate Services"
+
+    def test_a_revised_agenda_names_the_same_body(self):
+        """Otherwise one committee appears under two names.
+
+        Eleven transportation meetings read "Revised Public Agenda
+        Standing Policy Committee on Transportation" while nine read the
+        real name, splitting one body in the index.
+        """
+        assert self._name(
+            "REVISED PUBLIC AGENDA<br/>STANDING POLICY COMMITTEE<br/>ON TRANSPORTATION"
+        ) == self._name(
+            "PUBLIC AGENDA<br/>STANDING POLICY COMMITTEE<br/>ON TRANSPORTATION"
+        )
+
+    def test_public_meeting_is_a_document_kind_line(self):
+        assert self._name(
+            "REVISED AGENDA<br/>PUBLIC MEETING<br/>STANDING POLICY COMMITTEE<br/>"
+            "ON ENVIRONMENT, UTILITIES<br/>AND CORPORATE SERVICES"
+        ) == "Standing Policy Committee on Environment, Utilities and Corporate Services"
+
+    def test_the_name_stops_before_the_sittings_logistics(self):
+        """A budget heading runs on into its dates and recess plan."""
+        assert self._name(
+            "AGENDA<br/>CITY COUNCIL - 2021 PRELIMINARY<br/>"
+            "CORPORATE BUSINESS PLAN AND BUDGET<br/>"
+            "December 2 and 3, 2020 at 1:00 p.m.<br/>"
+            "[Recesses called at approximately 3 p.m., 5:30 p.m., and 8 p.m.]"
+        ) == "City Council - 2021 Preliminary Corporate Business Plan and Budget"
+
+    def test_a_year_in_the_name_is_not_mistaken_for_a_date(self):
+        assert self._name("AGENDA<br/>CITY COUNCIL - 2021 PRELIMINARY BUDGET") == (
+            "City Council - 2021 Preliminary Budget"
+        )
+
+    def test_a_body_whose_name_contains_meeting_survives(self):
+        assert self._name("PUBLIC AGENDA<br/>PUBLIC HEARING MEETING OF CITY COUNCIL") == (
+            "Public Hearing Meeting of City Council"
+        )
+
+    def test_minutes_is_also_a_document_kind(self):
+        assert self._name("MINUTES<br/>BOARD OF POLICE COMMISSIONERS") == (
+            "Board of Police Commissioners"
+        )
+
+    def test_a_heading_with_only_a_document_kind_names_nothing(self):
+        assert self._name("PUBLIC AGENDA") == ""
+
+    def test_a_body_named_like_a_document_kind_is_not_swallowed(self):
+        """Only a line that is *exactly* the kind is dropped."""
+        assert self._name("PUBLIC AGENDA<br/>AGENDA REVIEW COMMITTEE") == (
+            "Agenda Review Committee"
+        )
+
+    def test_reads_the_start_date_and_time(self):
+        _, date, start = _extract_meeting_info(self.HEADER)
+        assert date == "2025-06-17"
+        assert start == "11:30"
+
+    def test_ignores_the_end_time_which_carries_no_date(self):
+        """The second <time> is the end; matching it would lose the date."""
+        _, date, start = _extract_meeting_info(
+            "<TIME datetime='13:30'></TIME>" + self.HEADER
+        )
+        assert date == "2025-06-17"
+        assert start == "11:30"
+
+    def test_falls_back_to_the_page_title(self):
+        html = "<html><head><title>\n\tCITY COUNCIL - June 17, 2025\n</title></head></html>"
+        name, _, _ = _extract_meeting_info(html)
+        assert name == "City Council"
+
+    def test_page_title_fallback_drops_the_trailing_date(self):
+        html = "<title>BOARD OF POLICE COMMISSIONERS - January 5, 2026</title>"
+        name, _, _ = _extract_meeting_info(html)
+        assert name == "Board of Police Commissioners"
+
+    def test_unnamed_meeting_returns_empty_rather_than_a_guess(self):
+        """Naming the wrong body is worse than naming none."""
+        name, date, start = _extract_meeting_info("<html><body>nothing</body></html>")
+        assert (name, date, start) == ("", "", "")
+
+    def test_date_without_a_time_still_reads(self):
+        _, date, start = _extract_meeting_info("<TIME datetime='2025-06-17'></TIME>")
+        assert date == "2025-06-17"
+        assert start == ""

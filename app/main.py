@@ -9,6 +9,7 @@ import os
 from flask import Flask, current_app, render_template, jsonify, request
 from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
+from app.agenda_items import count_agenda_items
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS, _SLUG_TO_TYPE
@@ -85,6 +86,14 @@ def api_meeting_detail(meeting_id: str):
         return jsonify({
             "agenda_items": items,
             "video_url": detail.video_url,
+            "title": detail.title,
+            "date": detail.date,
+            "start_time": detail.start_time,
+            # The same count the index card subtracts from, so "38 other
+            # items" and the header agree. Counting the rendered rows
+            # instead would include recesses and section headers and make
+            # the card look like it had lost thirty items.
+            "item_count": count_agenda_items(items),
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -102,7 +111,14 @@ def api_meeting_topics(meeting_id: str):
         detail = _source().load_detail(meeting_id)
         items = [item.to_dict() for item in detail.agenda_items]
         topics = extract_meeting_topics(items, title, max_topics=8)
-        return jsonify({"meeting_id": meeting_id, "topics": topics})
+        return jsonify({
+            "meeting_id": meeting_id,
+            "topics": topics,
+            # The card shows a few topics and says how many items it is
+            # not showing. That count has to come from the agenda, since
+            # topics are the ranked few rather than the whole meeting.
+            "total_items": count_agenda_items(items),
+        })
     except (ConnectionError, SSLError):
         return jsonify({"error": _CONNECTION_ERROR_MSG}), 502
     except Exception as e:

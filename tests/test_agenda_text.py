@@ -4,6 +4,7 @@ from app.agenda_text import (
     clean_entities,
     format_money,
     plainify,
+    titleize,
     trim_to_chip,
 )
 
@@ -108,3 +109,39 @@ class TestTrimToChip:
 
     def test_empty(self):
         assert trim_to_chip("") == ""
+
+
+# ── titleize ─────────────────────────────────────────────────────────
+
+
+class TestTitleize:
+    def test_shouted_name_becomes_readable(self):
+        assert titleize("MUNICIPAL HERITAGE ADVISORY COMMITTEE") == (
+            "Municipal Heritage Advisory Committee"
+        )
+
+    def test_joining_words_stay_lowercase(self):
+        assert titleize("BOARD OF POLICE COMMISSIONERS") == (
+            "Board of Police Commissioners"
+        )
+
+    def test_a_leading_joining_word_is_still_capitalized(self):
+        assert titleize("THE COMMITTEE") == "The Committee"
+
+    def test_mixed_case_is_left_alone(self):
+        """Anything not shouted was written that way deliberately."""
+        assert titleize("Standing Policy Committee on Transportation") == (
+            "Standing Policy Committee on Transportation"
+        )
+
+    def test_hyphenated_words_capitalize_both_parts(self):
+        assert titleize("PUBLIC-HEARING COMMITTEE") == "Public-Hearing Committee"
+
+    def test_digits_and_punctuation_survive(self):
+        assert titleize("WARD 3 COMMITTEE (SPECIAL)") == "Ward 3 Committee (Special)"
+
+    def test_empty_string(self):
+        assert titleize("") == ""
+
+    def test_entities_and_whitespace_are_cleaned(self):
+        assert titleize("PARKS &amp;  RECREATION") == "Parks & Recreation"

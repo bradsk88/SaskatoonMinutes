@@ -135,3 +135,38 @@ class TestFixtureEscribeTransportMissing:
         t = FixtureEscribeTransport(tmp_path)
         with pytest.raises(FileNotFoundError):
             t.fetch_agenda_html("nope")
+
+
+class TestMeetingDetailCarriesItsIdentity:
+    """A detail page has to name the meeting it is showing.
+
+    It is reachable from a bookmark or a search result, with no card
+    behind it to say what was clicked.  The identity is read from the
+    agenda HTML the source already fetches, so it costs no extra request.
+    """
+
+    def _detail(self):
+        src = EscribeMeetingSource(FixtureEscribeTransport(FIXTURES))
+        return src.load_detail("abc-001")
+
+    def test_detail_carries_the_body_that_met(self):
+        assert self._detail().title == (
+            "Standing Policy Committee on Transportation"
+        )
+
+    def test_detail_carries_the_date_and_start_time(self):
+        detail = self._detail()
+        assert detail.date == "2025-06-17"
+        assert detail.start_time == "09:30"
+
+    def test_identity_survives_serialization(self):
+        """The page reads these off the JSON, not the dataclass."""
+        d = self._detail().to_dict()
+        assert d["title"] == "Standing Policy Committee on Transportation"
+        assert d["date"] == "2025-06-17"
+        assert d["start_time"] == "09:30"
+
+    def test_an_unidentifiable_meeting_has_empty_identity(self):
+        """Empty means unknown. It never falls back to naming council."""
+        detail = MeetingDetail()
+        assert (detail.title, detail.date, detail.start_time) == ("", "", "")

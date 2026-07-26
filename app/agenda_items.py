@@ -69,6 +69,22 @@ def is_section_header(item: dict) -> bool:
     return item.get("time_start_ms") is None or bool(item.get("timestamp_inherited"))
 
 
+def count_agenda_items(items: list[dict]) -> int:
+    """How many real agenda items a meeting has.
+
+    What "N other items" on an index card counts.  Recesses and Section
+    Headers are excluded: a reader counting the meeting's business does
+    not count the break or the heading above the business.  Procedural
+    items *are* counted — the roll call is on the agenda and appears on
+    the detail page, so leaving it out would make the number disagree
+    with the page it points at.
+    """
+    return sum(
+        1 for item in items
+        if not item.get("is_recess") and not is_section_header(item)
+    )
+
+
 def is_consent_item(item: dict) -> bool:
     """True when the item passed in the consent block without individual debate.
 

@@ -12,9 +12,11 @@ Usage:
 
 import json
 import os
+import re
 import shutil
 import sys
 import time
+from datetime import datetime
 
 # Ensure the project root is on the path so we can import app.*
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +25,8 @@ sys.path.insert(0, PROJECT_ROOT)
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
+from app.agenda_items import count_agenda_items
+from app.agenda_text import titleize
 from app.summarizer import extract_meeting_topics, extract_badges
 from app.transcriber import correct_timestamps
 from app.transcript_cache import TranscriptCache
@@ -60,6 +64,26 @@ def _extract_block(name, text):
     after_open = start + len(open_tag)
     end = text.find("{% endblock %}", after_open)
     return text[after_open:end].strip()
+
+
+_START_TIME_RE = re.compile(r"@\s*(\d{1,2}):(\d{2})\s*([AaPp])\.?[Mm]")
+
+
+def _start_time_24h(formatted: str) -> str:
+    """"Wednesday, 24 June 2026 @ 9:30 AM" -> "09:30"; "" when absent.
+
+    A council agenda page's ``<time>`` element carries a date and no
+    clock time, while a committee page carries both.  The meetings list
+    has the time for all of them, so it fills the gap rather than
+    leaving council meetings the only ones that cannot say when they sat.
+    """
+    match = _START_TIME_RE.search(formatted or "")
+    if not match:
+        return ""
+    hour = int(match.group(1)) % 12
+    if match.group(3).lower() == "p":
+        hour += 12
+    return f"{hour:02d}:{match.group(2)}"
 
 
 def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache, summaries_cache):
@@ -101,15 +125,40 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                     item["summary"]["is_legacy"] = summary.is_legacy
 
             topics = extract_meeting_topics(items, m.title, max_topics=8)
-            topics_data[mid] = topics
+            topics_data[mid] = {
+                "topics": topics,
+                "total_items": count_agenda_items(items),
+            }
             details_data[mid] = {
                 "agenda_items": items,
                 "video_url": detail.video_url,
+                # Identity comes from the agenda page, but the meetings
+                # list is the better source when it has one: it is where
+                # the tab label and the card date already come from.
+                # titleize the fallback too: the meetings list writes
+                # names in full caps, and a page heading that shouts on
+                # some meetings and not others looks broken.
+                "title": detail.title or titleize(m.title),
+                "date": detail.date or m.date,
+                "start_time": detail.start_time or _start_time_24h(m.start_time),
+                # Shared with the index card's "N other items" so the two
+                # pages report the same meeting size.
+                "item_count": count_agenda_items(items),
             }
         except Exception as exc:
             print(f"    WARNING: Failed to get topics: {exc}")
-            topics_data[mid] = []
-            details_data[mid] = {"agenda_items": [], "video_url": None}
+            topics_data[mid] = {"topics": [], "total_items": 0}
+            # A meeting whose agenda could not be fetched still gets its
+            # name and date from the list, so the page says which meeting
+            # failed rather than failing anonymously.
+            details_data[mid] = {
+                "agenda_items": [],
+                "video_url": None,
+                "title": titleize(m.title),
+                "date": m.date,
+                "start_time": _start_time_24h(m.start_time),
+                "item_count": 0,
+            }
     return topics_data, details_data
 
 
@@ -236,6 +285,14 @@ def render_index_html(all_tabs_meetings, topics_data):
     return output
 
 
+def _readable_date(iso: str) -> str:
+    """"2025-06-17" -> "June 17, 2025"; anything unparseable comes back as-is."""
+    try:
+        return datetime.strptime(iso, "%Y-%m-%d").strftime("%B %-d, %Y")
+    except (ValueError, TypeError):
+        return iso or ""
+
+
 def render_meeting_html(meeting_id, detail_data):
     """Render a static meeting detail page with preloaded agenda data."""
     with open(os.path.join(TEMPLATE_DIR, "base.html")) as f:
@@ -243,10 +300,20 @@ def render_meeting_html(meeting_id, detail_data):
     with open(os.path.join(TEMPLATE_DIR, "meeting.html")) as f:
         meeting = f.read()
 
-    title_block = (
-        _extract_block("title", meeting)
-        or "Meeting Details - YXEMinutes"
-    )
+    # A static page's <title> is what a bookmark, a browser tab and a
+    # shared link show, and none of those have the card that was clicked.
+    # It names the meeting when the meeting is known.
+    name = (detail_data.get("title") or "").strip()
+    date = _readable_date(detail_data.get("date") or "")
+    if name and date:
+        title_block = f"{name}, {date} - YXEMinutes"
+    elif name:
+        title_block = f"{name} - YXEMinutes"
+    else:
+        title_block = (
+            _extract_block("title", meeting)
+            or "Meeting Details - YXEMinutes"
+        )
     content_block = _extract_block("content", meeting)
 
     # Scripts block

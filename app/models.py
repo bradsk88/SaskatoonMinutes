@@ -65,15 +65,31 @@ class Meeting:
 
 @dataclass
 class MeetingDetail:
-    """The full per-meeting payload: agenda items + the bookmarked video URL."""
+    """The full per-meeting payload: agenda items, video URL, and identity.
+
+    ``title``/``date``/``start_time`` are the meeting's own identity — the
+    body that met and when.  They live here because a detail page has to
+    be readable on its own: arriving from a search result or a bookmark,
+    a reader has no card to tell them what they are looking at.
+
+    They are empty when the upstream page does not carry them.  Empty
+    means unknown and is rendered as such; the page does not fall back to
+    naming a body that may not have met.
+    """
 
     agenda_items: list[AgendaItem] = field(default_factory=list)
     video_url: str | None = None
+    title: str = ""
+    date: str = ""  # ISO date string
+    start_time: str = ""  # 24-hour "HH:MM"
 
     def to_dict(self) -> dict:
         return {
             "agenda_items": [i.to_dict() for i in self.agenda_items],
             "video_url": self.video_url,
+            "title": self.title,
+            "date": self.date,
+            "start_time": self.start_time,
         }
 
 

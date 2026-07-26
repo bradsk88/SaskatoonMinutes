@@ -19,6 +19,36 @@ def clean_entities(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+_TITLEIZE_LOWERCASE = {
+    "a", "an", "and", "at", "for", "in", "of", "on", "the", "to",
+}
+
+
+def titleize(text: str) -> str:
+    """Make a SHOUTED upstream name readable, leaving other text alone.
+
+    eSCRIBE writes body names in full caps ("MUNICIPAL HERITAGE ADVISORY
+    COMMITTEE").  A page heading is not a place to shout at a reader.
+
+    Only fully-uppercase input is touched: anything already mixed-case was
+    written that way deliberately, and re-casing it would be this function
+    guessing.  Acronyms in an otherwise-shouted name are lost — "SPC" is
+    not distinguishable from "SPCA" without a word list this module has
+    no business owning.
+    """
+    cleaned = clean_entities(text)
+    if not cleaned or cleaned != cleaned.upper():
+        return cleaned
+
+    def cap(match: re.Match) -> str:
+        word = match.group(0).lower()
+        if match.start() > 0 and word in _TITLEIZE_LOWERCASE:
+            return word
+        return word[:1].upper() + word[1:]
+
+    return re.sub(r"[A-Za-z][A-Za-z']*", cap, cleaned)
+
+
 def format_money(raw: str) -> str:
     """Convert a raw dollar match like '$1,500,000' into '$1.5M'."""
     if re.search(r'(million|billion)', raw, re.IGNORECASE):

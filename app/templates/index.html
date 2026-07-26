@@ -22,6 +22,12 @@
         <span class="filter-label">Filter:</span>
         <div class="filter-chips" id="filter-chips"></div>
         <button class="filter-clear" id="filter-clear" style="display:none;">Clear</button>
+        <!-- The filter hides rows in the meetings already loaded below;
+             it does not search the archive. Saying so beats a filter that
+             quietly reports "nothing found" for a term with real hits. -->
+        <p class="filter-scope-note" id="filter-scope-note" style="display:none;">
+            Filters the meetings loaded so far. Scroll to load more.
+        </p>
     </div>
 </section>
 
@@ -58,23 +64,9 @@
         { label: 'Environment', slug: 'cat-environment' },
     ];
 
-    // Short labels shown inside compact mobile badges (tap to expand)
-    const CATEGORY_ICONS = {
-        'cat-homelessness': 'H',
-        'cat-housing': 'Ho',
-        'cat-active-transport': 'AT',
-        'cat-transit': 'Tr',
-        'cat-traffic': 'Tf',
-        'cat-greenspace': 'G',
-        'cat-small-business': 'SB',
-        'cat-infrastructure': 'In',
-        'cat-public-safety': 'PS',
-        'cat-recreation': 'R',
-        'cat-zoning-dev': 'ZD',
-        'cat-property-tax': 'PT',
-        'cat-arts-culture': 'AC',
-        'cat-environment': 'En',
-    };
+    // Topics shown on a card. The card exists to get a reader into the
+    // right meeting, not to list it — the rest are behind "N other items".
+    const CARD_TOPICS = 5;
 
     const selectedCategories = new Set();
 
@@ -160,9 +152,14 @@
         </div>`;
     }
 
+    // Used for both attribute values and text nodes, so it escapes the
+    // full set rather than the attribute-only subset. The meeting titles
+    // it runs over are upstream eSCRIBE strings.
     function escapeAttr(str) {
-        return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-                  .replace(/'/g, '&#39;').replace(/</g, '&lt;');
+        if (str == null) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                  .replace(/'/g, '&#39;').replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;');
     }
 
     function outcomeClass(topic) {
@@ -174,60 +171,44 @@
     }
 
     function renderTopicsTable(topics, openHref) {
+        // The card carries the outcome and nothing else. Category, money,
+        // person and chip badges live on the detail page: the index is
+        // read to decide what to open, and a badge whose claim only
+        // appears on hover says nothing at all on a phone.
         let html = '<table class="topics-table"><tbody>';
         topics.forEach(t => {
             let rowClass = '';
             if (t.is_consent) rowClass += ' topic-consent';
             const oClass = outcomeClass(t);
-            const tooltipText = t.outcome_detail
-                ? (t.outcome && t.outcome.startsWith('Approved')
-                    ? 'Approved: ' + t.outcome_detail
-                    : t.outcome_detail)
-                : '';
-            const tooltip = tooltipText
-                ? ` data-tooltip="${escapeAttr(tooltipText)}"` : '';
 
-            // Collect category slugs for this topic row
+            // Kept on the row for the category filter, which reads the
+            // data attribute rather than anything drawn.
             const catSlugs = (t.badges || [])
                 .filter(b => b.type.startsWith('cat-'))
                 .map(b => b.type);
 
-            // Outcome + category badges on the first line
-            let primaryBadgesHtml = t.is_consent
-                ? `<span class="badge topic-badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`
-                : `<span class="badge topic-badge badge-${oClass}"${tooltip}>${escapeAttr(t.outcome)}</span>`;
+            const outcomeHtml = t.is_consent
+                ? `<span class="badge topic-badge badge-consent">Not discussed</span>`
+                : `<span class="badge topic-badge badge-${oClass}">${escapeAttr(t.outcome)}</span>`;
 
-            // Detail badges (money, person, location) on a second line
-            let detailBadgesHtml = '';
-            if (t.badges) {
-                t.badges.forEach(b => {
-                    const tip = b.tooltip
-                        ? ` data-tooltip="${escapeAttr(b.tooltip)}"` : '';
-                    if (b.type === 'chip') {
-                        // A chip badge names what the summary found — the
-                        // full sentence is the tooltip, since a card has
-                        // room for the category and not the claim.
-                        detailBadgesHtml += ` <span class="badge topic-badge chip-${escapeAttr(b.chip_group || 'context')}"${tip}>${escapeAttr(b.label)}</span>`;
-                        return;
-                    }
-                    const icon = CATEGORY_ICONS[b.type];
-                    if (icon) {
-                        primaryBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}"${tip}>${escapeAttr(b.label)}</span>`;
-                    } else {
-                        detailBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}"${tip}>${escapeAttr(b.label)}</span>`;
-                    }
-                });
-            }
-
-            // Play button for topics with video timestamps
+            // Play button for topics with video timestamps. A consent
+            // item's timestamp is inherited from its parent section, so
+            // it identifies the clerk reading the block into the record
+            // and never the item — the detail page already refuses it,
+            // and offering it here sent readers to the wrong audio.
             let playHtml = '';
-            if (openHref && t.time_start_ms != null) {
+            if (openHref && t.time_start_ms != null && !t.is_consent) {
                 playHtml = `<a href="${openHref}?t=${t.time_start_ms}" class="topic-play-link" title="Play video at this topic" aria-label="Play"></a>`;
             }
 
-            // Link to the agenda item on the detail page
+            // Link to the agenda item on the detail page. Same reason as
+            // above: a consent item's inherited timestamp would seek the
+            // video to its parent and scroll to whichever item shares
+            // that span, so the link goes to the meeting instead.
+            // Linking a consent item properly needs an anchor that does
+            // not depend on video position -- see TODO item 7.
             let detailHref = openHref || '';
-            if (detailHref && t.time_start_ms != null) {
+            if (detailHref && t.time_start_ms != null && !t.is_consent) {
                 detailHref += `?t=${t.time_start_ms}`;
             }
 
@@ -239,7 +220,7 @@
             } else {
                 html += `<div class="topic-content">`;
             }
-            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span></div>`;
+            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${outcomeHtml}</div>`;
             if (t.summary) {
                 // A summary that is not the written Description is raw
                 // agenda text clipped at 120 characters. It is marked so
@@ -247,13 +228,11 @@
                 const summaryClass = t.summary_is_description
                     ? 'topic-summary'
                     : 'topic-summary topic-summary-raw';
-                const summaryTip = t.summary_is_description
+                const rawNote = t.summary_is_description
                     ? ''
-                    : ' data-tooltip="Older summary — no plain-language description available."';
-                html += `<div class="${summaryClass}"${summaryTip}>${escapeAttr(t.summary)}</div>`;
+                    : `<span class="topic-summary-note">Older summary — no plain-language description available.</span>`;
+                html += `<div class="${summaryClass}">${escapeAttr(t.summary)}${rawNote}</div>`;
             }
-            html += `<div class="topic-badges">${primaryBadgesHtml}</div>`;
-            if (detailBadgesHtml) html += `<div class="topic-badges">${detailBadgesHtml}</div>`;
             html += detailHref ? `</a>` : `</div>`;
             if (playHtml) html += playHtml;
             html += `</div>`;
@@ -291,48 +270,68 @@
             : '';
         const topicsHtml = m.is_cancelled
             ? ''
-            : `<div class="meeting-topics" id="topics-${m.meeting_id}">${topicsSkeleton()}</div>`;
-        const actionsHtml = m.is_cancelled
-            ? ''
-            : `<div class="meeting-card-actions"><a href="${openHref}" class="btn btn-sm btn-open">Open</a></div>`;
+            : `<div class="meeting-topics" id="topics-${escapeAttr(m.meeting_id)}">${topicsSkeleton()}</div>`;
+        // The footer that used to hold a lone Open button is now built
+        // with the topics, so it can say how many items are not shown.
         return `
-            <div class="meeting-date">${dateStr}${time ? ` &middot; ${time}` : ''}${cancelledBadge}${noVideoBadge}</div>
-            <div class="meeting-title">${cardTitle}</div>
-            <div class="meeting-meta">
-                <span class="meeting-categories" id="cats-${m.meeting_id}"></span>
-            </div>
+            <div class="meeting-date">${escapeAttr(dateStr)}${time ? ` &middot; ${escapeAttr(time)}` : ''}${cancelledBadge}${noVideoBadge}</div>
+            <div class="meeting-title">${escapeAttr(cardTitle)}</div>
             ${topicsHtml}
-            ${actionsHtml}
         `;
     }
 
-    function renderTopicsInContainer(meetingId, topics, openHref) {
+    // Both producers hand over {topics, total_items}; older preloaded
+    // blobs are a bare list. Normalized here so the renderer sees one shape.
+    function normalizeTopicsPayload(payload) {
+        if (Array.isArray(payload)) return { topics: payload, total_items: null };
+        if (!payload) return { topics: [], total_items: null };
+        return {
+            topics: payload.topics || [],
+            total_items: payload.total_items != null ? payload.total_items : null,
+        };
+    }
+
+    // The card footer. It lives with the topics so it can say how many
+    // items are not shown, and it is appended even when there are no
+    // topics to show: a meeting whose summary is missing or failed is
+    // still a meeting the reader is entitled to open.
+    function cardFooterHtml(openHref, remaining) {
+        if (!openHref) return '';
+        const label = remaining != null && remaining > 0
+            ? `${remaining} other item${remaining === 1 ? '' : 's'}`
+            : '';
+        return `<div class="meeting-card-actions">
+            <span class="topics-more">${label}</span>
+            <a href="${escapeAttr(openHref)}" class="btn btn-sm btn-open">Open <span aria-hidden="true">&rarr;</span></a>
+        </div>`;
+    }
+
+    function renderTopicsMessage(container, message, cssClass, openHref) {
+        container.innerHTML =
+            `<div class="${cssClass}">${message}</div>` + cardFooterHtml(openHref, null);
+    }
+
+    function renderTopicsInContainer(meetingId, payload, openHref) {
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
 
-        if (!topics || topics.length === 0) {
-            container.innerHTML = '<div class="topics-empty">No substantive topics found.</div>';
+        const { topics, total_items } = normalizeTopicsPayload(payload);
+
+        if (topics.length === 0) {
+            renderTopicsMessage(
+                container, 'No substantive topics found.', 'topics-empty', openHref);
             return;
         }
-        container.innerHTML = renderTopicsTable(topics, openHref);
 
-        // Collect distinct category badges and show them at the meeting level
-        const catContainer = document.getElementById(`cats-${meetingId}`);
-        if (catContainer) {
-            const seen = new Set();
-            let html = '';
-            topics.forEach(t => {
-                (t.badges || []).forEach(b => {
-                    if (b.type.startsWith('cat-') && !seen.has(b.type)) {
-                        seen.add(b.type);
-                        const icon = CATEGORY_ICONS[b.type];
-                        const iconAttr = icon ? ` data-icon="${icon}"` : '';
-                        html += `<span class="badge topic-badge badge-${escapeAttr(b.type)}"${iconAttr} data-tooltip="${escapeAttr(b.label)}">${escapeAttr(b.label)}</span> `;
-                    }
-                });
-            });
-            catContainer.innerHTML = html;
-        }
+        const shown = topics.slice(0, CARD_TOPICS);
+        // "N other items" is only shown when the meeting's item count is
+        // known. Guessing it from the topic list would undercount every
+        // meeting, since topics are the ranked few, not the agenda.
+        const remaining = total_items != null
+            ? total_items - shown.length
+            : null;
+        container.innerHTML =
+            renderTopicsTable(shown, openHref) + cardFooterHtml(openHref, remaining);
     }
 
     function meetingOpenHref(meetingId) {
@@ -363,14 +362,16 @@
             const data = await resp.json();
 
             if (data.error) {
-                container.innerHTML = '<div class="topics-error">Could not load topics.</div>';
+                renderTopicsMessage(
+                    container, 'Could not load topics.', 'topics-error', openHref);
                 return;
             }
 
-            renderTopicsInContainer(meetingId, data.topics, openHref);
+            renderTopicsInContainer(meetingId, data, openHref);
             if (selectedCategories.size > 0) applyFilters();
         } catch (err) {
-            container.innerHTML = '<div class="topics-error">Failed to load topics.</div>';
+            renderTopicsMessage(
+                container, 'Failed to load topics.', 'topics-error', openHref);
         }
     }
 
@@ -478,7 +479,6 @@
     function initFilterBar() {
         const chipsContainer = document.getElementById('filter-chips');
         const clearBtn = document.getElementById('filter-clear');
-
         ALL_CATEGORIES.forEach(cat => {
             const chip = document.createElement('button');
             chip.className = `filter-chip badge topic-badge badge-${cat.slug}`;
@@ -492,7 +492,10 @@
                     selectedCategories.add(cat.slug);
                     chip.classList.add('filter-chip-active');
                 }
-                clearBtn.style.display = selectedCategories.size > 0 ? '' : 'none';
+                const active = selectedCategories.size > 0;
+                clearBtn.style.display = active ? '' : 'none';
+                document.getElementById('filter-scope-note').style.display =
+                    active ? '' : 'none';
                 applyFilters();
             });
             chipsContainer.appendChild(chip);
@@ -503,6 +506,7 @@
             chipsContainer.querySelectorAll('.filter-chip-active').forEach(c =>
                 c.classList.remove('filter-chip-active'));
             clearBtn.style.display = 'none';
+            document.getElementById('filter-scope-note').style.display = 'none';
             applyFilters();
         });
     }

@@ -2,6 +2,7 @@
 
 from app.agenda_items import (
     categorize_topic,
+    count_agenda_items,
     format_outcome,
     is_major_decision,
     is_procedural,
@@ -291,3 +292,51 @@ class TestOutcomeReadsTheMotionNotJustTheVote:
             "DEFEATED (2 to 9)",
             "That the Committee recommend to City Council that it be approved.",
         ) == "Defeated (2-9)"
+
+
+# ── count_agenda_items ───────────────────────────────────────────────
+
+
+class TestCountAgendaItems:
+    """What "N other items" on an index card counts."""
+
+    def _item(self, **kw):
+        base = {
+            "title": "Report on Snow Routes",
+            "content": "Some substance.",
+            "recommendation": "That the report be approved.",
+            "time_start_ms": 1000,
+            "timestamp_inherited": False,
+            "is_recess": False,
+        }
+        base.update(kw)
+        return base
+
+    def test_counts_ordinary_items(self):
+        assert count_agenda_items([self._item(), self._item()]) == 2
+
+    def test_excludes_recesses(self):
+        items = [self._item(), self._item(title="Recess", is_recess=True)]
+        assert count_agenda_items(items) == 1
+
+    def test_excludes_section_headers(self):
+        """A heading groups the business; it is not business."""
+        header = self._item(
+            title="COMMITTEE REPORTS",
+            content="",
+            recommendation="",
+            time_start_ms=None,
+        )
+        assert count_agenda_items([self._item(), header]) == 1
+
+    def test_counts_consent_items(self):
+        """They are on the agenda and on the detail page, so they count."""
+        consent = self._item(timestamp_inherited=True)
+        assert count_agenda_items([consent]) == 1
+
+    def test_counts_procedural_items(self):
+        """The number has to agree with the page it points at."""
+        assert count_agenda_items([self._item(title="CALL TO ORDER")]) == 1
+
+    def test_empty_meeting(self):
+        assert count_agenda_items([]) == 0

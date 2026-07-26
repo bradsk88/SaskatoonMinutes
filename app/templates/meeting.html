@@ -58,7 +58,7 @@
             }
 
             if (data.error) {
-                headerEl.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                headerEl.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                 return;
             }
 
@@ -89,34 +89,17 @@
                 setupStickyVideo(videoSection);
             }
 
+            setPageIdentity(data);
+
             // Render agenda items
             const items = data.agenda_items;
             if (items.length === 0) {
                 agendaEl.innerHTML = '<div class="empty">No agenda items found for this meeting. The eSCRIBE page structure may have changed.</div>';
-                headerEl.innerHTML = `
-                    <h1>City Council Meeting</h1>
-                    <p>
-                        <a href="https://pub-saskatoon.escribemeetings.com/Meeting.aspx?Id=${meetingId}&Agenda=Agenda&lang=English"
-                           target="_blank" rel="noopener">
-                            View on eSCRIBE &rarr;
-                        </a>
-                    </p>
-                `;
+                headerEl.innerHTML = meetingHeaderHtml(data, null);
                 return;
             }
 
-            headerEl.innerHTML = `
-                <h1>City Council Meeting</h1>
-                <p class="meeting-meta-detail">
-                    ${items.length} agenda items
-                    ${videoUrl ? ' &middot; Video available' : ''}
-                    &middot;
-                    <a href="https://pub-saskatoon.escribemeetings.com/Meeting.aspx?Id=${meetingId}&Agenda=Agenda&lang=English"
-                       target="_blank" rel="noopener">
-                        View on eSCRIBE &rarr;
-                    </a>
-                </p>
-            `;
+            headerEl.innerHTML = meetingHeaderHtml(data, items.length);
 
             currentItems = items;
             if (videoUrl) {
@@ -128,6 +111,66 @@
         } catch (err) {
             headerEl.innerHTML = `<div class="error">Failed to load meeting details.</div>`;
         }
+    }
+
+    // --- Meeting identity -------------------------------------------------
+    // A reader can arrive here from a search result or a bookmark, with no
+    // card behind them. The page names the meeting itself.
+
+    function readableDate(iso) {
+        if (!iso) return '';
+        const d = new Date(iso + 'T00:00:00');
+        if (isNaN(d)) return '';
+        return d.toLocaleDateString('en-CA', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+    }
+
+    function readableTime(hhmm) {
+        if (!hhmm) return '';
+        const parts = hhmm.split(':');
+        const h = parseInt(parts[0], 10);
+        if (isNaN(h)) return '';
+        const suffix = h < 12 ? 'AM' : 'PM';
+        const hour12 = h % 12 === 0 ? 12 : h % 12;
+        return `${hour12}:${parts[1]} ${suffix}`;
+    }
+
+    function meetingHeaderHtml(data, itemCount) {
+        // An unnamed meeting says so. Naming the wrong body — every page
+        // used to read "City Council Meeting" — is worse than naming none.
+        const name = (data.title || '').trim() || 'Meeting';
+        const date = readableDate(data.date);
+        const time = readableTime(data.start_time);
+        const escribeLink = `
+            <a href="https://pub-saskatoon.escribemeetings.com/Meeting.aspx?Id=${encodeURIComponent(meetingId)}&Agenda=Agenda&lang=English"
+               target="_blank" rel="noopener">View on eSCRIBE &rarr;</a>`;
+        const when = [date, time].filter(Boolean).join(' &middot; ');
+        // Prefer the count the index card also uses. Falling back to the
+        // rendered row count would count recesses and section headers,
+        // and the two pages would disagree about the same meeting.
+        const count = data.item_count != null ? data.item_count : itemCount;
+        const meta = [
+            count !== null ? `${count} agenda items` : '',
+            data.video_url ? 'Video available' : '',
+        ].filter(Boolean).join(' &middot; ');
+        return `
+            <h1>${escapeHtml(name)}</h1>
+            ${when ? `<p class="meeting-when">${when}</p>` : ''}
+            <p class="meeting-meta-detail">
+                ${meta}${meta ? ' &middot; ' : ''}${escribeLink}
+            </p>
+        `;
+    }
+
+    function setPageIdentity(data) {
+        // The tab title is what a bookmark and a shared link show.
+        const name = (data.title || '').trim();
+        const date = readableDate(data.date);
+        if (!name) return;
+        document.title = date
+            ? `${name}, ${date} - YXEMinutes`
+            : `${name} - YXEMinutes`;
     }
 
     function escapeHtml(str) {
@@ -382,12 +425,6 @@
             .map(b => `<span class="badge topic-badge badge-${escapeHtml(b.type)}">${escapeHtml(b.label)}</span>`)
             .join(' ');
 
-        // The extractive one-liner, not the written ItemSummary — that one
-        // is an object and renders through buildChipViewHtml below.
-        const summaryHtml = item.extractive_summary
-            ? `<p class="item-summary">${escapeHtml(item.extractive_summary)}</p>`
-            : '';
-
         const transcriptHtml = isConsent
             ? buildAttachmentsOnlyHtml(item)
             : buildTranscriptHtml(item);
@@ -409,8 +446,8 @@
 
         el.innerHTML = `
             <div class="item-header">
-                <span class="item-number">${item.section_number}</span>
-                <span class="item-title">${item.title}</span>
+                <span class="item-number">${escapeHtml(item.section_number)}</span>
+                <span class="item-title">${escapeHtml(item.title)}</span>
                 ${oooBadgeHtml}
                 ${attachHtml}
                 ${durationHtml}
@@ -418,7 +455,6 @@
             </div>
             ${badgesHtml ? `<div class="item-badges">${badgesHtml}</div>` : ''}
             ${toggleHtml}
-            ${summaryHtml}
             ${chipsHtml}
             <div class="item-notes-view">${transcriptHtml}</div>
         `;
@@ -430,6 +466,20 @@
         const outOfOrder = computeOutOfOrder(items);
 
         container.innerHTML = '';
+
+        // What "Not discussed" means, said once in text. It used to live
+        // only in the badge's hover tooltip, which a touch screen cannot
+        // open — and repeating the sentence on all twenty items in a
+        // consent block would drown the block it explains.
+        if (items.some(i => i.timestamp_inherited === true && !i.is_recess)) {
+            const legend = document.createElement('p');
+            legend.className = 'agenda-legend';
+            legend.textContent =
+                'Items marked "Not discussed" were approved as a group, '
+                + 'in one motion, without individual debate.';
+            container.appendChild(legend);
+        }
+
         const STAGGER = 60;
         items.forEach((item, idx) => {
             const el = buildItemEl(item, outOfOrder, idx);

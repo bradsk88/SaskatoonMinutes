@@ -24,6 +24,7 @@ from typing import Protocol, Sequence
 import urllib3
 import requests
 
+from app.agenda_text import clean_entities, titleize
 from app.models import AgendaItem, Meeting, MeetingDetail
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -143,6 +144,96 @@ def _parse_escribemeetings_date(date_str: str) -> str:
         dt = datetime.fromtimestamp(timestamp_ms / 1000)
         return dt.strftime("%Y-%m-%d")
     return date_str
+
+
+# Words that only ever describe the document, never who met.  A heading
+# line built entirely from them ("PUBLIC AGENDA", "REVISED PUBLIC
+# AGENDA", "PUBLIC MEETING") is dropped.  A line naming a body always
+# carries at least one other word, so "Public Hearing Meeting of City
+# Council" and "Agenda Review Committee" survive.
+_DOCUMENT_KIND_WORDS = frozenset({
+    "revised", "public", "special", "regular", "agenda", "minutes",
+    "meeting", "addendum",
+})
+
+_MONTHS = (
+    "january|february|march|april|may|june|july|august|september|"
+    "october|november|december"
+)
+
+# Where the name stops and the sitting's logistics begin.  A budget
+# meeting's heading runs on into its dates and recess plan:
+# "... AND BUDGET / December 2 and 3, 2020 at 1:00 p.m. / [Recesses
+# called at approximately 3 p.m. ...]".  A bracketed line, a clock time,
+# or a line opening with a month name marks the boundary.  A bare year is
+# deliberately not a signal — "CITY COUNCIL - 2021 PRELIMINARY" is name.
+_SCHEDULE_LINE_RE = re.compile(
+    rf"(?i)^\[|\b\d{{1,2}}:\d{{2}}\s*[ap]\.?\s*m|^\s*(?:{_MONTHS})\b"
+)
+
+
+def _is_document_kind(line: str) -> bool:
+    words = re.findall(r"[A-Za-z]+", line.lower())
+    return bool(words) and all(w in _DOCUMENT_KIND_WORDS for w in words)
+
+
+def _extract_meeting_info(html: str) -> tuple[str, str, str]:
+    """The meeting's own name, ISO date, and start time, from its agenda page.
+
+    A detail page has to say which meeting it is showing.  The agenda HTML
+    already carries that, so this reads it rather than costing a second
+    request or making the caller carry a ``Meeting`` alongside.
+
+    Sources, most specific first:
+
+    * ``<h1 id='AgendaHeaderTitle'>`` — the body that met.  The heading is
+      hard-wrapped with ``<br/>`` at whatever width the clerk's template
+      uses, so the name can span two or three lines ("STANDING POLICY
+      COMMITTEE / ON ENVIRONMENT, UTILITIES / AND CORPORATE SERVICES").
+      Every line is kept except the leading one naming the document kind
+      ("PUBLIC AGENDA"), which is not part of the body's name.
+    * ``<time datetime='YYYY-MM-DD HH:MM'>`` — the machine-readable start.
+      Later ``<time>`` elements on the page carry an end time with no date,
+      which is why only a match containing a date counts.
+    * ``<title>`` — "BODY - June 17, 2025"; used when the header is absent.
+
+    Whatever the page does not carry comes back as an empty string.  A
+    meeting whose name cannot be read is shown as unnamed, never as
+    "City Council" — naming the wrong body is worse than naming none.
+    """
+    name = ""
+    match = re.search(
+        r"(?is)<h1[^>]*id=['\"]AgendaHeaderTitle['\"][^>]*>(.*?)</h1>", html,
+    )
+    if match:
+        lines = re.split(r"(?i)<br\s*/?>", match.group(1))
+        parts = []
+        for line in lines:
+            text = clean_entities(re.sub(r"(?s)<[^>]+>", " ", line))
+            if not text or _is_document_kind(text):
+                continue
+            if _SCHEDULE_LINE_RE.search(text):
+                break
+            parts.append(text)
+        name = " ".join(parts)
+
+    if not name:
+        match = re.search(r"(?is)<title>(.*?)</title>", html)
+        if match:
+            raw = clean_entities(re.sub(r"(?s)<[^>]+>", " ", match.group(1)))
+            # Drop the trailing " - June 17, 2025"; the date is returned
+            # separately and a heading should not carry it twice.
+            name = re.sub(r"\s*-\s*[A-Za-z]+\s+\d{1,2},\s*\d{4}\s*$", "", raw).strip()
+
+    date, start_time = "", ""
+    match = re.search(
+        r"(?i)<time[^>]*datetime=['\"](\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?", html,
+    )
+    if match:
+        date = match.group(1)
+        start_time = match.group(2) or ""
+
+    return titleize(name), date, start_time
 
 
 def _extract_bookmarks(html: str) -> dict[int, dict]:
@@ -590,6 +681,7 @@ class EscribeMeetingSource:
     def load_detail(self, meeting_id: str) -> MeetingDetail:
         html = self._transport.fetch_agenda_html(meeting_id)
 
+        title, date, start_time = _extract_meeting_info(html)
         bookmarks = _extract_bookmarks(html)
         agenda_items = _extract_agenda_items(html, bookmarks)
         _propagate_timestamps(agenda_items)
@@ -629,4 +721,10 @@ class EscribeMeetingSource:
                 if motion and motion != item.recommendation:
                     item.recommendation = motion
 
-        return MeetingDetail(agenda_items=agenda_items, video_url=video_url)
+        return MeetingDetail(
+            agenda_items=agenda_items,
+            video_url=video_url,
+            title=title,
+            date=date,
+            start_time=start_time,
+        )

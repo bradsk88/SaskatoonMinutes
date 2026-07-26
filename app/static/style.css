@@ -159,6 +159,15 @@ nav {
     gap: 0.35rem;
 }
 
+/* States the filter's real range: the meetings loaded so far, not the
+   archive. Shown only while a filter is on. */
+.filter-scope-note {
+    flex-basis: 100%;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin: 0.35rem 0 0;
+}
+
 .filter-chip {
     cursor: pointer;
     border: 1.5px solid transparent;
@@ -303,21 +312,6 @@ main {
     line-height: 1.4;
 }
 
-.meeting-meta {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    font-size: 0.85rem;
-    color: var(--color-text-muted);
-}
-
-.meeting-categories {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-}
-
 /* === Badges === */
 .badge {
     display: inline-block;
@@ -380,7 +374,15 @@ main {
 .meeting-card-actions {
     margin-top: 0.75rem;
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+/* How many agenda items the card is not showing. */
+.topics-more {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
 }
 
 .btn-open {
@@ -452,6 +454,22 @@ main {
 .meeting-detail h1 {
     font-size: 1.6rem;
     margin-bottom: 0.5rem;
+}
+
+/* Explains the "Not discussed" badge in text, once per agenda. */
+.agenda-legend {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 0 0 1rem;
+}
+
+/* When the meeting sat. Sits directly under the body's name, because
+   together they are what identifies the page. */
+.meeting-when {
+    color: var(--color-text);
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
 }
 
 .meeting-meta-detail {
@@ -718,15 +736,6 @@ main {
     margin-top: 0.25rem;
 }
 
-.item-summary {
-    margin-top: 0.6rem;
-    padding-top: 0.6rem;
-    border-top: 1px solid var(--color-border);
-    color: var(--color-text-muted);
-    font-size: 0.9rem;
-    line-height: 1.5;
-}
-
 /* === Transcript (meeting detail page) === */
 .transcript-content {
     margin-top: 0.6rem;
@@ -924,16 +933,29 @@ a.topic-link:hover {
     background: var(--color-hover, rgba(0,0,0,0.04));
 }
 
+/* The topic line: name on the left, outcome pushed to the right. The
+   outcome is the only badge a card carries. */
 .topic-name {
     color: var(--color-text);
     line-height: 1.4;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-weight: 600;
 }
 
+.topic-name > span:first-child {
+    min-width: 0;
+}
+
+/* The written Description. This is the card's content now, not a
+   footnote under a badge row, so it is sized to be read. */
 .topic-summary {
     color: var(--color-text-muted);
-    font-size: 0.78rem;
-    line-height: 1.35;
-    margin-top: 0.1rem;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    margin-top: 0.2rem;
 }
 
 /* Raw agenda text standing in for a missing plain-language description.
@@ -941,6 +963,16 @@ a.topic-link:hover {
 .topic-summary-raw {
     font-style: italic;
     opacity: 0.75;
+}
+
+/* Was a hover tooltip, which does not exist on a touch screen. The
+   caveat travels with the text it qualifies instead. */
+.topic-summary-note {
+    display: block;
+    font-style: normal;
+    font-size: 0.72rem;
+    opacity: 0.8;
+    margin-top: 0.15rem;
 }
 
 /* Topic badges row */
@@ -1594,18 +1626,19 @@ footer a:hover {
         font-size: 1.4rem;
     }
 
-    nav {
-        flex-direction: column;
-        align-items: flex-start;
-        height: auto;
-        padding: 0.75rem 0;
-        gap: 0.25rem;
-    }
-
     .agenda-controls {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.75rem;
+    }
+
+    /* A narrow card cannot hold a long agenda title and the outcome on
+       one line -- the title wraps to five words a line and the badge
+       pins to the top of the column. Stack them instead. */
+    .topic-name {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.3rem;
     }
 
     .item-header {

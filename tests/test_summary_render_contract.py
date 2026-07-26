@@ -51,9 +51,17 @@ class TestTemplateReadsTheseKeys:
         source = open(TEMPLATE, encoding="utf-8").read()
         assert "${item.summary}" not in source
 
-    def test_template_reads_the_extractive_string_from_its_own_key(self):
+    def test_template_does_not_render_the_extractive_string(self):
+        """The Description replaced it.
+
+        The extractive one-liner used to render outside both the Summary
+        and Notes views, so it sat permanently beside the Description --
+        two summaries of one item, the weaker one unlabelled.  The
+        extractive backend still writes the key for the API; the page
+        must not draw it.
+        """
         source = open(TEMPLATE, encoding="utf-8").read()
-        assert "item.extractive_summary" in source
+        assert "item.extractive_summary" not in source
 
     def test_template_chip_groups_match_the_category_list(self):
         """CHIP_GROUP in the template mirrors CATEGORY_GROUP in Python."""
@@ -133,10 +141,25 @@ class TestIndexCardReadsTheTopicKeys:
     def test_card_marks_a_non_description_summary(self):
         assert "summary_is_description" in self._index()
 
-    def test_card_colours_chip_badges_by_group(self):
-        assert "chip_group" in self._index()
+    def test_card_carries_no_chip_badges(self):
+        """Chips moved to the detail page.
+
+        A chip badge showed its category and hid the claim in a tooltip,
+        which a touch screen has no way to open.  The card keeps the
+        outcome; the specifics are one tap away.
+        """
+        assert "chip_group" not in self._index()
+
+    def test_card_shows_the_outcome(self):
+        assert "badge-consent" in self._index()
+        assert "escapeAttr(t.outcome)" in self._index()
+
+    def test_card_reads_the_item_count_for_the_remainder_line(self):
+        """"N other items" has to come from the agenda, not the topics."""
+        assert "total_items" in self._index()
 
     def test_chip_group_classes_exist_in_the_stylesheet(self):
+        """Still needed: the detail page colours chips by group."""
         from app.item_categorizer import CATEGORY_GROUP
 
         css_path = os.path.join(
