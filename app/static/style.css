@@ -936,6 +936,13 @@ a.topic-link:hover {
     margin-top: 0.1rem;
 }
 
+/* Raw agenda text standing in for a missing plain-language description.
+   Set apart so it is never read as the written summary. */
+.topic-summary-raw {
+    font-style: italic;
+    opacity: 0.75;
+}
+
 /* Topic badges row */
 .topic-badges {
     display: flex;

@@ -382,8 +382,10 @@
             .map(b => `<span class="badge topic-badge badge-${escapeHtml(b.type)}">${escapeHtml(b.label)}</span>`)
             .join(' ');
 
-        const summaryHtml = item.summary
-            ? `<p class="item-summary">${item.summary}</p>`
+        // The extractive one-liner, not the written ItemSummary — that one
+        // is an object and renders through buildChipViewHtml below.
+        const summaryHtml = item.extractive_summary
+            ? `<p class="item-summary">${escapeHtml(item.extractive_summary)}</p>`
             : '';
 
         const transcriptHtml = isConsent

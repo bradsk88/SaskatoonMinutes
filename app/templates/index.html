@@ -201,11 +201,20 @@
             let detailBadgesHtml = '';
             if (t.badges) {
                 t.badges.forEach(b => {
+                    const tip = b.tooltip
+                        ? ` data-tooltip="${escapeAttr(b.tooltip)}"` : '';
+                    if (b.type === 'chip') {
+                        // A chip badge names what the summary found — the
+                        // full sentence is the tooltip, since a card has
+                        // room for the category and not the claim.
+                        detailBadgesHtml += ` <span class="badge topic-badge chip-${escapeAttr(b.chip_group || 'context')}"${tip}>${escapeAttr(b.label)}</span>`;
+                        return;
+                    }
                     const icon = CATEGORY_ICONS[b.type];
                     if (icon) {
-                        primaryBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
+                        primaryBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}"${tip}>${escapeAttr(b.label)}</span>`;
                     } else {
-                        detailBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}">${escapeAttr(b.label)}</span>`;
+                        detailBadgesHtml += ` <span class="badge topic-badge badge-${escapeAttr(b.type)}"${tip}>${escapeAttr(b.label)}</span>`;
                     }
                 });
             }
@@ -231,7 +240,18 @@
                 html += `<div class="topic-content">`;
             }
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span></div>`;
-            if (t.summary) html += `<div class="topic-summary">${escapeAttr(t.summary)}</div>`;
+            if (t.summary) {
+                // A summary that is not the written Description is raw
+                // agenda text clipped at 120 characters. It is marked so
+                // the two are never mistaken for each other.
+                const summaryClass = t.summary_is_description
+                    ? 'topic-summary'
+                    : 'topic-summary topic-summary-raw';
+                const summaryTip = t.summary_is_description
+                    ? ''
+                    : ' data-tooltip="Older summary — no plain-language description available."';
+                html += `<div class="${summaryClass}"${summaryTip}>${escapeAttr(t.summary)}</div>`;
+            }
             html += `<div class="topic-badges">${primaryBadgesHtml}</div>`;
             if (detailBadgesHtml) html += `<div class="topic-badges">${detailBadgesHtml}</div>`;
             html += detailHref ? `</a>` : `</div>`;

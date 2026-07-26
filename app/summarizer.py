@@ -16,6 +16,7 @@ from app.agenda_items import (
     is_procedural,
 )
 from app.agenda_text import clean_entities, format_money, plainify
+from app.item_categorizer import CATEGORY_GROUP, SEMANTIC_CATEGORIES
 from app.transcript_text import split_sentences
 
 
@@ -64,7 +65,16 @@ def extract_meeting_topics(
         if "appointments" in title_lower and dot_count >= 3:
             depth_score -= 0.1
 
-        score = contested_score + money_score + vote_score + rec_score + depth_score
+        # An item that produced interpretive chips is, by construction,
+        # one the model found something to say about — better evidence of
+        # "worth opening" than a dollar sign in the title.  Capped so a
+        # chatty item cannot crowd out every contested vote.
+        chip_score = min(0.4, 0.15 * len(_chip_badges(item)))
+
+        score = (
+            contested_score + money_score + vote_score
+            + rec_score + depth_score + chip_score
+        )
         scored.append((score, item))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -86,25 +96,125 @@ def _format_topic(item: dict) -> dict:
     outcome = format_outcome(vote, rec)
     is_major = is_major_decision(title, rec, contested)
 
-    content = item.get("content", "")
-    summary = ""
-    if content:
-        summary = clean_entities(content)
-        if len(summary) > 120:
-            summary = summary[:117].rsplit(" ", 1)[0] + "..."
+    summary, summary_is_description = _topic_summary(item)
 
     return {
         "topic": plainify(title),
         "outcome": outcome,
         "outcome_detail": clean_entities(rec) if rec else "",
         "summary": summary,
+        # False means the line above is raw agenda text, not the written
+        # Description.  The card says so rather than passing one off as
+        # the other.
+        "summary_is_description": summary_is_description,
         "vote_result": vote,
         "is_major": is_major,
         "is_contested": contested,
         "is_consent": item.get("timestamp_inherited", False),
-        "badges": _extract_badges(item),
+        "badges": _card_badges(item),
         "time_start_ms": item.get("time_start_ms"),
     }
+
+
+def _card_badges(item: dict) -> list[dict]:
+    """The badge list for one card row.
+
+    A chip is a fact the model found in the discussion; a money badge is a
+    regular expression over the agenda blob.  When both are present the
+    card keeps one money badge — the largest amount is still worth
+    showing — and gives the rest of the row to the chips.  The detail
+    page is unaffected: it goes through ``extract_badges`` directly.
+    """
+    derived = _extract_badges(item)
+    chips = _chip_badges(item)
+    if not chips:
+        return derived
+
+    kept = []
+    money_seen = 0
+    for badge in derived:
+        if badge["type"] == "money":
+            money_seen += 1
+            if money_seen > 1:
+                continue
+        kept.append(badge)
+    return kept + chips
+
+
+def _item_summary(item: dict) -> dict:
+    """The item's serialized ItemSummary, or an empty dict.
+
+    ``summary`` is the ItemSummary object and nothing else writes to it —
+    the extractive backend uses ``extractive_summary``.  Cached payloads
+    written before that split can still hold a plain string, so the type
+    is checked rather than assumed.
+    """
+    summary = item.get("summary")
+    return summary if isinstance(summary, dict) else {}
+
+
+def _topic_summary(item: dict) -> tuple[str, bool]:
+    """The one line of prose under a topic, and whether it is a Description.
+
+    The Description is written as a lede for a busy resident and is
+    already bounded at 220 characters, so it is shown whole — truncating
+    a sentence written to be read in full is what the Description was
+    introduced to stop doing.
+
+    A Legacy ItemSummary has no Description, so the card falls back to
+    the raw eSCRIBE agenda blob, clipped.  The second return value lets
+    the page mark that fallback instead of hiding it.
+    """
+    description = (_item_summary(item).get("description") or "").strip()
+    if description:
+        return description, True
+
+    content = item.get("content", "")
+    if not content:
+        return "", False
+    fallback = clean_entities(content)
+    if len(fallback) > 120:
+        fallback = fallback[:117].rsplit(" ", 1)[0] + "..."
+    return fallback, False
+
+
+# Chip categories worth showing on a card.  Outcome and Vote Breakdown
+# are excluded because the outcome badge already carries them.  What is
+# left is the interpretive set — the categories the model only fills in
+# when it found something to say.
+_CARD_CHIP_CATEGORIES: tuple[str, ...] = ("Cost & Funding",) + tuple(
+    SEMANTIC_CATEGORIES
+)
+
+_MAX_CHIP_BADGES = 3
+
+
+def _chip_badges(item: dict) -> list[dict]:
+    """Badges derived from an item's chips.
+
+    The label is the category, not the chip text: chip text is a full
+    sentence and a card has room for a word.  The sentence rides along as
+    the tooltip.
+    """
+    chips = _item_summary(item).get("chips") or []
+    badges = []
+    seen = set()
+    for chip in chips:
+        category = chip.get("category", "")
+        if category not in _CARD_CHIP_CATEGORIES or category in seen:
+            continue
+        seen.add(category)
+        badges.append({
+            "type": "chip",
+            "label": category,
+            "tooltip": chip.get("text", ""),
+            # The same colour group the detail page uses, so a category
+            # looks the same on the card as it does when opened.
+            "chip_group": CATEGORY_GROUP.get(category, "context"),
+        })
+        if len(badges) >= _MAX_CHIP_BADGES:
+            break
+    return badges
 
 
 def _extract_badges(item: dict) -> list[dict]:
@@ -291,17 +401,23 @@ def _summarize_extractive(agenda_items: list[dict], meeting_title: str) -> list[
 
     For each item, scores sentences by word frequency, position, and
     overlap with the title, then picks the top sentences as a summary.
+
+    The result is a plain string and lands on ``extractive_summary``.  It
+    deliberately does not share the ``summary`` key with the written
+    ItemSummary object: the page renders the two differently, and one key
+    holding either a string or an object put "[object Object]" on the
+    meeting page.
     """
     for item in agenda_items:
         title = item.get("title", "")
         content = item.get("content", "")
 
         if is_procedural(title):
-            item["summary"] = "Procedural item."
+            item["extractive_summary"] = "Procedural item."
             continue
 
         text = f"{title}. {content}".strip() if content else title
-        item["summary"] = _extract_summary(text, title, max_sentences=2)
+        item["extractive_summary"] = _extract_summary(text, title, max_sentences=2)
 
     return agenda_items
 

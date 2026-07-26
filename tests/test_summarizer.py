@@ -200,3 +200,130 @@ class TestFormatTopicDeferral:
         topic = _format_topic(item)
         assert topic["outcome"] == "Deferred"
         assert topic["is_contested"] is True
+
+
+# ── The card uses the ItemSummary ────────────────────────────────────
+
+
+def _item(**over) -> dict:
+    base = {
+        "title": "Transit Fare Bylaw Amendment",
+        "recommendation": "That the bylaw be approved.",
+        "vote_result": "CARRIED",
+        "is_contested": False,
+        "section_number": "7.1.",
+        "timestamp_inherited": False,
+        "content": (
+            "The Standing Policy Committee on Transportation considered the "
+            "attached report of the General Manager, Community Services "
+            "Department dated April 2 2026, and responded to questions."
+        ),
+    }
+    base.update(over)
+    return base
+
+
+class TestTopicSummaryPrefersTheDescription:
+    def test_description_is_used_whole(self):
+        """220 characters is the Description's own bound — the card does
+        not re-truncate a sentence written to be read in full."""
+        description = "Raises the fine for fare evasion to $250 and " + "x" * 150
+        topic = _format_topic(_item(summary={"description": description, "chips": []}))
+        assert topic["summary"] == description
+        assert topic["summary_is_description"] is True
+
+    def test_legacy_summary_falls_back_to_clipped_agenda_text(self):
+        topic = _format_topic(_item(summary={"description": None, "chips": []}))
+        assert topic["summary"].startswith("The Standing Policy Committee")
+        assert topic["summary"].endswith("...")
+        assert topic["summary_is_description"] is False
+
+    def test_no_summary_at_all_behaves_like_legacy(self):
+        topic = _format_topic(_item())
+        assert topic["summary_is_description"] is False
+
+    def test_a_string_summary_does_not_crash(self):
+        """Payloads cached before the extractive split still hold a string."""
+        topic = _format_topic(_item(summary="Procedural item."))
+        assert topic["summary_is_description"] is False
+
+
+class TestChipBadges:
+    def test_interpretive_chips_become_badges(self):
+        topic = _format_topic(_item(summary={
+            "description": "Raises transit fines.",
+            "chips": [
+                {"category": "Dissenting View", "text": "Councillor X objected."},
+                {"category": "Equity Impact", "text": "Low-income riders affected."},
+            ],
+        }))
+        chips = [b for b in topic["badges"] if b["type"] == "chip"]
+        assert [b["label"] for b in chips] == ["Dissenting View", "Equity Impact"]
+        assert chips[0]["tooltip"] == "Councillor X objected."
+        assert chips[0]["chip_group"] == "decision"
+
+    def test_outcome_chips_are_left_to_the_outcome_badge(self):
+        topic = _format_topic(_item(summary={
+            "description": "Raises transit fines.",
+            "chips": [
+                {"category": "Outcome", "text": "Approved"},
+                {"category": "Vote Breakdown", "text": "11 for, 0 against"},
+            ],
+        }))
+        assert not [b for b in topic["badges"] if b["type"] == "chip"]
+
+    def test_at_most_three_chip_badges(self):
+        topic = _format_topic(_item(summary={
+            "description": "d",
+            "chips": [
+                {"category": c, "text": c}
+                for c in ("Dissenting View", "Equity Impact", "Public Sentiment",
+                          "Promise Made", "Legal Risk Flagged")
+            ],
+        }))
+        assert len([b for b in topic["badges"] if b["type"] == "chip"]) == 3
+
+    def test_a_repeated_category_appears_once(self):
+        topic = _format_topic(_item(summary={
+            "description": "d",
+            "chips": [
+                {"category": "Who's Affected", "text": "Riders"},
+                {"category": "Who's Affected", "text": "Taxpayers"},
+            ],
+        }))
+        assert len([b for b in topic["badges"] if b["type"] == "chip"]) == 1
+
+
+class TestChipsRaiseRanking:
+    def test_an_item_with_chips_outranks_an_identical_item_without(self):
+        from app.summarizer import extract_meeting_topics
+
+        plain = _item(title="Rezoning Application - 123 Main Street")
+        chipped = _item(
+            title="Rezoning Application - 456 Side Street",
+            summary={"description": "d", "chips": [
+                {"category": "Dissenting View", "text": "Councillor X objected."},
+                {"category": "Legal Risk Flagged", "text": "Liability raised."},
+            ]},
+        )
+        topics = extract_meeting_topics([plain, chipped], "Council", max_topics=1)
+        assert topics[0]["topic"].endswith("456 Side Street")
+
+
+class TestChipsDisplaceRegexMoneyBadges:
+    def test_one_money_badge_survives_when_chips_are_present(self):
+        money_item = _item(
+            recommendation="That $4,700,000 be approved and $700,000 be spent.",
+            summary={"description": "d", "chips": [
+                {"category": "Cost & Funding", "text": "$4.7M for the centre."},
+            ]},
+        )
+        badges = _format_topic(money_item)["badges"]
+        assert len([b for b in badges if b["type"] == "money"]) == 1
+
+    def test_all_money_badges_survive_without_chips(self):
+        money_item = _item(
+            recommendation="That $4,700,000 be approved and $700,000 be spent.",
+        )
+        badges = _format_topic(money_item)["badges"]
+        assert len([b for b in badges if b["type"] == "money"]) == 2
