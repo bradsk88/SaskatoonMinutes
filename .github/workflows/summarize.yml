@@ -31,6 +31,13 @@ on:
 
 concurrency:
   group: summarize
+  # Deliberately false, and it stays false.  A queued second run once
+  # started into an already-spent quota and wrote 28 empty meetings, but
+  # cancelling is the wrong cure: this job runs up to 350 minutes, and
+  # killing it mid-flight loses the meeting in progress and cancels the
+  # legitimate run that follows Transcribe.  The script now stops on the
+  # first per-day quota rejection, so the queued run exits in seconds and
+  # says why.
   cancel-in-progress: false
 
 permissions:

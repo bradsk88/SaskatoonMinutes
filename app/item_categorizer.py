@@ -38,6 +38,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 
 from app.agenda_items import (
     PROCEDURAL_KEYWORDS,
@@ -507,6 +508,102 @@ def _extract_data_cited(transcript_text: str) -> list[dict]:
 GEMINI_MODEL = "gemini-2.5-flash"
 
 
+class ExtractionFailed(Exception):
+    """The extractor could not reach a verdict for one item.
+
+    Distinct from the model answering and having nothing to say — that is
+    a real outcome and returns ``description=None``.  This means the call
+    did not happen, or did not come back usable, so the item's summary is
+    *unknown* rather than *empty*.  Callers must not save a meeting
+    holding one of these: a saved summary is indistinguishable from a
+    considered one, and nothing would ever retry it.
+    """
+
+
+class QuotaExhausted(Exception):
+    """The daily Gemini quota is gone.
+
+    Deliberately not an :class:`ExtractionFailed`.  That one is about a
+    single item and the run continues past it; this one means every
+    remaining call in the run will fail too, so it travels all the way up
+    and stops the run.  Retrying is pointless — the run is unattended and
+    nobody is there to raise the limit, and the next scheduled run picks
+    the meetings up for free because ``is_current`` rejects them.
+    """
+
+
+# Gemini answers a 429 with the identifier of the quota that was hit.
+# The distinction is the whole reason we can retry one and not the other:
+# a per-minute limit clears on its own, a per-day limit does not.
+_PER_DAY_QUOTA_MARKER = "perday"
+
+# A rate limit is worth waiting out.  Three attempts, and the wait comes
+# from the server's own RetryInfo rather than a guess.
+_RATE_LIMIT_ATTEMPTS = 3
+
+# An unrecognised 429 gets the benefit of the doubt twice, then is
+# treated as quota.  Worst case that costs a minute of runner time before
+# the run stops; the alternative — assuming quota — would abandon a run
+# over a rate limit we could have waited out.
+_UNKNOWN_LIMIT_ATTEMPTS = 2
+
+# Long enough to clear a per-minute window, short enough that a bad
+# retryDelay cannot park the run for hours.
+_MAX_RETRY_WAIT_SECONDS = 60
+
+
+def _error_payload(exc: Exception) -> dict:
+    """The Gemini error body, whichever of its two shapes it arrived in.
+
+    ``APIError.details`` is the raw response JSON, which is sometimes the
+    error object and sometimes ``{"error": {...}}`` wrapping it.
+    """
+    details = getattr(exc, "details", None)
+    if not isinstance(details, dict):
+        return {}
+    inner = details.get("error")
+    return inner if isinstance(inner, dict) else details
+
+
+def _quota_ids(exc: Exception) -> list[str]:
+    """Quota identifiers named in a 429, e.g. ``...PerDayPerProject...``."""
+    ids = []
+    for detail in _error_payload(exc).get("details") or []:
+        if not isinstance(detail, dict):
+            continue
+        for violation in detail.get("violations") or []:
+            if isinstance(violation, dict) and violation.get("quotaId"):
+                ids.append(str(violation["quotaId"]))
+    return ids
+
+
+def _retry_delay_seconds(exc: Exception) -> float | None:
+    """The server's requested wait, from the RetryInfo detail."""
+    for detail in _error_payload(exc).get("details") or []:
+        if not isinstance(detail, dict):
+            continue
+        raw = detail.get("retryDelay")
+        if not raw:
+            continue
+        try:
+            return float(str(raw).rstrip("s"))
+        except ValueError:
+            return None
+    return None
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    """True for a 429 — either flavour."""
+    return getattr(exc, "code", None) == 429 or (
+        getattr(exc, "status", None) == "RESOURCE_EXHAUSTED"
+    )
+
+
+def _is_daily_quota(exc: Exception) -> bool:
+    """True when a 429 names a per-day quota."""
+    return any(_PER_DAY_QUOTA_MARKER in q.lower() for q in _quota_ids(exc))
+
+
 class GeminiExtractor:
     """Calls Gemini for semantic chip extraction.
 
@@ -550,6 +647,50 @@ class GeminiExtractor:
         )
         return response.text or "{}"
 
+    def _call_with_retry(self, prompt: str, allowed_cats: list[str]) -> str:
+        """:meth:`_call`, waiting out a rate limit but not a spent quota.
+
+        A per-day quota raises :class:`QuotaExhausted` on the first
+        rejection and never retries.  Anything else propagates for the
+        caller to turn into an :class:`ExtractionFailed`.
+        """
+        attempt = 0
+        while True:
+            try:
+                return self._call(prompt, allowed_cats)
+            except Exception as exc:
+                if not _is_rate_limited(exc):
+                    raise
+                if _is_daily_quota(exc):
+                    raise QuotaExhausted(
+                        f"daily Gemini quota exhausted ({', '.join(_quota_ids(exc))})"
+                    ) from exc
+
+                # An unrecognised 429 could be either.  Give it fewer
+                # attempts than a known rate limit, then treat it as
+                # quota so the run stops instead of grinding.
+                known = bool(_quota_ids(exc))
+                budget = _RATE_LIMIT_ATTEMPTS if known else _UNKNOWN_LIMIT_ATTEMPTS
+                attempt += 1
+                if attempt >= budget:
+                    if known:
+                        raise
+                    raise QuotaExhausted(
+                        f"429 with no quota detail, still failing after "
+                        f"{attempt} attempts — treating it as exhausted quota"
+                    ) from exc
+
+                wait = _retry_delay_seconds(exc)
+                wait = _MAX_RETRY_WAIT_SECONDS if wait is None else min(
+                    wait, _MAX_RETRY_WAIT_SECONDS
+                )
+                print(
+                    f"    Rate limited, waiting {wait:.0f}s "
+                    f"(attempt {attempt}/{budget})",
+                    flush=True,
+                )
+                time.sleep(wait)
+
     def _has_metadata(self, item: dict) -> bool:
         """True when the item has enough metadata to run the LLM without transcript."""
         rec = (item.get("recommendation") or "").strip()
@@ -561,10 +702,14 @@ class GeminiExtractor:
     ) -> tuple[str | None, list[dict]]:
         """Return ``(description, chips)`` for one agenda item.
 
-        ``description`` is ``None`` only when the call failed or the model
-        returned nothing usable — never as a routine outcome, because the
+        ``description`` is ``None`` only when the model answered and had
+        nothing usable to say — never as a routine outcome, because the
         schema requires it.  A ``None`` here is a signal to look, not a
         cue to substitute filler.
+
+        A call that *failed* does not return ``None``; it raises.  Those
+        two used to be the same value, which is how a run wrote 35
+        meetings of empty summaries and exited 0.
         """
         if not transcript_text.strip() and not self._has_metadata(item):
             return None, []
@@ -573,17 +718,26 @@ class GeminiExtractor:
         allowed = [c for c in SEMANTIC_CATEGORIES if c not in exclude]
         prompt = _build_prompt(item, transcript_text, allowed)
         try:
-            raw = self._call(prompt, allowed)
-            parsed = json.loads(raw)
+            raw = self._call_with_retry(prompt, allowed)
+        except QuotaExhausted:
+            raise
         except Exception as exc:
             print(f"    Gemini extract failed: {exc}", flush=True)
-            return None, []
+            raise ExtractionFailed(f"Gemini call failed: {exc}") from exc
+
+        try:
+            parsed = json.loads(raw)
+        except Exception as exc:
+            print(f"    Gemini returned unparseable JSON: {exc}", flush=True)
+            raise ExtractionFailed(f"Gemini returned unparseable JSON: {exc}") from exc
         if not isinstance(parsed, dict):
             print(
                 f"    Gemini returned {type(parsed).__name__}, expected an object",
                 flush=True,
             )
-            return None, []
+            raise ExtractionFailed(
+                f"Gemini returned {type(parsed).__name__}, expected an object"
+            )
 
         description = _sanitize_description(parsed.get("description"))
         if description is None:

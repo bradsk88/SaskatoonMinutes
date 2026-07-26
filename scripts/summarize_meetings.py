@@ -32,7 +32,12 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 # Chip calls are I/O-bound, so run a meeting's items concurrently.
-EXTRACT_WORKERS = 8
+#
+# Four, not eight: eight workers can trip Gemini's per-minute request cap
+# on their own while the daily quota is still fine, and the run then
+# spends its time waiting out a limit it created.  Halving this is a
+# cheaper fix than retrying harder.
+EXTRACT_WORKERS = 4
 
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
 
@@ -45,7 +50,9 @@ from app.item_categorizer import (
     extract_item_summaries,
     item_transcript_text,
     is_eligible_for_summary,
+    ExtractionFailed,
     GeminiExtractor,
+    QuotaExhausted,
 )
 from app.item_summaries_cache import ItemSummariesCache
 from app.meeting_source import MeetingSource
@@ -98,11 +105,19 @@ def summarize_meeting(
     }
 
     def run(item: dict) -> tuple[dict, dict]:
-        return item, extract_item_summaries(
-            item, transcript_segments,
-            gemini_extractor=extractor,
-            transcript_text=item_transcript_text(item, transcript_segments),
-        )
+        try:
+            return item, extract_item_summaries(
+                item, transcript_segments,
+                gemini_extractor=extractor,
+                transcript_text=item_transcript_text(item, transcript_segments),
+            )
+        except ExtractionFailed as exc:
+            # Name the item — the caller only sees the meeting, and "one
+            # item failed" is not actionable without knowing which.
+            raise ExtractionFailed(
+                f"item {item.get('item_id')} "
+                f"({(item.get('title') or '')[:60]!r}): {exc}"
+            ) from exc
 
     missing_description = 0
     with ThreadPoolExecutor(max_workers=EXTRACT_WORKERS) as pool:
@@ -122,11 +137,12 @@ def summarize_meeting(
 
     print(f"    {len(eligible)}/{len(items)} items eligible for summary", flush=True)
     if missing_description:
-        # Loud on purpose: a summary with no description is a degraded
-        # artifact, not a normal outcome.
+        # Worth seeing, but not an error: every item here got an answer
+        # from the model and the model had nothing worth writing.  A call
+        # that *failed* never reaches this line — it raised.
         print(
-            f"    WARNING: {missing_description}/{len(eligible)} items got no "
-            f"description from Gemini",
+            f"    NOTE: {missing_description}/{len(eligible)} items — the model "
+            f"answered but offered no description",
             flush=True,
         )
     return summaries
@@ -189,11 +205,14 @@ def main() -> None:
     summarized = 0
     skipped = 0
     errors = 0
+    quota_gone = False
 
     source: MeetingSource = EscribeMeetingSource(LiveEscribeTransport())
     with TranscriptCache.open() as transcript_cache, \
             ItemSummariesCache.open() as summaries_cache:
         for tab in tabs:
+            if quota_gone:
+                break
             slug = tab["slug"]
             print(f"\n--- {tab['label']} ({slug}) ---")
             meetings = []
@@ -245,6 +264,20 @@ def main() -> None:
                         f"    Done: {counted}/{len(summaries)} items have chips",
                         flush=True,
                     )
+                except QuotaExhausted as exc:
+                    # Every remaining call in this run would fail the same
+                    # way.  Stop here rather than spending the rest of the
+                    # 350-minute budget producing nothing.
+                    print(f"    STOPPING: {exc}", flush=True)
+                    errors += 1
+                    quota_gone = True
+                    break
+                except ExtractionFailed as exc:
+                    # Not saved on purpose: a meeting with an unknown item
+                    # is not a summarized meeting.  is_current rejects the
+                    # absent file, so the next run redoes it.
+                    errors += 1
+                    print(f"    ERROR: not saved — {exc}", flush=True)
                 except Exception as exc:
                     errors += 1
                     print(f"    ERROR: {exc}", flush=True)
@@ -254,6 +287,13 @@ def main() -> None:
         f"\nFinished: {summarized} summarized, {skipped} already cached, "
         f"{errors} errors"
     )
+    if quota_gone:
+        print(
+            "\nERROR: the run stopped early — the daily Gemini quota is "
+            "gone.  Meetings it did not reach were not written, so the "
+            "next run picks them up unchanged.",
+            file=sys.stderr,
+        )
     if errors > 0:
         sys.exit(1)
 
