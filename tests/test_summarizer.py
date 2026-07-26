@@ -294,6 +294,99 @@ class TestChipBadges:
         assert len([b for b in topic["badges"] if b["type"] == "chip"]) == 1
 
 
+class TestSectionHeadersAreNotTopics:
+    """A card slot spent on "Decision Reports" tells a reader nothing, and
+    the row is not one of the "N other items" the same card advertises —
+    ``count_agenda_items`` excludes it."""
+
+    def test_a_heading_never_takes_a_topic_slot(self):
+        from app.summarizer import extract_meeting_topics
+
+        header = {
+            "title": "Decision Reports",
+            "recommendation": "",
+            "content": "",
+            "section_number": "8.",
+            "time_start_ms": None,
+            "timestamp_inherited": False,
+        }
+        real = _item(title="Rezoning Application - 123 Main Street")
+        topics = extract_meeting_topics([header, real], "Council", max_topics=5)
+        assert [t["topic"] for t in topics] == ["Rezoning Application - 123 Main Street"]
+
+    def test_a_heading_that_borrowed_a_timestamp_is_also_excluded(self):
+        from app.summarizer import extract_meeting_topics
+
+        header = {
+            "title": "COMMUNICATIONS",
+            "recommendation": "",
+            "content": "",
+            "section_number": "9.",
+            "time_start_ms": 120_000,
+            "timestamp_inherited": True,
+        }
+        real = _item(title="Rezoning Application - 123 Main Street")
+        topics = extract_meeting_topics([header, real], "Council", max_topics=5)
+        assert all(t["topic"] != "COMMUNICATIONS" for t in topics)
+
+
+class TestRecessesAreNotTopics:
+    def test_a_break_never_takes_a_topic_slot(self):
+        from app.summarizer import extract_meeting_topics
+
+        recess = {
+            "title": "Recess",
+            "recommendation": "",
+            "content": "",
+            "section_number": "6.",
+            "time_start_ms": 3_600_000,
+            "timestamp_inherited": False,
+            "is_recess": True,
+        }
+        real = _item(title="Rezoning Application - 123 Main Street")
+        topics = extract_meeting_topics([recess, real], "Council", max_topics=5)
+        assert all("Recess" not in t["topic"] for t in topics)
+
+
+class TestAWrittenDescriptionRaisesRanking:
+    def test_an_item_with_a_description_outranks_one_without(self):
+        from app.summarizer import extract_meeting_topics
+
+        plain = _item(title="Rezoning Application - 123 Main Street")
+        described = _item(
+            title="Rezoning Application - 456 Side Street",
+            summary={"description": "Four lots can now hold eight units each.",
+                     "chips": []},
+        )
+        topics = extract_meeting_topics([plain, described], "Council", max_topics=1)
+        assert topics[0]["topic"].endswith("456 Side Street")
+
+
+class TestTopicsCarryTheirRank:
+    """The card draws fewer rows than it is given and pads from the best
+    of the rest, so it needs the score order the server already knows.
+    Topics themselves stay in agenda order."""
+
+    def test_rank_is_by_score_while_order_is_by_agenda(self):
+        from app.summarizer import extract_meeting_topics
+
+        dull = _item(title="A Routine Item", vote_result="", recommendation="")
+        strong = _item(title="B Contested Rezoning", is_contested=True)
+        topics = extract_meeting_topics([dull, strong], "Council", max_topics=5)
+        assert [t["topic"] for t in topics] == ["A Routine Item", "B Contested Rezoning"]
+        assert topics[1]["rank"] < topics[0]["rank"]
+
+
+class TestATopicTitleDoesNotShout:
+    def test_a_full_caps_agenda_title_arrives_readable(self):
+        topic = _format_topic(_item(title="RISE AND REPORT"))
+        assert topic["topic"] == "Rise and Report"
+
+    def test_a_mixed_case_title_is_left_alone(self):
+        topic = _format_topic(_item(title="Rezoning at 123 Main Street"))
+        assert topic["topic"] == "Rezoning at 123 Main Street"
+
+
 class TestChipsRaiseRanking:
     def test_an_item_with_chips_outranks_an_identical_item_without(self):
         from app.summarizer import extract_meeting_topics

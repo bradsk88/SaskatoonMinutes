@@ -61,6 +61,23 @@ class TestPlainify:
         result = plainify("Simple Title [CC2025-0402]")
         assert result == "Simple Title"
 
+    def test_reference_code_with_the_clerks_period(self):
+        """The same file number is written both ways upstream, so the
+        card kept "[CK. 225-18]" and dropped "[CK 225-18]"."""
+        assert plainify("Work Plan [CK. 225-18]") == "Work Plan"
+        assert plainify("Report of the Chair [File No. CK 225-83]") \
+            == "Report of the Chair"
+
+    def test_two_reference_groups_both_go(self):
+        """Budget items carry the book page and the file number, and an
+        end-anchored single strip left the first group on the card."""
+        assert plainify("Saskatoon Police Service [Budget Book pages 9-18] "
+                        "[CCB2025-1110]") == "Saskatoon Police Service"
+
+    def test_a_multi_code_reference_goes(self):
+        assert plainify("New Saskatoon Transit [TS2023-0305 & TS2023-0503]") \
+            == "New Saskatoon Transit"
+
     def test_empty(self):
         assert plainify("") == ""
 

@@ -666,7 +666,10 @@ class EscribeMeetingSource:
             )
             meetings.append(Meeting(
                 meeting_id=meeting_id,
-                title=m.get("MeetingType", "City Council Meeting").strip(),
+                # eSCRIBE writes the meeting type in full caps. The detail
+                # page already refuses to shout; a card that does is the
+                # same name in the same product, read first.
+                title=titleize(m.get("MeetingType", "City Council Meeting").strip()),
                 date=_parse_escribemeetings_date(m.get("Start", "")),
                 start_time=m.get("FormattedStart", ""),
                 location=m.get("LocationName", ""),

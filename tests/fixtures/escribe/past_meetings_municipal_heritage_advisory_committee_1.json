@@ -1,0 +1,18 @@
+{
+  "d": {
+    "TotalCount": 1,
+    "Meetings": [
+      {
+        "Id": "mhac-001",
+        "MeetingType": "MUNICIPAL HERITAGE ADVISORY COMMITTEE",
+        "Start": "/Date(1719457800000)/",
+        "FormattedStart": "12:00 PM",
+        "LocationName": "Committee Room E",
+        "HasVideo": false,
+        "HasAgenda": true,
+        "Cancelled": false,
+        "MeetingLinks": []
+      }
+    ]
+  }
+}

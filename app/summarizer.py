@@ -14,8 +14,9 @@ from app.agenda_items import (
     format_outcome,
     is_major_decision,
     is_procedural,
+    is_section_header,
 )
-from app.agenda_text import clean_entities, format_money, plainify
+from app.agenda_text import clean_entities, format_money, plainify, titleize
 from app.item_categorizer import CATEGORY_GROUP, SEMANTIC_CATEGORIES
 from app.transcript_text import split_sentences
 
@@ -34,9 +35,16 @@ def extract_meeting_topics(
     prioritises contested votes, dollar amounts, and substantive
     recommendations, then returns the top *max_topics* as topic/outcome pairs.
     """
+    # A Section Header is the heading above the business, not the
+    # business: "Decision Reports", "Communications", "Referrals from
+    # Council".  ``count_agenda_items`` already refuses to count them, so
+    # leaving them rankable let a card spend a topic slot on a row that
+    # is not one of the "N other items" it goes on to advertise.
     substantive = [
         item for item in agenda_items
         if not is_procedural(item.get("title", ""))
+        and not is_section_header(item)
+        and not item.get("is_recess")
     ]
 
     scored = []
@@ -71,19 +79,33 @@ def extract_meeting_topics(
         # chatty item cannot crowd out every contested vote.
         chip_score = min(0.4, 0.15 * len(_chip_badges(item)))
 
+        # An item with a written Description is the only kind whose card
+        # line is prose a resident can read; every other row falls back
+        # to clipped agenda text under an "older summary" apology.  The
+        # card exists to carry those lines, so having one is worth about
+        # as much as a recorded vote.
+        description_score = 0.25 if _item_summary(item).get("description") else 0.0
+
         score = (
             contested_score + money_score + vote_score
-            + rec_score + depth_score + chip_score
+            + rec_score + depth_score + chip_score + description_score
         )
         scored.append((score, item))
 
     scored.sort(key=lambda x: x[0], reverse=True)
     top_items = [item for _, item in scored[:max_topics]]
 
-    top_set = {id(item) for item in top_items}
-    ordered = [item for item in substantive if id(item) in top_set]
+    # Topics are returned in agenda order, because that is the order the
+    # meeting happened in.  The card still needs to know which of them
+    # ranked highest -- it shows fewer than it is given, and has to pad
+    # from the best of the rest -- so the rank travels with the topic.
+    rank_by_item = {id(item): rank for rank, item in enumerate(top_items)}
+    ordered = [item for item in substantive if id(item) in rank_by_item]
 
-    return [_format_topic(item) for item in ordered]
+    return [
+        {**_format_topic(item), "rank": rank_by_item[id(item)]}
+        for item in ordered
+    ]
 
 
 def _format_topic(item: dict) -> dict:
@@ -99,7 +121,10 @@ def _format_topic(item: dict) -> dict:
     summary, summary_is_description = _topic_summary(item)
 
     return {
-        "topic": plainify(title),
+        # Some agenda titles arrive in full caps and some do not, so a
+        # card ends up with one row shouting at the reader and the next
+        # one not. titleize only touches fully-uppercase text.
+        "topic": titleize(plainify(title)),
         "outcome": outcome,
         "outcome_detail": clean_entities(rec) if rec else "",
         "summary": summary,

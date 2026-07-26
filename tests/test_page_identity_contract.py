@@ -91,6 +91,16 @@ class TestIndexCardStaysThin:
     def test_card_shows_a_bounded_number_of_topics(self):
         assert "CARD_TOPICS" in _read(INDEX)
 
+    def test_a_row_earns_its_slot_with_a_recorded_outcome(self):
+        """Standing business does not fill a card. The floor keeps a thin
+        agenda from rendering a card with one row on it."""
+        source = _read(INDEX)
+        assert "CARD_TOPICS_MIN" in source
+        assert "'Discussed'" in source
+        # The selection needs the ranking the server did, or padding
+        # would fall back to agenda order and pick the earliest rows.
+        assert "t.rank" in source
+
     def test_legacy_summary_caveat_is_not_hover_only(self):
         """A tooltip does not exist on a touch screen."""
         source = _read(INDEX)

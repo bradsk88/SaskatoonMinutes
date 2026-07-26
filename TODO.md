@@ -199,23 +199,29 @@ page is before this changes how you move through it.
 
 ---
 
+## Decided, waiting on your ratification
+
+Seven ADRs, all reversible, nothing committed. See `docs/adr/0006`–`0012`.
+
+- `0006` — the filter bar collapses behind a button below 640px.
+- `0007` — the phone keeps the h1 and drops the tagline, the hero
+  subtitle and the "Recent Meetings" heading.
+- `0008` — Section Headers and recesses cannot take a topic slot
+  (they were 23% of them).
+- `0009` — an item with a written Description outranks one without.
+- `0010` — card titles are titleized and lose trailing file numbers.
+- `0011` — a consent row leads with its outcome, then "in consent, not
+  debated". 103 approvals and one defeat were being reported as
+  "Not discussed".
+
+- `0012` — a row earns a card slot by having a recorded outcome, floor
+  of three. Rows with no outcome fell from a third of slots to 0.7%.
+  (Your call, from the interview: outcome as the bar, "received as
+  information" counts, pad to three.)
+
 ## Decisions waiting on you
 
-- **A consent item shows "Not discussed" instead of its outcome.** With
-  one badge per row, an approved consent item no longer says it was
-  approved — the card reports that council did not debate it and stays
-  silent on what council did. Pre-existing, but the redesign made it
-  prominent, and it sits against the rule that an outcome is never
-  misreported. Options: two badges, or wording like
-  "Approved · not discussed".
-- **On a phone the filter bar eats the first screen.** Fourteen chips
-  stack to roughly 300px before the first meeting appears. Collapsing it
-  behind a button is a design call, not a bug fix.
-- **Topic ranking favours consent items.** On the June 24 council
-  meeting, four of the five chosen topics were consent items, so the
-  card is mostly "Not discussed". That is `extract_meeting_topics`
-  scoring, not rendering, and it decides what the thinner card is
-  actually for.
+- Nothing open on the index card. Items 6–10 above are untouched.
 
 ## Noted, not scheduled
 

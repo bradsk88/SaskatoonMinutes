@@ -168,6 +168,25 @@ nav {
     margin: 0.35rem 0 0;
 }
 
+/* Replaces the chip rows below 640px; hidden above it, where the bar
+   costs one or two rows and collapsing it would only add a tap. */
+.filter-toggle {
+    display: none;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 9999px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+
+.filter-toggle-active {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+
 .filter-chip {
     cursor: pointer;
     border: 1.5px solid transparent;
@@ -967,6 +986,22 @@ a.topic-link:hover {
 
 /* Was a hover tooltip, which does not exist on a touch screen. The
    caveat travels with the text it qualifies instead. */
+/* Sits beside the outcome badge on a consent row: the outcome is the
+   claim, this is how it was reached. Grouped so the two stay on one
+   line when the narrow card stacks the title above the outcome. */
+.topic-outcome-group {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.topic-consent-note {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
 .topic-summary-note {
     display: block;
     font-style: normal;
@@ -1624,6 +1659,71 @@ footer a:hover {
 
     .hero h1 {
         font-size: 1.4rem;
+    }
+
+    /* The first screen at 390x844 was all chrome: the meeting list began
+       below the fold and not one agenda item was visible. The three
+       blocks below say the same thing three times over -- the header
+       tagline, the hero subtitle and the h1 -- so the phone keeps the
+       h1 and drops the restatements. */
+    .hero {
+        margin-bottom: 1rem;
+    }
+
+    .hero p {
+        display: none;
+    }
+
+    .tagline {
+        display: none;
+    }
+
+    /* "Recent Meetings" and the h1 above it label the same list, and the
+       active tab already names what is in it. The heading stays in the
+       document for a screen reader and gives up its 45px of the first
+       screen. */
+    .meetings-section h2 {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    /* Collapsed by default; the toggle opens it. */
+    .filter-toggle {
+        display: inline-block;
+    }
+
+    .filter-label,
+    .category-filter-bar .filter-chips,
+    .category-filter-bar .filter-clear {
+        display: none;
+    }
+
+    /* Open, the chips take the full width under the button rather than
+       sharing its row and wrapping one chip per line. */
+    .category-filter-bar.filter-bar-open .filter-bar-inner {
+        flex-wrap: wrap;
+    }
+
+    .category-filter-bar.filter-bar-open .filter-chips {
+        display: flex;
+        flex-basis: 100%;
+        margin-top: 0.5rem;
+    }
+
+    .category-filter-bar.filter-bar-open .filter-clear {
+        display: inline-block;
+    }
+
+    nav {
+        flex-direction: column;
+        align-items: flex-start;
+        height: auto;
+        padding: 0.75rem 0;
+        gap: 0.25rem;
     }
 
     .agenda-controls {

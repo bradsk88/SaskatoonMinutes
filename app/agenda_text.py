@@ -73,8 +73,13 @@ PLAIN_REPLACEMENTS = [
     (re.compile(r'^Bylaw\s+No\.\s*\d+\s*[-–—]\s*', re.IGNORECASE), ''),
     (re.compile(r'\bBylaw\b,?\s*', re.IGNORECASE), ''),
     (re.compile(r'\(No\.\s*\d+\)', re.IGNORECASE), ''),
-    # Reference codes like [CC2025-0402], [TS2026-0203], [FI2026-0205], [CK 225-4-3]
-    (re.compile(r'\s*\[[\w\s-]+\]\s*$'), ''),
+    # Trailing filing references: [CC2025-0402], [CK. 225-18], [File No.
+    # CK 225-83], [FI2024-0308, GPC2023-0503], [Budget Book pages 9-18].
+    # All of them point at where the paperwork lives, which is the detail
+    # page's business and not a card's.  Repeated because a budget item
+    # carries two groups -- "[Budget Book pages 9-18] [CCB2025-1110]" --
+    # and an end-anchored single strip left the first one behind.
+    (re.compile(r'(?:\s*\[[^\[\]]*\])+\s*$'), ''),
     # "Award of Contract - Foo (Contract No. 25-0456)" → "Foo"
     (re.compile(r'^Award\s+of\s+Contract\s*[-–—]\s*', re.IGNORECASE), ''),
     (re.compile(r'\(Contract\s+No\.\s*[\w-]+\)', re.IGNORECASE), ''),

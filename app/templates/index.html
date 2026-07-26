@@ -19,6 +19,12 @@
 
 <section class="category-filter-bar" id="category-filter-bar">
     <div class="filter-bar-inner">
+        <!-- On a phone the fourteen chips stack about 300px tall and push
+             every meeting off the first screen. The button replaces them
+             below 640px and says how many filters are on, so a collapsed
+             bar can never hide an active filter. -->
+        <button class="filter-toggle" id="filter-toggle"
+                aria-expanded="false" aria-controls="filter-chips">Filter by topic</button>
         <span class="filter-label">Filter:</span>
         <div class="filter-chips" id="filter-chips"></div>
         <button class="filter-clear" id="filter-clear" style="display:none;">Clear</button>
@@ -67,6 +73,11 @@
     // Topics shown on a card. The card exists to get a reader into the
     // right meeting, not to list it — the rest are behind "N other items".
     const CARD_TOPICS = 5;
+
+    // A row earns a slot by having a recorded outcome. "Discussed" is
+    // what an item with no vote and no recommendation falls back to, so
+    // it is the one label that records nothing.
+    const CARD_TOPICS_MIN = 3;
 
     const selectedCategories = new Set();
 
@@ -187,9 +198,23 @@
                 .filter(b => b.type.startsWith('cat-'))
                 .map(b => b.type);
 
-            const outcomeHtml = t.is_consent
+            // A consent item still has an outcome — 103 of the 269 consent
+            // rows in the archive were Approved and one was Defeated — and
+            // a badge reading only "Not discussed" reports that council
+            // did nothing. The outcome leads; "in consent" says how it
+            // passed. "Discussed" is the exception: it is what an item
+            // with no vote and no recommendation falls back to, and on a
+            // consent row it is simply false, so the row says only that
+            // the item was not debated.
+            const consentIsBare = t.is_consent && t.outcome === 'Discussed';
+            const outcomeHtml = consentIsBare
                 ? `<span class="badge topic-badge badge-consent">Not discussed</span>`
-                : `<span class="badge topic-badge badge-${oClass}">${escapeAttr(t.outcome)}</span>`;
+                : t.is_consent
+                    ? `<span class="topic-outcome-group">`
+                      + `<span class="badge topic-badge badge-${oClass}">${escapeAttr(t.outcome)}</span>`
+                      + `<span class="topic-consent-note">in consent, not debated</span>`
+                      + `</span>`
+                    : `<span class="badge topic-badge badge-${oClass}">${escapeAttr(t.outcome)}</span>`;
 
             // Play button for topics with video timestamps. A consent
             // item's timestamp is inherited from its parent section, so
@@ -311,6 +336,25 @@
             `<div class="${cssClass}">${message}</div>` + cardFooterHtml(openHref, null);
     }
 
+    // Which topics the card draws. A row with a recorded outcome earns
+    // its slot; standing business — "Report of the Chair", "Work Plan
+    // Consideration" — does not, and a thin agenda gets a short card
+    // rather than five rows of it. Three is the floor: below that the
+    // card stops looking like a summary at all, so the best of the rest
+    // fill in. Agenda order is preserved, because that is the order the
+    // meeting happened in.
+    function chooseCardTopics(topics) {
+        const rank = t => (t.rank != null ? t.rank : topics.indexOf(t));
+        const byRank = topics.slice().sort((a, b) => rank(a) - rank(b));
+        const earned = byRank.filter(t => t.outcome && t.outcome !== 'Discussed');
+        const chosen = earned.slice(0, CARD_TOPICS);
+        for (const t of byRank) {
+            if (chosen.length >= CARD_TOPICS_MIN) break;
+            if (!chosen.includes(t)) chosen.push(t);
+        }
+        return topics.filter(t => chosen.includes(t));
+    }
+
     function renderTopicsInContainer(meetingId, payload, openHref) {
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
@@ -323,7 +367,7 @@
             return;
         }
 
-        const shown = topics.slice(0, CARD_TOPICS);
+        const shown = chooseCardTopics(topics);
         // "N other items" is only shown when the meeting's item count is
         // known. Guessing it from the topic list would undercount every
         // meeting, since topics are the ranked few, not the agenda.
@@ -476,9 +520,28 @@
         observer.observe(sentinel);
     }
 
+    // The collapsed button has to carry the state the chips would have
+    // shown, or a reader who scrolls away from an active filter sees a
+    // short list with no visible reason for it.
+    function updateFilterToggleLabel() {
+        const toggle = document.getElementById('filter-toggle');
+        if (!toggle) return;
+        const n = selectedCategories.size;
+        toggle.textContent = n > 0 ? `Filter by topic (${n})` : 'Filter by topic';
+        toggle.classList.toggle('filter-toggle-active', n > 0);
+    }
+
     function initFilterBar() {
         const chipsContainer = document.getElementById('filter-chips');
         const clearBtn = document.getElementById('filter-clear');
+        const bar = document.getElementById('category-filter-bar');
+        const toggle = document.getElementById('filter-toggle');
+
+        toggle.addEventListener('click', () => {
+            const open = bar.classList.toggle('filter-bar-open');
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+
         ALL_CATEGORIES.forEach(cat => {
             const chip = document.createElement('button');
             chip.className = `filter-chip badge topic-badge badge-${cat.slug}`;
@@ -496,6 +559,7 @@
                 clearBtn.style.display = active ? '' : 'none';
                 document.getElementById('filter-scope-note').style.display =
                     active ? '' : 'none';
+                updateFilterToggleLabel();
                 applyFilters();
             });
             chipsContainer.appendChild(chip);
@@ -507,6 +571,7 @@
                 c.classList.remove('filter-chip-active'));
             clearBtn.style.display = 'none';
             document.getElementById('filter-scope-note').style.display = 'none';
+            updateFilterToggleLabel();
             applyFilters();
         });
     }

@@ -72,6 +72,16 @@ class TestEscribeMeetingSourceListPast:
         assert meetings[1].is_cancelled is True
         assert meetings[1].video_url is None
 
+    def test_a_shouted_meeting_type_arrives_readable(self):
+        """The list is where card titles come from. eSCRIBE writes the
+        type in full caps and the detail page already titleizes it, so a
+        card that shouts is the same name twice in two voices."""
+        src = EscribeMeetingSource(FixtureEscribeTransport(FIXTURES))
+        meetings, _ = src.list_past(
+            page=1, meeting_type="MUNICIPAL HERITAGE ADVISORY COMMITTEE",
+        )
+        assert meetings[0].title == "Municipal Heritage Advisory Committee"
+
 
 class TestEscribeMeetingSourceLoadDetail:
     def test_load_detail_returns_meeting_detail(self):
