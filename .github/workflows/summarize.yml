@@ -16,7 +16,7 @@ on:
         required: false
         default: '2'
       force:
-        description: 'Re-summarize meetings that already have cached summaries'
+        description: 'Redo meetings whose summaries are already current (not for the backfill)'
         type: boolean
         required: false
         default: false
@@ -40,8 +40,10 @@ jobs:
   summarize:
     runs-on: ubuntu-latest
     # The current-term backfill is ~226 meetings and will not fit in one
-    # run.  That is fine: CleanTranscriptCache makes the expensive half a
-    # cache hit, so dispatching repeatedly converges instead of restarting.
+    # run.  That is fine: a meeting whose summaries are already in the
+    # current format is skipped, so dispatching repeatedly walks forward
+    # instead of redoing the last batch.  Leave `force` off for the
+    # backfill -- it turns that skip off and the run stops converging.
     timeout-minutes: 350
 
     steps:

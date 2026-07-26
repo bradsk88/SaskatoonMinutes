@@ -16,8 +16,10 @@ Backfilling the current council term (see
     python scripts/summarize_meetings.py \
         --since 2024-11-01 --pages 3 --limit 30 --force
 
-``--force`` is required because every meeting already has a cached
-summary from before the ItemSummary aggregate existed.  Meetings older
+Meetings whose cached summaries are already in the current format are
+skipped; the pre-aggregate ones are re-summarized.  So the backfill can
+be dispatched repeatedly and walks forward each time, and ``--force`` is
+reserved for redoing a meeting that is already current.  Meetings older
 than the current term keep their Legacy ItemSummary on purpose: they are
 outside the scope this plan set out to fix, and re-summarizing them costs
 a chip call each.
@@ -50,6 +52,26 @@ from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
 from app.models import ItemSummary
 from app.transcript_cache import TranscriptCache
+
+
+def is_current(cached: dict[str, ItemSummary] | None) -> bool:
+    """True when *cached* holds summaries in the current ItemSummary format.
+
+    The backfill's skip rule.  Asking "does a summary exist?" cannot run
+    the backfill at all: every in-term meeting already carries the
+    pre-aggregate chip list, so the run needed ``--force``, which turned
+    the skip off entirely and made each dispatch redo the meetings the
+    last one paid for instead of moving on.
+
+    ``any``, not ``all``: an *ineligible* item is stored as an empty
+    summary with no description, so a meeting is judged by whether
+    anything in it cleared the current bar.  A meeting summarized without
+    a Gemini key has no descriptions anywhere and is correctly treated as
+    not current — that run produced degraded output and should be redone.
+    """
+    if not cached:
+        return False
+    return any(not summary.is_legacy for summary in cached.values())
 
 
 def summarize_meeting(
@@ -122,7 +144,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--force", action="store_true",
-        help="Re-summarize meetings that already have cached summaries.",
+        help="Re-summarize meetings whose summaries are already current.",
     )
     parser.add_argument(
         "--since", default=None, metavar="YYYY-MM-DD",
@@ -197,7 +219,7 @@ def main() -> None:
                     continue
 
                 mid = m.meeting_id
-                if not args.force and summaries_cache.load(mid) is not None:
+                if not args.force and is_current(summaries_cache.load(mid)):
                     print(f"  [{m.date}] {mid[:8]}... already summarized")
                     skipped += 1
                     continue
