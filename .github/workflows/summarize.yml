@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       tabs:
-        description: 'Tab slugs to process (space-separated, empty = all)'
+        description: 'Tab slugs, space-separated (empty = all 16). e.g. council public-hearing planning'
         required: false
-        default: 'council'
+        default: ''
       limit:
         description: 'Max meetings per tab'
         required: false
