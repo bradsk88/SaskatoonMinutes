@@ -10,6 +10,30 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 
 
+@dataclass(frozen=True)
+class Presentation:
+    """One guest speaker's presentation to an agenda item (a delegation).
+
+    Extracted deterministically from PostMinutes prose — council's minutes
+    narrate each delegate in their own sentence ("Karen Kobussen, Saskatoon
+    West Business Association, expressed concerns...") — the same
+    regex-over-official-text approach as the other hard chips.  When the
+    prose only mentions someone in passing (e.g. "along with Tammy
+    MacFarlane"), a submitted Request-to-Speak attachment fills the gap.
+    ``source`` records which so the UI can show a narrated presentation
+    with more confidence than a bare RTS filing.
+    """
+
+    name: str
+    organization: str = ""
+    stance: str = ""  # "support" | "concern" | "" (informational)
+    summary: str = ""
+    source: str = "minutes"  # "minutes" | "registered"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
 @dataclass
 class AgendaItem:
     item_id: int
@@ -25,6 +49,7 @@ class AgendaItem:
     timestamp_inherited: bool = False
     is_recess: bool = False
     attachments: list = field(default_factory=list)
+    presentations: list[Presentation] = field(default_factory=list)
 
     @property
     def time_start_formatted(self) -> str | None:

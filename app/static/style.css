@@ -862,6 +862,111 @@ main {
     text-decoration: underline;
 }
 
+/* === Presentations (guest speakers / delegations) === */
+.presentation-section {
+    margin-top: 0.6rem;
+}
+
+.presentation-section-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.35rem;
+}
+
+.presentation-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.2em;
+    padding: 0 0.35em;
+    border-radius: 999px;
+    background: var(--color-border);
+    color: var(--color-text);
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.presentation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.presentation-card {
+    padding: 0.6rem 0.8rem;
+    background: var(--color-bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border);
+}
+
+.presentation-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.presentation-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--color-text);
+}
+
+.presentation-org {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+}
+
+.presentation-stance {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.stance-support {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.stance-concern {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.stance-neutral,
+.stance-registered {
+    background: var(--color-border);
+    color: var(--color-text-muted);
+}
+
+.presentation-summary {
+    margin-top: 0.3rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--color-text);
+}
+
+/* Index card's slight surface of the same data. */
+.presentation-badge {
+    display: inline-block;
+    margin-bottom: 0.5rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+}
+
 /* === Meeting Topics (index page) === */
 .meeting-topics {
     margin-top: 0.75rem;

@@ -380,12 +380,22 @@
     // Both producers hand over {topics, total_items}; older preloaded
     // blobs are a bare list. Normalized here so the renderer sees one shape.
     function normalizeTopicsPayload(payload) {
-        if (Array.isArray(payload)) return { topics: payload, total_items: null };
-        if (!payload) return { topics: [], total_items: null };
+        if (Array.isArray(payload)) return { topics: payload, total_items: null, presentation_count: 0 };
+        if (!payload) return { topics: [], total_items: null, presentation_count: 0 };
         return {
             topics: payload.topics || [],
             total_items: payload.total_items != null ? payload.total_items : null,
+            presentation_count: payload.presentation_count || 0,
         };
+    }
+
+    // The card's only hint that guest speakers showed up — a count, not
+    // names or stances, both of which live on the detail page. "Surface
+    // at least slightly" is the whole brief: enough to make a reader
+    // click in, not a second summary competing with the topics table.
+    function presentationBadgeHtml(count) {
+        if (!count) return '';
+        return `<div class="presentation-badge">${count} presentation${count === 1 ? '' : 's'} from guest speakers</div>`;
     }
 
     // The card footer. It lives with the topics so it can say how many
@@ -403,9 +413,9 @@
         </div>`;
     }
 
-    function renderTopicsMessage(container, message, cssClass, openHref) {
+    function renderTopicsMessage(container, message, cssClass, openHref, badge) {
         container.innerHTML =
-            `<div class="${cssClass}">${message}</div>` + cardFooterHtml(openHref, null);
+            (badge || '') + `<div class="${cssClass}">${message}</div>` + cardFooterHtml(openHref, null);
     }
 
     // Which topics the card draws. A row with a recorded outcome earns
@@ -431,11 +441,12 @@
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
 
-        const { topics, total_items } = normalizeTopicsPayload(payload);
+        const { topics, total_items, presentation_count } = normalizeTopicsPayload(payload);
+        const badge = presentationBadgeHtml(presentation_count);
 
         if (topics.length === 0) {
             renderTopicsMessage(
-                container, 'No substantive topics found.', 'topics-empty', openHref);
+                container, 'No substantive topics found.', 'topics-empty', openHref, badge);
             return;
         }
 
@@ -447,7 +458,7 @@
             ? total_items - shown.length
             : null;
         container.innerHTML =
-            renderTopicsTable(shown, openHref) + cardFooterHtml(openHref, remaining);
+            badge + renderTopicsTable(shown, openHref) + cardFooterHtml(openHref, remaining);
     }
 
     function meetingOpenHref(meetingId) {

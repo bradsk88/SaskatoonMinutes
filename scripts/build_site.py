@@ -128,6 +128,7 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
             topics_data[mid] = {
                 "topics": topics,
                 "total_items": count_agenda_items(items),
+                "presentation_count": sum(len(i.get("presentations") or []) for i in items),
             }
             details_data[mid] = {
                 "agenda_items": items,

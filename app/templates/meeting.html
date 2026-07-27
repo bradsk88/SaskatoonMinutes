@@ -317,6 +317,34 @@
         return `<div class="transcript-content">${parts}</div>`;
     }
 
+    function buildPresentationsHtml(item) {
+        const presentations = item.presentations || [];
+        if (presentations.length === 0) return '';
+        const cards = presentations.map(p => {
+            const stanceClass = p.source === 'registered' ? 'stance-registered'
+                : p.stance ? `stance-${p.stance}` : 'stance-neutral';
+            const stanceLabel = p.source === 'registered' ? 'Registered'
+                : p.stance === 'support' ? 'Support'
+                : p.stance === 'concern' ? 'Concern'
+                : 'Spoke';
+            const orgHtml = p.organization
+                ? `<span class="presentation-org">${escapeHtml(p.organization)}</span>`
+                : '';
+            return `<div class="presentation-card">
+                <div class="presentation-card-header">
+                    <span class="presentation-name">${escapeHtml(p.name)}</span>
+                    ${orgHtml}
+                    <span class="badge presentation-stance ${stanceClass}">${stanceLabel}</span>
+                </div>
+                <p class="presentation-summary">${escapeHtml(p.summary)}</p>
+            </div>`;
+        }).join('');
+        return `<div class="presentation-section">
+            <div class="presentation-section-title">Presentations <span class="presentation-count">${presentations.length}</span></div>
+            <div class="presentation-list">${cards}</div>
+        </div>`;
+    }
+
     function buildAttachmentsOnlyHtml(item) {
         const attachments = item.attachments || [];
         if (attachments.length === 0) return '';
@@ -453,6 +481,7 @@
             : '';
 
         const chipsHtml = hasChips ? buildChipViewHtml(item) : '';
+        const presentationsHtml = buildPresentationsHtml(item);
 
         el.innerHTML = `
             <div class="item-header">
@@ -464,6 +493,7 @@
                 ${playBtnHtml}
             </div>
             ${badgesHtml ? `<div class="item-badges">${badgesHtml}</div>` : ''}
+            ${presentationsHtml}
             ${toggleHtml}
             ${chipsHtml}
             <div class="item-notes-view">${transcriptHtml}</div>
