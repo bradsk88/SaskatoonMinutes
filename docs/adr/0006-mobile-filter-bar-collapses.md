@@ -18,6 +18,8 @@ The bar re-collapses on every load rather than remembering that it was open. The
 
 ## Consequences
 
-The filter is one tap away instead of zero on phones. That is the trade: the control most readers do not use stops taxing the readers who do not use it.
+The filter is one tap away instead of zero on phones. That is the trade, and it is the right way round here: most readers scroll rather than filter, so the control taxing everyone to serve a few was the wrong default.
+
+Discoverability is the open cost. A closed button says less about what is behind it than fourteen visible chips do. The intended repair is to preview the contents in the label — "Filter by Transit and more..." with the named category cycling every second or so — which advertises what expanding gets you without spending the height. Not built; see `TODO.md`.
 
 The filter still only covers loaded meetings (`TODO.md` item 6). Collapsing it does not change that, and the scope note still says so when a filter is on.

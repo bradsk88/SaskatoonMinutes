@@ -11,6 +11,7 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEETING = os.path.join(ROOT, "app", "templates", "meeting.html")
 INDEX = os.path.join(ROOT, "app", "templates", "index.html")
+CSS = os.path.join(ROOT, "app", "static", "style.css")
 
 
 def _read(path: str) -> str:
@@ -101,11 +102,55 @@ class TestIndexCardStaysThin:
         # would fall back to agenda order and pick the earliest rows.
         assert "t.rank" in source
 
-    def test_legacy_summary_caveat_is_not_hover_only(self):
-        """A tooltip does not exist on a touch screen."""
+    def test_raw_agenda_text_says_it_is_raw_agenda_text(self):
+        """Not hover-only, and not a sentence of apology either: seven
+        rows in ten are on this path, so the mark is a source label
+        inside the clamped block."""
         source = _read(INDEX)
         assert "topic-summary-note" in source
-        assert "Older summary" in source
+        assert "From the agenda:" in source
+        assert "no plain-language description available" not in source
+
+    def test_a_row_offers_the_takeaway_as_text(self):
+        """The chip was a badge whose claim only appeared on hover. It is
+        the closest thing the card has to "why this is worth opening", so
+        it is prose now -- and the RSS feed reads the same rows."""
+        source = _read(INDEX)
+        assert "TAKEAWAY_ORDER" in source
+        assert "topic-takeaway" in source
+        # The sentence itself, not the category label alone.
+        block = source[source.index("function takeawayHtml"):]
+        block = block[: block.index("\n    function ")]
+        assert "best.tooltip" in block
+
+    def test_the_takeaway_is_bounded_and_the_summary_pays_for_it(self):
+        """Chip text runs to 122 characters, which is three lines at card
+        width -- so the takeaway gets three and the description drops to
+        two beneath it. The row's height is unchanged."""
+        css = _read(CSS)
+        block = css[css.index(".topic-takeaway {"):]
+        assert "-webkit-line-clamp: 3" in block[: block.index("}")]
+        block = css[css.index(".topic-summary-short {"):]
+        assert "-webkit-line-clamp: 2" in block[: block.index("}")]
+        assert "topic-summary-short" in _read(INDEX)
+
+    def test_a_card_row_is_bounded_in_height(self):
+        """A card is read to choose a meeting, not to read the item."""
+        css = _read(CSS)
+        block = css[css.index(".topic-summary {"):]
+        assert "-webkit-line-clamp: 3" in block[: block.index("}")]
+        block = css[css.index(".topic-name > span:first-child {"):]
+        assert "-webkit-line-clamp: 2" in block[: block.index("}")]
+
+    def test_the_card_does_not_offer_the_same_link_twice(self):
+        """The play button pointed at the row's own href."""
+        assert "topic-play-link" not in _read(INDEX)
+        assert "topic-play-link" not in _read(CSS)
+
+    def test_a_card_outcome_does_not_shout(self):
+        css = _read(CSS)
+        block = css[css.index(".topics-table .topic-badge {"):]
+        assert "text-transform: none" in block[: block.index("}")]
 
     def test_filter_states_its_real_range(self):
         """It filters loaded meetings, not the archive."""
@@ -145,14 +190,10 @@ class TestConsentItemsAreNotLinkedToTheWrongAudio:
 
     The detail page already refuses to offer a jump for one; the card
     used to offer both a play link and a ``?t=`` deep link, which sent a
-    reader to the clerk reading the consent block into the record.
+    reader to the clerk reading the consent block into the record.  The
+    play link is gone entirely now -- it pointed at the row's own href
+    -- so the row link is the only path left to guard.
     """
-
-    def test_no_play_link_for_a_consent_topic(self):
-        source = _read(INDEX)
-        block = source[source.index("let playHtml = '';"):]
-        block = block[: block.index("}")]
-        assert "!t.is_consent" in block
 
     def test_no_timestamp_deep_link_for_a_consent_topic(self):
         source = _read(INDEX)

@@ -19,3 +19,31 @@ A Description is now worth `0.25`, between a recommendation (`0.2`) and a contes
 Cards drift toward the items the summarizer has processed. This is a feedback loop worth naming: if a summarize run skips a body, that body's cards get quieter and no one is told. The existing rule that a run which cannot reach Gemini fails rather than shipping empty is what keeps it from being silent.
 
 The mix barely moved in this corpus — most items in it have no Description at all, so there was little to promote. The effect grows as coverage grows.
+
+## Amended: duration ranks alongside it
+
+Reviewed against the built site, the Description weight turned out to
+change the rows on **7 cards in 310** — and where it fired, it swapped
+"Information Reports" for "Rise and Report". Nearly inert, and it still
+ranks by how well *we* covered an item rather than by what the meeting
+did.
+
+Rather than drop it, a second weight of the same size now measures the
+meeting: **how long council spent on the item**, reaching full value at
+twenty minutes. The median discussed item runs 8.4 minutes.
+
+That one is not inert — it changes the rows on **84 cards in 310**, and
+the swaps are the point. The March 26 council card gains "Terms of
+Reference – Council Subcommittee on Homelessness" (160 minutes of
+debate) and the Homelessness Action Plan item (45 minutes), dropping
+three items the meeting never discussed at all.
+
+Both weights are capped at 0.25, below a contested vote at 0.5. An item
+that is long *and* well-covered can now outrank a contested vote, which
+is worth watching.
+
+Duration reads zero for anything without a span of its own — a Consent
+Item inherits its parent's, which times the clerk reading a block into
+the record — and zero for any span over three hours, because those are
+broken end bookmarks rather than long debates (see `TODO.md` item 13).
+

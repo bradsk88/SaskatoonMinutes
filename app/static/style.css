@@ -289,6 +289,10 @@ main {
     font-size: 1.05rem;
 }
 
+.title-short {
+    display: none;
+}
+
 /* === Meetings Layout === */
 .meetings-section h2 {
     font-size: 1.2rem;
@@ -415,34 +419,6 @@ main {
 .btn-open:hover {
     background: var(--color-primary);
     color: white;
-}
-
-.topic-play-link {
-    background: #ede9fe;
-    text-decoration: none;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: 50%;
-    transition: background 0.15s;
-}
-
-.topic-play-link::after {
-    content: "";
-    display: block;
-    width: 0;
-    height: 0;
-    border-style: solid;
-    border-width: 0.35rem 0 0.35rem 0.6rem;
-    border-color: transparent transparent transparent var(--color-video);
-    margin-left: 0.1rem;
-}
-
-.topic-play-link:hover {
-    background: #ddd6fe;
 }
 
 /* === Scroll Sentinel / End Message === */
@@ -964,17 +940,61 @@ a.topic-link:hover {
     font-weight: 600;
 }
 
+/* A card row is bounded. Agenda titles run long -- a third of the rows
+   drawn across the archive wrap past two lines at 390px, some to six --
+   and the card is read to choose a meeting, not to read the item. Two
+   lines, then the detail page. */
 .topic-name > span:first-child {
     min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
 }
 
 /* The written Description. This is the card's content now, not a
    footnote under a badge row, so it is sized to be read. */
+/* Three lines, for the same reason as the title. Descriptions average
+   over four lines at 390px and reach eleven; the whole of one is on the
+   detail page, one tap away. */
 .topic-summary {
     color: var(--color-text-muted);
     font-size: 0.85rem;
     line-height: 1.45;
     margin-top: 0.2rem;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+}
+
+/* The one chip a card row shows, as prose. Bounded like the summary
+   above it: two lines is enough for a hook and keeps a five-row card
+   inside the height 0013 measured. */
+.topic-takeaway {
+    font-size: 0.82rem;
+    line-height: 1.45;
+    margin-top: 0.25rem;
+    color: var(--color-text);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+}
+
+/* Where a takeaway follows, the description yields its third line so
+   the row keeps the height 0013 set. */
+.topic-summary-short {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.topic-takeaway-label {
+    font-weight: 600;
+    color: var(--color-primary);
 }
 
 /* Raw agenda text standing in for a missing plain-language description.
@@ -1002,12 +1022,13 @@ a.topic-link:hover {
     white-space: nowrap;
 }
 
+/* Says whose words the clipped line is, inline and in front of them, so
+   the provenance travels with the text and costs part of a line rather
+   than two of its own. */
 .topic-summary-note {
-    display: block;
     font-style: normal;
-    font-size: 0.72rem;
+    font-weight: 600;
     opacity: 0.8;
-    margin-top: 0.15rem;
 }
 
 /* Topic badges row */
@@ -1025,6 +1046,16 @@ a.topic-link:hover {
     display: inline-flex;
     align-items: center;
     height: 1.5rem;
+}
+
+/* On a card the outcome is set in sentence case. Uppercase is the
+   badge default and it earns its shout where badges are short labels
+   among body text; here "RECEIVED AS INFORMATION" is the widest thing
+   on a 390px row and it repeats down the card. Same words, said at
+   the volume of the sentence under them. */
+.topics-table .topic-badge {
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 /* Outcome badge colors */
@@ -1568,18 +1599,6 @@ footer a:hover {
         color: white;
     }
 
-    .topic-play-link {
-        background: #2e2459;
-    }
-
-    .topic-play-link::after {
-        border-color: transparent transparent transparent #a78bfa;
-    }
-
-    .topic-play-link:hover {
-        background: #3b2d70;
-    }
-
     /* Transcript vote colors */
     .vote-carried {
         color: #6ee7b7;
@@ -1674,8 +1693,14 @@ footer a:hover {
         display: none;
     }
 
-    .tagline {
+    /* The h1 keeps its full name on desktop and a short one on the
+       phone, where the long form wraps to two lines. */
+    .title-long {
         display: none;
+    }
+
+    .title-short {
+        display: inline;
     }
 
     /* "Recent Meetings" and the h1 above it label the same list, and the

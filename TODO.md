@@ -74,9 +74,17 @@ Also fixed from the rendered result: at 390px a long title was squeezed
 into five words a line with the outcome pinned beside it. The two now
 stack under the existing 640px breakpoint.
 
- The render
-functions were exercised with synthetic data, but no rebuilt `_site/`
-has been produced or deployed.
+### A second mobile pass over the card — `0013`–`0016`
+
+The card was still a page rather than a card: measured over the 276
+built cards at 390px, the average drew **36 text lines** and the worst
+54, where a phone screen holds about 40. Bounding the row (`0013`),
+labelling the fallback instead of apologising for it (`0014`) and
+dropping the duplicate play link (`0015`) take the mean to **20 and the
+worst case to a hard 25**. Outcome badges stopped shouting (`0016`).
+
+`_site/` was re-rendered from its own embedded payload to check the
+result on real content; nothing has been deployed.
 
 ---
 
@@ -201,7 +209,7 @@ page is before this changes how you move through it.
 
 ## Decided, waiting on your ratification
 
-Seven ADRs, all reversible, nothing committed. See `docs/adr/0006`–`0012`.
+Eleven ADRs, all reversible, nothing committed. See `docs/adr/0006`–`0016`.
 
 - `0006` — the filter bar collapses behind a button below 640px.
 - `0007` — the phone keeps the h1 and drops the tagline, the hero
@@ -219,9 +227,69 @@ Seven ADRs, all reversible, nothing committed. See `docs/adr/0006`–`0012`.
   (Your call, from the interview: outcome as the bar, "received as
   information" counts, pad to three.)
 
+- `0013` — a card row is two lines of title and three of summary.
+  Cards averaged 36 lines on a screen that holds about 40; 35% of
+  titles and 75% of summaries are now clipped for someone.
+- `0014` — "From the agenda:" replaces "Older summary — no
+  plain-language description available", a two-line caveat that was on
+  71% of rows.
+- `0015` — the ▶ button leaves the row. Its href was the row's own href
+  on all 871 rows that had one.
+- `0016` — a card's outcome badge is sentence case. Over half of rows
+  carry a label of 22 characters or more, and `.badge` shouted them.
+
 ## Decisions waiting on you
 
 - Nothing open on the index card. Items 6–10 above are untouched.
+- Smaller, not taken: the phone still spends ~270px above the first
+  card — the sticky header, `main`'s 2rem top padding, and an h1 that
+  wraps to two lines. `0007` kept the h1 deliberately. Trimming the
+  padding is worth ~20px and no information; say the word.
+
+## 11. Advertise what the collapsed filter holds
+
+The mobile filter button reads "Filter by topic", which says a filter
+exists and nothing about what it filters by. Cycle a real category
+through the label — "Filter by **Transit** and more..." — changing every
+second or so, so the contents are visible without the height.
+
+From ratifying `0006`: collapsed is right, obscured is the cost, and
+this is the way to pay it down.
+
+## 12. Publish the index as an RSS feed, one entry per major discussion
+
+The index is going out as a feed. A feed entry has no tabs, no filter
+and no hover — it stands alone or it fails.
+
+**Selected**: an item earns an entry by having something to say — a
+written Description or an interpretive chip. **Sorted** by how long
+council spent on it.
+
+The line that carries the chip is built and on the card already — see
+`0017`. What is left is the feed itself: the XML, the entry granularity
+and the per-item links it needs (item 7).
+
+Measured over the archive to settle the gate:
+
+- 1,612 of 6,952 items carry their own time span (23%). Consent items
+  inherit their parent's; 22 meetings have no timings at all.
+- 1,025 items ran 5 minutes or longer, 1–5 per meeting for most
+  meetings. Median discussed item is 8.4 minutes.
+- But only 266 of those have a Description and 326 an interpretive
+  chip. Duration alone would publish ~700 entries reading "council
+  spent twenty minutes on this" with no account of what came of it.
+
+So substance gates and duration ranks. ~300 entries today, growing with
+summarize coverage.
+
+Depends on nothing else, but see 13 — the durations are dirty.
+
+## 13. Cap or repair the broken discussion spans
+
+22 item spans run over three hours and four run about 6.9 days — "Blake
+Tait – Denounce 1 Million March 4 Children" clocks 9,876 minutes. Broken
+end bookmarks. Any duration ranking inherits it, and the detail page's
+timeline probably shows it too.
 
 ## Noted, not scheduled
 

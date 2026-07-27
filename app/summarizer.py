@@ -86,9 +86,17 @@ def extract_meeting_topics(
         # as much as a recorded vote.
         description_score = 0.25 if _item_summary(item).get("description") else 0.0
 
+        # How long council actually spent on it.  Unlike the Description,
+        # this is a property of the meeting rather than of our coverage:
+        # forty minutes of debate is the record saying the item mattered.
+        # Reaches full weight at twenty minutes; the median discussed
+        # item runs 8.4.
+        duration_score = 0.25 * min(1.0, _discussion_minutes(item) / 20.0)
+
         score = (
             contested_score + money_score + vote_score
             + rec_score + depth_score + chip_score + description_score
+            + duration_score
         )
         scored.append((score, item))
 
@@ -106,6 +114,30 @@ def extract_meeting_topics(
         {**_format_topic(item), "rank": rank_by_item[id(item)]}
         for item in ordered
     ]
+
+
+# A span longer than this is a broken end bookmark, not a discussion.
+# Twenty-two spans in the archive exceed three hours and four run about
+# 6.9 days -- one "denounce" delegation clocks 9,876 minutes.  Scoring
+# reads them as zero rather than as the most important item ever heard.
+_MAX_PLAUSIBLE_DISCUSSION_MINUTES = 180
+
+
+def _discussion_minutes(item: dict) -> float:
+    """How long the meeting spent on this item, in minutes.
+
+    Zero when the item has no span of its own.  A Consent Item inherits
+    its parent section's, which measures the clerk reading a block into
+    the record and not the item, so it does not count -- and neither
+    does a recess, which is the meeting spending time on nothing.
+    """
+    if item.get("is_recess") or item.get("timestamp_inherited"):
+        return 0.0
+    start, end = item.get("time_start_ms"), item.get("time_end_ms")
+    if start is None or end is None or end <= start:
+        return 0.0
+    minutes = (end - start) / 60_000
+    return 0.0 if minutes > _MAX_PLAUSIBLE_DISCUSSION_MINUTES else minutes
 
 
 def _format_topic(item: dict) -> dict:

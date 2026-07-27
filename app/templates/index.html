@@ -4,7 +4,12 @@
 
 {% block content %}
 <section class="hero">
-    <h1>Saskatoon Council & Committee Meetings</h1>
+    <!-- Two spellings of one name, one shown at a time: the long form
+         wraps to two lines at 390px and the phone needs that height for
+         meetings. Only the shown span reaches the accessibility tree --
+         the other is display:none, not merely invisible. -->
+    <h1><span class="title-long">Saskatoon Council & Committee Meetings</span><span
+        class="title-short">Council & Committees</span></h1>
     <p>Browse recent meetings and see what was discussed and decided.</p>
 </section>
 
@@ -181,6 +186,56 @@
         return 'outcome-neutral';
     }
 
+    // The chip categories worth one line of a card, most telling first.
+    // A reader deciding whether to open a meeting is served better by
+    // what went wrong or unanswered than by who it affects, which is
+    // the most common category and the least surprising.
+    const TAKEAWAY_ORDER = [
+        'Dissenting View', 'Debate Highlight', 'Unanswered Question',
+        'Staff vs. Council', 'Promise Made', 'Precedent Set',
+        'Legal Risk Flagged', 'Equity Impact', 'Environmental Impact',
+        'Cost & Funding', 'Public Sentiment', "Who's Affected",
+    ];
+
+    // The label is a signpost, not the content. The chip's own category
+    // names run to "Unanswered Question" and "Debate Highlight", and at
+    // card width every character of label is a character of takeaway --
+    // full names pushed a third of chips past the three-line clamp,
+    // short ones fewer than one in a hundred.
+    const TAKEAWAY_LABEL = {
+        'Dissenting View': 'Dissent',
+        'Debate Highlight': 'Debate',
+        'Unanswered Question': 'Unanswered',
+        'Staff vs. Council': 'Staff vs. council',
+        'Promise Made': 'Promise',
+        'Precedent Set': 'Precedent',
+        'Legal Risk Flagged': 'Legal risk',
+        'Equity Impact': 'Equity',
+        'Environmental Impact': 'Environment',
+        'Cost & Funding': 'Cost',
+        'Public Sentiment': 'Public sentiment',
+        "Who's Affected": 'Affects',
+    };
+
+    // One chip, rendered as prose rather than as a badge with a hover.
+    // The model only fills these categories when it found something to
+    // say, which makes the line the closest thing the card has to "here
+    // is why this meeting is worth your time".
+    function takeawayHtml(topic) {
+        const chips = (topic.badges || []).filter(b => b.type === 'chip' && b.tooltip);
+        if (chips.length === 0) return '';
+        chips.sort((a, b) => {
+            const ra = TAKEAWAY_ORDER.indexOf(a.label);
+            const rb = TAKEAWAY_ORDER.indexOf(b.label);
+            return (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb);
+        });
+        const best = chips[0];
+        return `<div class="topic-takeaway">`
+            + `<span class="topic-takeaway-label">`
+            + `${escapeAttr(TAKEAWAY_LABEL[best.label] || best.label)}:</span> `
+            + `${escapeAttr(best.tooltip)}</div>`;
+    }
+
     function renderTopicsTable(topics, openHref) {
         // The card carries the outcome and nothing else. Category, money,
         // person and chip badges live on the detail page: the index is
@@ -216,22 +271,17 @@
                       + `</span>`
                     : `<span class="badge topic-badge badge-${oClass}">${escapeAttr(t.outcome)}</span>`;
 
-            // Play button for topics with video timestamps. A consent
-            // item's timestamp is inherited from its parent section, so
-            // it identifies the clerk reading the block into the record
-            // and never the item — the detail page already refuses it,
-            // and offering it here sent readers to the wrong audio.
-            let playHtml = '';
-            if (openHref && t.time_start_ms != null && !t.is_consent) {
-                playHtml = `<a href="${openHref}?t=${t.time_start_ms}" class="topic-play-link" title="Play video at this topic" aria-label="Play"></a>`;
-            }
-
-            // Link to the agenda item on the detail page. Same reason as
-            // above: a consent item's inherited timestamp would seek the
-            // video to its parent and scroll to whichever item shares
-            // that span, so the link goes to the meeting instead.
-            // Linking a consent item properly needs an anchor that does
-            // not depend on video position -- see TODO item 7.
+            // Link to the agenda item on the detail page, seeking the
+            // video to it. A consent item's timestamp is inherited from
+            // its parent section, so it identifies the clerk reading the
+            // block into the record and never the item — the detail page
+            // already refuses it, and offering it here sent readers to
+            // the wrong audio. Linking a consent item properly needs an
+            // anchor that does not depend on video position -- see TODO
+            // item 7.
+            // There is no separate play button: it pointed at this very
+            // href, so it was a second tap target for the same
+            // destination, taking width from the summary beside it.
             let detailHref = openHref || '';
             if (detailHref && t.time_start_ms != null && !t.is_consent) {
                 detailHref += `?t=${t.time_start_ms}`;
@@ -246,20 +296,31 @@
                 html += `<div class="topic-content">`;
             }
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${outcomeHtml}</div>`;
+            // The takeaway is decided before the summary is drawn: when
+            // a row has one, the summary gives up its third line so the
+            // row's height does not grow. A hook cut mid-sentence is
+            // worse than a description cut mid-sentence, and chip text
+            // runs to 122 characters -- three lines at this width.
+            const takeaway = takeawayHtml(t);
             if (t.summary) {
                 // A summary that is not the written Description is raw
                 // agenda text clipped at 120 characters. It is marked so
-                // the two are never mistaken for each other.
-                const summaryClass = t.summary_is_description
+                // the two are never mistaken for each other — but the
+                // mark is a two-word source label inside the clamped
+                // block, not the sentence of apology it used to be:
+                // seven rows in ten are on this path, and the apology
+                // was costing each of them two of the card's lines.
+                let summaryClass = t.summary_is_description
                     ? 'topic-summary'
                     : 'topic-summary topic-summary-raw';
+                if (takeaway) summaryClass += ' topic-summary-short';
                 const rawNote = t.summary_is_description
                     ? ''
-                    : `<span class="topic-summary-note">Older summary — no plain-language description available.</span>`;
-                html += `<div class="${summaryClass}">${escapeAttr(t.summary)}${rawNote}</div>`;
+                    : `<span class="topic-summary-note">From the agenda:</span> `;
+                html += `<div class="${summaryClass}">${rawNote}${escapeAttr(t.summary)}</div>`;
             }
+            html += takeaway;
             html += detailHref ? `</a>` : `</div>`;
-            if (playHtml) html += playHtml;
             html += `</div>`;
             html += `</td>`;
             html += `</tr>`;
