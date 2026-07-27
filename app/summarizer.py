@@ -19,6 +19,7 @@ from app.agenda_items import (
 from app.agenda_text import clean_entities, format_money, plainify, titleize
 from app.item_categorizer import CATEGORY_GROUP, SEMANTIC_CATEGORIES
 from app.models import normalize_description
+from app.presentations import merge_substance
 from app.transcript_text import split_sentences
 
 
@@ -111,10 +112,95 @@ def extract_meeting_topics(
     rank_by_item = {id(item): rank for rank, item in enumerate(top_items)}
     ordered = [item for item in substantive if id(item) in rank_by_item]
 
-    return [
+    rows = [
         {**_format_topic(item), "rank": rank_by_item[id(item)]}
         for item in ordered
     ]
+    return _with_presentation_rows(rows, ordered, rank_by_item)
+
+
+# How many speaker rows one card will carry.  A single item drew five
+# delegations on the Downtown Event District, and five speaker rows would
+# have been the whole card: the reader would learn one item's public
+# reaction and nothing about the rest of the meeting.
+MAX_PRESENTATION_ROWS = 2
+
+
+def _with_presentation_rows(
+    rows: list[dict], ordered: list[dict], rank_by_item: dict,
+) -> list[dict]:
+    """Give the best guest speakers a row of their own, beside the topics.
+
+    A resident listening to a meeting often finds the substance came from
+    the people who came to speak, not from the report in front of council
+    — so a delegation competes for the card on the same terms as an
+    agenda item rather than being reduced to a count.
+
+    Only a speaker whose remarks we actually have is eligible.  A row
+    carrying a name and a filename ("Registered to speak on: DEED") is
+    not worth a topic's place, and the roster is still on the detail
+    page for anyone who opens it.
+    """
+    candidates: list[tuple[int, dict, dict]] = []
+    for item in ordered:
+        for speaker in merge_substance(item):
+            if speaker.get("said"):
+                candidates.append((rank_by_item[id(item)], item, speaker))
+    if not candidates:
+        return rows
+
+    # Best-ranked item first, and a speaker's position within the item
+    # breaks the tie — that is the order council heard them in.
+    candidates.sort(key=lambda c: c[0])
+    chosen = candidates[:MAX_PRESENTATION_ROWS]
+
+    by_item: dict[int, list[dict]] = {}
+    for _, item, speaker in chosen:
+        by_item.setdefault(id(item), []).append(speaker)
+
+    out: list[dict] = []
+    for row, item in zip(rows, ordered):
+        out.append(row)
+        # Directly beneath the item they spoke to. A delegation is a
+        # reaction to something, and a speaker row floating free of the
+        # item it answers reads as a second meeting.
+        for speaker in by_item.get(id(item), []):
+            out.append(_format_presentation_row(speaker, row))
+    return out
+
+
+def _format_presentation_row(speaker: dict, topic_row: dict) -> dict:
+    """One guest speaker as a card row, in the shape the topics table reads."""
+    name = speaker.get("name") or "A speaker"
+    org = (speaker.get("organization") or "").strip()
+    stance = speaker.get("stance") or ""
+    return {
+        "kind": "presentation",
+        "topic": f"{name}, {org}" if org else name,
+        # The stance takes the outcome badge's place: a delegation has no
+        # outcome of its own, and how they came down on the item is the
+        # one thing a reader wants before the words.
+        #
+        # "Raised concerns", not "Opposed".  The first speaker this shipped
+        # for wanted a better hazardous-waste contract, not the item
+        # defeated, and labelling her Opposed put a position in her mouth
+        # that the transcript does not support.
+        "outcome": {
+            "support": "In support", "concern": "Raised concerns",
+        }.get(stance, "Spoke"),
+        "outcome_detail": "",
+        "summary": list(speaker.get("said") or []),
+        "summary_is_description": True,
+        "vote_result": "",
+        "is_major": False,
+        "is_contested": False,
+        "is_consent": False,
+        # Categories are the item's, so the topic filter keeps a speaker
+        # with the subject they came to talk about.
+        "badges": [b for b in topic_row.get("badges", []) if b["type"].startswith("cat-")],
+        "time_start_ms": topic_row.get("time_start_ms"),
+        "rank": topic_row.get("rank"),
+    }
 
 
 # A span longer than this is a broken end bookmark, not a discussion.

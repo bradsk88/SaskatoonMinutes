@@ -955,6 +955,52 @@ main {
     color: var(--color-text);
 }
 
+/* What a speaker argued, one point per line — the same shape as an
+   item's Description, because it is the same kind of reading. */
+.presentation-said {
+    margin: 0.3rem 0 0;
+    padding-left: 1rem;
+    list-style: disc;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--color-text);
+}
+
+.presentation-said li {
+    margin-top: 0.15rem;
+}
+
+.presentation-said li::marker {
+    color: var(--color-text-muted);
+}
+
+/* A guest speaker's row on the index card. Indented and rule-marked so a
+   person is visibly not a decision, while still sitting in the same
+   table as the topics rather than in a section of their own. */
+.topic-presentation .topic-content {
+    border-left: 2px solid var(--color-primary-light);
+    padding-left: 0.6rem;
+}
+
+.topic-speaker-mark {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-primary);
+    margin-bottom: 0.1rem;
+}
+
+/* Not the green of an approval nor the amber of a contested vote: this
+   is one person's position, and green beside "Raised concerns" reads as
+   a verdict that went their way. Slate keeps it a label. */
+.badge-outcome-stance {
+    background: #e2e8f0;
+    color: #334155;
+    font-weight: 600;
+}
+
 /* Index card's slight surface of the same data. */
 .presentation-badge {
     display: inline-block;

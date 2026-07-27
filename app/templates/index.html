@@ -179,6 +179,10 @@
     }
 
     function outcomeClass(topic) {
+        // A speaker's badge carries their stance, not a verdict. It is
+        // deliberately not green/red like an outcome: the reader must
+        // not mistake "this person supported it" for "council passed it".
+        if (topic.kind === 'presentation') return 'outcome-stance';
         if (topic.is_contested) return 'outcome-contested';
         if (topic.outcome && topic.outcome.startsWith('Defeated')) return 'outcome-defeated';
         if (topic.outcome && topic.outcome === 'Deferred') return 'outcome-deferred';
@@ -287,6 +291,15 @@
                 detailHref += `?t=${t.time_start_ms}`;
             }
 
+            // A guest speaker's row. It earns its place the same way a
+            // topic does — a resident who listens to a meeting often
+            // finds the substance came from the people who came to
+            // speak, not from the report in front of council — but it is
+            // marked, because "Jason Aebig, Greater Saskatoon Chamber of
+            // Commerce" is a person and every other row is a decision.
+            const isPresentation = t.kind === 'presentation';
+            if (isPresentation) rowClass += ' topic-presentation';
+
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
             html += `<div class="topic-row">`;
@@ -294,6 +307,12 @@
                 html += `<a href="${detailHref}" class="topic-content topic-link">`;
             } else {
                 html += `<div class="topic-content">`;
+            }
+            // Its own line, above the flex row: dropping it inside
+            // .topic-name made the speaker's name the second child, which
+            // lost it the two-line clamp and let space-between centre it.
+            if (isPresentation) {
+                html += `<div class="topic-speaker-mark">Spoke to council</div>`;
             }
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${outcomeHtml}</div>`;
             // The takeaway is decided before the summary is drawn: when
@@ -389,13 +408,18 @@
         };
     }
 
-    // The card's only hint that guest speakers showed up — a count, not
-    // names or stances, both of which live on the detail page. "Surface
-    // at least slightly" is the whole brief: enough to make a reader
-    // click in, not a second summary competing with the topics table.
-    function presentationBadgeHtml(count) {
+    // The fallback for a meeting whose speakers we can only count.
+    //
+    // A card that shows speaker rows does not show this: the rows say
+    // who came and what they argued, and a line reading "11 guest
+    // speakers" above two of them just invites the reader to wonder
+    // where the other nine went. The count survives for meetings a
+    // summarize run has not reached, where the roster exists and the
+    // substance does not.
+    function presentationBadgeHtml(count, shownTopics) {
         if (!count) return '';
-        return `<div class="presentation-badge">${count} presentation${count === 1 ? '' : 's'} from guest speakers</div>`;
+        if ((shownTopics || []).some(t => t.kind === 'presentation')) return '';
+        return `<div class="presentation-badge">${count} guest speaker${count === 1 ? '' : 's'}</div>`;
     }
 
     // The card footer. It lives with the topics so it can say how many
@@ -434,7 +458,15 @@
             if (chosen.length >= CARD_TOPICS_MIN) break;
             if (!chosen.includes(t)) chosen.push(t);
         }
-        return topics.filter(t => chosen.includes(t));
+        // A speaker row is a reaction to the item above it. Both share a
+        // rank, so selection can take the speaker and leave the item —
+        // and a delegate then appears on the card answering nothing.
+        const kept = topics.filter(t => chosen.includes(t));
+        let lastTopic = null;
+        return kept.filter(t => {
+            if (t.kind !== 'presentation') { lastTopic = t; return true; }
+            return lastTopic !== null;
+        });
     }
 
     function renderTopicsInContainer(meetingId, payload, openHref) {
@@ -442,15 +474,16 @@
         if (!container) return;
 
         const { topics, total_items, presentation_count } = normalizeTopicsPayload(payload);
-        const badge = presentationBadgeHtml(presentation_count);
 
         if (topics.length === 0) {
             renderTopicsMessage(
-                container, 'No substantive topics found.', 'topics-empty', openHref, badge);
+                container, 'No substantive topics found.', 'topics-empty', openHref,
+                presentationBadgeHtml(presentation_count, []));
             return;
         }
 
         const shown = chooseCardTopics(topics);
+        const badge = presentationBadgeHtml(presentation_count, shown);
         // "N other items" is only shown when the meeting's item count is
         // known. Guessing it from the topic list would undercount every
         // meeting, since topics are the ranked few, not the agenda.

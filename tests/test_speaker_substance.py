@@ -261,3 +261,123 @@ class TestHasSubstance:
     def test_a_bare_registration_does_not(self):
         p = Presentation(name="A B", summary="Registered to speak on: Rezoning")
         assert p.has_substance is False
+
+
+class TestMergeSubstanceIntoTheRoster:
+    def test_cached_remarks_are_folded_into_the_roster(self):
+        from app.presentations import merge_substance
+        item = {
+            "presentations": [
+                {"name": "Jason Aebig", "organization": "", "stance": "",
+                 "summary": "Registered to speak on: DEED", "source": "registered"},
+            ],
+            "summary": {"presentations": [
+                {"name": "Jason Aebig", "said": ["Cited a $1.37 billion study."],
+                 "stance": "support"},
+            ]},
+        }
+        merged = merge_substance(item)
+        assert merged[0]["said"] == ["Cited a $1.37 billion study."]
+        assert merged[0]["stance"] == "support"
+
+    def test_a_meeting_not_yet_summarized_keeps_its_roster(self):
+        from app.presentations import merge_substance
+        item = {"presentations": [
+            {"name": "Jason Aebig", "summary": "Registered to speak on: DEED"},
+        ]}
+        merged = merge_substance(item)
+        assert merged[0]["name"] == "Jason Aebig"
+        assert merged[0].get("said") in (None, [])
+
+    def test_a_speaker_with_no_cached_remarks_is_not_dropped(self):
+        from app.presentations import merge_substance
+        item = {
+            "presentations": [
+                {"name": "Timothy Cain", "summary": "Registered to speak."},
+                {"name": "Randy Pshebylo", "summary": "Registered to speak."},
+            ],
+            "summary": {"presentations": [
+                {"name": "Randy Pshebylo", "said": ["Businesses are leaving."],
+                 "stance": "concern"},
+            ]},
+        }
+        assert [p["name"] for p in merge_substance(item)] == [
+            "Timothy Cain", "Randy Pshebylo",
+        ]
+
+
+class TestSpeakersGetTheirOwnCardRow:
+    """Brad's brief: a delegation competes with the topics, not a count."""
+
+    def _items(self, said=None):
+        speaker = {"name": "Jason Aebig", "organization": "Chamber of Commerce",
+                   "summary": "Registered to speak.", "source": "registered"}
+        return [{
+            "item_id": 1,
+            "title": "Downtown Event and Entertainment District",
+            "section_number": "10.1.2",
+            "recommendation": "That the partnership be approved.",
+            "vote_result": "CARRIED",
+            "time_start_ms": 0,
+            "time_end_ms": 1_200_000,
+            "presentations": [speaker],
+            "summary": {
+                "description": ["Approves an Indigenous partnership."],
+                "presentations": (
+                    [{"name": "Jason Aebig", "said": said, "stance": "support"}]
+                    if said else []
+                ),
+            },
+        }]
+
+    def _rows(self, said=None):
+        from app.summarizer import extract_meeting_topics
+        return extract_meeting_topics(self._items(said), "City Council")
+
+    def test_a_speaker_with_remarks_gets_a_row(self):
+        rows = self._rows(["Downtown district could inject $1.37 billion."])
+        speaker_rows = [r for r in rows if r.get("kind") == "presentation"]
+        assert len(speaker_rows) == 1
+        assert speaker_rows[0]["topic"] == "Jason Aebig, Chamber of Commerce"
+        assert speaker_rows[0]["summary"] == [
+            "Downtown district could inject $1.37 billion."
+        ]
+
+    def test_a_bare_registration_gets_no_row(self):
+        """A name and a filename is not worth a major topic's place."""
+        assert [r for r in self._rows() if r.get("kind") == "presentation"] == []
+
+    def test_the_row_follows_the_item_it_answers(self):
+        rows = self._rows(["Cited an economic impact study."])
+        kinds = [r.get("kind", "topic") for r in rows]
+        assert kinds == ["topic", "presentation"]
+
+    def test_the_stance_replaces_the_outcome_badge(self):
+        rows = self._rows(["Cited an economic impact study."])
+        speaker = [r for r in rows if r.get("kind") == "presentation"][0]
+        assert speaker["outcome"] == "In support"
+        # Never a verdict: council's decision is on the row above.
+        assert speaker["vote_result"] == ""
+        assert speaker["is_major"] is False
+
+    def test_a_card_carries_at_most_two_speaker_rows(self):
+        """Five delegations on one item would otherwise be the whole card."""
+        from app.summarizer import extract_meeting_topics
+        items = self._items(["Cited a study."])
+        items[0]["presentations"] = [
+            {"name": f"Speaker {i}", "organization": "", "summary": "Registered."}
+            for i in range(5)
+        ]
+        items[0]["summary"]["presentations"] = [
+            {"name": f"Speaker {i}", "said": [f"Point {i}."], "stance": ""}
+            for i in range(5)
+        ]
+        rows = extract_meeting_topics(items, "City Council")
+        assert len([r for r in rows if r.get("kind") == "presentation"]) == 2
+
+    def test_a_speaker_row_keeps_the_items_categories_for_the_filter(self):
+        rows = self._rows(["Cited an economic impact study."])
+        topic = [r for r in rows if r.get("kind") != "presentation"][0]
+        speaker = [r for r in rows if r.get("kind") == "presentation"][0]
+        cats = {b["type"] for b in topic["badges"] if b["type"].startswith("cat-")}
+        assert {b["type"] for b in speaker["badges"]} == cats

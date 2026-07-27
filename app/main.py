@@ -118,7 +118,12 @@ def api_meeting_topics(meeting_id: str):
             # not showing. That count has to come from the agenda, since
             # topics are the ranked few rather than the whole meeting.
             "total_items": count_agenda_items(items),
-            "presentation_count": sum(len(i.get("presentations") or []) for i in items),
+            # People, not filings — see build_site.
+            "presentation_count": len({
+                p.get("name")
+                for i in items for p in (i.get("presentations") or [])
+                if p.get("name")
+            }),
         })
     except (ConnectionError, SSLError):
         return jsonify({"error": _CONNECTION_ERROR_MSG}), 502

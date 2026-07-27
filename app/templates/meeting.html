@@ -321,26 +321,42 @@
         const presentations = item.presentations || [];
         if (presentations.length === 0) return '';
         const cards = presentations.map(p => {
-            const stanceClass = p.source === 'registered' ? 'stance-registered'
+            // "Registered" is what we can say about someone we only know
+            // filed to speak. Once the transcript tells us what they
+            // argued, that is the better label — badging a speaker whose
+            // remarks are printed underneath as merely "Registered"
+            // contradicts the card it sits on.
+            const spoke = (p.said || []).length > 0;
+            const stanceClass = !spoke && p.source === 'registered' ? 'stance-registered'
                 : p.stance ? `stance-${p.stance}` : 'stance-neutral';
-            const stanceLabel = p.source === 'registered' ? 'Registered'
+            const stanceLabel = !spoke && p.source === 'registered' ? 'Registered'
                 : p.stance === 'support' ? 'Support'
                 : p.stance === 'concern' ? 'Concern'
                 : 'Spoke';
             const orgHtml = p.organization
                 ? `<span class="presentation-org">${escapeHtml(p.organization)}</span>`
                 : '';
+            // What they argued, when a summarize run has reached this
+            // meeting. Falls back to the roster line — a narrated
+            // sentence from the minutes, or what they registered to
+            // speak about — which says they came but not what they said.
+            const said = p.said || [];
+            const bodyHtml = said.length
+                ? `<ul class="presentation-said">`
+                  + said.map(s => `<li>${escapeHtml(s)}</li>`).join('')
+                  + `</ul>`
+                : `<p class="presentation-summary">${escapeHtml(p.summary)}</p>`;
             return `<div class="presentation-card">
                 <div class="presentation-card-header">
                     <span class="presentation-name">${escapeHtml(p.name)}</span>
                     ${orgHtml}
                     <span class="badge presentation-stance ${stanceClass}">${stanceLabel}</span>
                 </div>
-                <p class="presentation-summary">${escapeHtml(p.summary)}</p>
+                ${bodyHtml}
             </div>`;
         }).join('');
         return `<div class="presentation-section">
-            <div class="presentation-section-title">Presentations <span class="presentation-count">${presentations.length}</span></div>
+            <div class="presentation-section-title">Guest speakers <span class="presentation-count">${presentations.length}</span></div>
             <div class="presentation-list">${cards}</div>
         </div>`;
     }

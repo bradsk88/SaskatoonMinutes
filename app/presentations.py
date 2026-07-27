@@ -96,6 +96,40 @@ def extract_presentations(item: AgendaItem) -> list[Presentation]:
     return results
 
 
+def merge_substance(item: dict) -> list[dict]:
+    """The item's speaker roster with cached remarks folded in.
+
+    Two producers meet here.  The **roster** is rebuilt from the agenda on
+    every page build, so it is always current and needs no cache.  What
+    each speaker **argued** costs a Gemini call, so it is cached on the
+    summaries branch with the rest of the ItemSummary — and a meeting a
+    summarize run has not reached yet has a roster and no substance.
+
+    Keyed by name, which is safe because the substance pass is given the
+    roster as an enum and cannot answer with anyone else.
+    """
+    roster = item.get("presentations") or []
+    cached = ((item.get("summary") or {}).get("presentations")) or []
+    said_by_name = {
+        entry.get("name"): entry
+        for entry in cached
+        if isinstance(entry, dict) and entry.get("name")
+    }
+    merged = []
+    for entry in roster:
+        if not isinstance(entry, dict):
+            continue
+        found = said_by_name.get(entry.get("name"))
+        if not found:
+            merged.append(dict(entry))
+            continue
+        combined = dict(entry)
+        combined["said"] = list(found.get("said") or [])
+        combined["stance"] = found.get("stance") or entry.get("stance") or ""
+        merged.append(combined)
+    return merged
+
+
 def _from_minutes(content: str) -> list[Presentation]:
     text = clean_entities(content)
     results: list[Presentation] = []
