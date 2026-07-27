@@ -889,8 +889,11 @@ main {
     font-size: 0.82rem;
 }
 
+/* A row's own parts sit closer together than two rows do, or five rows
+   read as one block of text. The vertical padding here is what separates
+   them; the gaps inside a row (below) are deliberately smaller. */
 .topics-table td {
-    padding: 0.5rem 0.5rem;
+    padding: 0.9rem 0.5rem;
     border-bottom: 1px solid var(--color-border);
     vertical-align: top;
 }
@@ -960,9 +963,9 @@ a.topic-link:hover {
    detail page, one tap away. */
 .topic-summary {
     color: var(--color-text-muted);
-    font-size: 0.85rem;
-    line-height: 1.45;
-    margin-top: 0.2rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    margin-top: 0.3rem;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
@@ -973,10 +976,15 @@ a.topic-link:hover {
 /* The one chip a card row shows, as prose. Bounded like the summary
    above it: two lines is enough for a hook and keeps a five-row card
    inside the height 0013 measured. */
+/* Set off by a rule rather than by size: the description above it is
+   also a paragraph of prose, and two paragraphs of the same shape are
+   what made a five-row card read as a wall. */
 .topic-takeaway {
-    font-size: 0.82rem;
-    line-height: 1.45;
-    margin-top: 0.25rem;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    margin-top: 0.5rem;
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--color-border);
     color: var(--color-text);
     display: -webkit-box;
     -webkit-box-orient: vertical;
