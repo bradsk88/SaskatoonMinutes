@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 
+from app.agenda_items import is_procedural
 from app.agenda_text import clean_entities
 from app.models import AgendaItem, Presentation
 
@@ -46,17 +47,50 @@ _NON_NAME_LEADS = {"he", "she", "they", "it", "discussion", "questions", "the"}
 # maintain.
 _NAME_RE = re.compile(r"^[A-Z][\w.\-]*(?:\s+[A-Z][\w.\-]*){0,5}$")
 
+# ...except when every word is capitalized, which is how "General Manager"
+# slipped through and was published as a guest speaker from "General
+# Manager, Community Services Anger presented the report".  A role word
+# anywhere in the name disqualifies it: this feature is about who came to
+# address council, and staff and council members are neither.
+#
+# "Chief" is deliberately absent — "Chief Kelly Wolfe" spoke to the
+# Downtown Event District item as a guest, and a rule that reads an
+# Indigenous leader's title as a city job is worse than the staff line it
+# was trying to draw.
+_ROLE_WORDS = {
+    "manager", "director", "solicitor", "clerk", "superintendent",
+    "officer", "engineer", "planner", "administrator", "treasurer",
+    "controller", "commissioner", "coordinator", "supervisor",
+    "councillor", "mayor", "alderman", "deputy",
+}
+
 #  eSCRIBE separates the name and topic fields with " - " (space-dash-space).
 #  Matching on bare "-" would split a hyphenated surname like
 #  "Christopherson-Cote" in two, so the separator requires the spaces.
+#
+#  The topic is a filename, so it carries filename debris: eSCRIBE writes
+#  "_Redacted" on documents with personal information removed, and a
+#  re-upload adds "(1)".  Published verbatim this read "Registered to
+#  speak on: Fixed-term Loan to TCU Place_Redacted(1)".
 _RTS_ATTACHMENT_RE = re.compile(
-    r"RTS\s+-\s+(?P<name>.+?)\s+-\s+(?P<topic>.+?)(?:_Redacted)?\.pdf$",
+    r"RTS\s+-\s+(?P<name>.+?)\s+-\s+(?P<topic>.+?)"
+    r"(?:_Redacted)?(?:\s*\(\d+\))?\.pdf$",
     re.IGNORECASE,
 )
 
 
 def extract_presentations(item: AgendaItem) -> list[Presentation]:
-    """Return the guest presentations found in one agenda item."""
+    """Return the guest presentations found in one agenda item.
+
+    Procedural items are skipped, and that is not a nicety.  eSCRIBE hangs
+    the meeting's whole document package off ADJOURNMENT — 125 attachments
+    on the June 24 council meeting — so every Request to Speak in the
+    meeting was found a second time there.  The published count was double
+    the truth (22 filings from 11 people) and the detail page grew a
+    "Presentations" block under Adjournment.
+    """
+    if item.is_recess or is_procedural(item.title or ""):
+        return []
     results = _from_minutes(item.content or "")
     results.extend(_from_registered_attachments(item.attachments or [], results))
     return results
@@ -82,6 +116,8 @@ def _from_minutes(content: str) -> list[Presentation]:
         name = parts[0]
         if not _NAME_RE.match(name):
             continue
+        if _is_role_not_person(name):
+            continue
         key = name.lower()
         if key in seen:
             continue
@@ -94,6 +130,11 @@ def _from_minutes(content: str) -> list[Presentation]:
             source="minutes",
         ))
     return results
+
+
+def _is_role_not_person(name: str) -> bool:
+    """True when the "name" is a job title — staff or a council member."""
+    return any(word.lower().strip(".,") in _ROLE_WORDS for word in name.split())
 
 
 def _organization_from_parts(parts: list[str]) -> str:

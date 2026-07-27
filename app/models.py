@@ -22,6 +22,13 @@ class Presentation:
     MacFarlane"), a submitted Request-to-Speak attachment fills the gap.
     ``source`` records which so the UI can show a narrated presentation
     with more confidence than a bare RTS filing.
+
+    Those two sources establish **who spoke**, and neither says **what
+    they said** — the minutes give one narrated sentence and an RTS filing
+    gives a filename.  ``said`` carries that, in bullets, read off the
+    meeting transcript by the same Gemini pass that writes Descriptions.
+    It is empty until a summarize run has reached the meeting, so a
+    speaker always has a name and only sometimes has substance.
     """
 
     name: str
@@ -29,6 +36,28 @@ class Presentation:
     stance: str = ""  # "support" | "concern" | "" (informational)
     summary: str = ""
     source: str = "minutes"  # "minutes" | "registered"
+    said: list[str] = field(default_factory=list)
+
+    @property
+    def has_substance(self) -> bool:
+        """True when the transcript told us what this speaker argued.
+
+        The index only ranks a presentation against the meeting's topics
+        when this holds: a row carrying a name and a filename is not worth
+        a major topic's place on the card.
+        """
+        return bool(self.said)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Presentation":
+        return cls(
+            name=data.get("name") or "",
+            organization=data.get("organization") or "",
+            stance=data.get("stance") or "",
+            summary=data.get("summary") or "",
+            source=data.get("source") or "minutes",
+            said=list(data.get("said") or []),
+        )
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -235,6 +264,11 @@ class ItemSummary:
 
     description: list[str] | None
     chips: list[Chip] = field(default_factory=list)
+    # What each guest speaker argued, keyed by the roster the agenda
+    # yields deterministically.  Absent from every entry cached before
+    # presentations existed, which loads as an empty list — the speaker
+    # roster still renders, just without substance.
+    presentations: list[Presentation] = field(default_factory=list)
 
     @property
     def is_legacy(self) -> bool:
@@ -250,10 +284,20 @@ class ItemSummary:
         return cls(
             description=normalize_description(data.get("description")),
             chips=[Chip.from_dict(c) for c in data.get("chips") or []],
+            presentations=[
+                Presentation.from_dict(p) for p in data.get("presentations") or []
+            ],
         )
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "description": self.description,
             "chips": [c.to_dict() for c in self.chips],
         }
+        # Written only when there is one.  Six items in seven have no
+        # speaker, so an always-present empty list would add the key to
+        # all 16,210 cached items and rewrite every file on the branch to
+        # record that nothing happened.
+        if self.presentations:
+            payload["presentations"] = [p.to_dict() for p in self.presentations]
+        return payload

@@ -137,3 +137,108 @@ class TestExtractPresentations:
 
     def test_at_least_two_presentations_for_homelessness_meeting(self):
         assert len(extract_presentations(_homelessness_item())) >= 2
+
+
+class TestItemsThatCannotHostADelegation:
+    """eSCRIBE hangs the meeting's whole document package off ADJOURNMENT.
+
+    125 attachments on the June 24 council meeting, so every Request to
+    Speak in the meeting was found there a second time: the published
+    count was 22 filings from 11 people, and the detail page grew a
+    "Presentations" block under Adjournment.
+    """
+
+    def _rts(self) -> list[dict]:
+        return [{
+            "name": "8.1.4 RTS - Sherry Tarasoff - MRC Expansion.pdf",
+            "url": "https://example.com/1",
+        }]
+
+    def test_adjournment_hosts_no_presentations(self):
+        item = AgendaItem(
+            item_id=18, title="ADJOURNMENT", content="",
+            section_number="18.", attachments=self._rts(),
+        )
+        assert extract_presentations(item) == []
+
+    def test_call_to_order_hosts_no_presentations(self):
+        item = AgendaItem(
+            item_id=1, title="CALL TO ORDER", content="",
+            section_number="1.", attachments=self._rts(),
+        )
+        assert extract_presentations(item) == []
+
+    def test_a_recess_hosts_no_presentations(self):
+        item = AgendaItem(
+            item_id=9, title="Recess", content="", section_number="9.",
+            is_recess=True, attachments=self._rts(),
+        )
+        assert extract_presentations(item) == []
+
+    def test_a_real_item_still_does(self):
+        item = AgendaItem(
+            item_id=41,
+            title="Material Recovery Centre Expansion [CC2026-0402]",
+            content="", section_number="8.1.4", attachments=self._rts(),
+        )
+        assert [p.name for p in extract_presentations(item)] == ["Sherry Tarasoff"]
+
+
+class TestStaffAndCouncilAreNotGuests:
+    """The point of the feature is who came to address council."""
+
+    def _item(self, content: str) -> AgendaItem:
+        return AgendaItem(
+            item_id=1, title="East Side Leisure Centre",
+            content=content, section_number="10.3.4",
+        )
+
+    def test_a_general_manager_is_not_a_guest(self):
+        # Published as name="General Manager", organization="Community
+        # Services Anger" — both words capitalized, so the name shape test
+        # could not see it was a job.
+        item = self._item(
+            "General Manager, Community Services Anger presented the report "
+            "with a PowerPoint."
+        )
+        assert extract_presentations(item) == []
+
+    def test_a_councillor_is_not_a_guest(self):
+        item = self._item("Councillor Jeffries expressed support for the report.")
+        assert extract_presentations(item) == []
+
+    def test_a_chief_is_still_a_guest(self):
+        """"Chief Kelly Wolfe" addressed the Downtown Event District item."""
+        item = self._item(
+            "Chief Kelly Wolfe, Whitecap Dakota Nation, expressed support "
+            "for the partnership."
+        )
+        assert [p.name for p in extract_presentations(item)] == ["Chief Kelly Wolfe"]
+
+    def test_a_plain_guest_is_unaffected(self):
+        item = self._item("Rob Wilgenhof expressed support for the City's efforts.")
+        assert [p.name for p in extract_presentations(item)] == ["Rob Wilgenhof"]
+
+
+class TestRegisteredTopicIsReadable:
+    def _with(self, filename: str) -> AgendaItem:
+        return AgendaItem(
+            item_id=1, title="TCU Place Loan [FI2026-0601]", content="",
+            section_number="8.4.1",
+            attachments=[{"name": filename, "url": "https://example.com/1"}],
+        )
+
+    def test_redacted_marker_is_not_published(self):
+        item = self._with("8.4.1 RTS - Lisa Mulvaney - Fixed-term Loan_Redacted.pdf")
+        assert extract_presentations(item)[0].summary == (
+            "Registered to speak on: Fixed-term Loan"
+        )
+
+    def test_a_reupload_suffix_is_not_published(self):
+        # Published verbatim as "...TCU Place_Redacted(1)".
+        item = self._with(
+            "8.4.1 RTS - Lisa Mulvaney - Fixed-term Loan to TCU Place_Redacted(1).pdf"
+        )
+        assert extract_presentations(item)[0].summary == (
+            "Registered to speak on: Fixed-term Loan to TCU Place"
+        )

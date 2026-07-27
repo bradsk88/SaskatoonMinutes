@@ -647,17 +647,36 @@ class GeminiExtractor:
         )
         return response.text or "{}"
 
-    def _call_with_retry(self, prompt: str, allowed_cats: list[str]) -> str:
+    def _call_presentations(self, prompt: str, speakers: list[str]) -> str:
+        """The speaker pass.  Same client and retry path, different schema."""
+        if self._generate is not None:
+            return self._generate(prompt, speakers)
+        client = self._get_client()
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": _presentation_schema(speakers),
+                "temperature": 0.0,
+            },
+        )
+        return response.text or "{}"
+
+    def _call_with_retry(
+        self, prompt: str, allowed_cats: list[str], caller=None,
+    ) -> str:
         """:meth:`_call`, waiting out a rate limit but not a spent quota.
 
         A per-day quota raises :class:`QuotaExhausted` on the first
         rejection and never retries.  Anything else propagates for the
         caller to turn into an :class:`ExtractionFailed`.
         """
+        caller = caller if caller is not None else self._call
         attempt = 0
         while True:
             try:
-                return self._call(prompt, allowed_cats)
+                return caller(prompt, allowed_cats)
             except Exception as exc:
                 if not _is_rate_limited(exc):
                     raise
@@ -756,6 +775,50 @@ class GeminiExtractor:
                 flush=True,
             )
         return description, chips
+
+    def extract_speakers(
+        self, item: dict, transcript_text: str, speakers: list[str],
+    ) -> list[dict]:
+        """What each named guest speaker argued, read off the transcript.
+
+        A second call rather than two more fields on the description
+        prompt.  The description and chip rules are balanced against each
+        other by wording that took several eval runs to settle, and the
+        eval measures that prompt against a committed baseline — adding a
+        third output to it would move the baseline for every item in the
+        archive to buy substance on the one item in seven that has a
+        speaker.  This call only fires for items that have one.
+
+        Returns ``[{"name", "said", "stance"}]``, empty when nobody's
+        remarks are in the transcript.  Registering to speak and speaking
+        are different things, and a no-show must come back empty rather
+        than invented.
+        """
+        if not speakers or not transcript_text.strip():
+            return []
+        prompt = _build_presentation_prompt(item, transcript_text, speakers)
+        try:
+            raw = self._call_with_retry(
+                prompt, speakers, caller=self._call_presentations,
+            )
+        except QuotaExhausted:
+            raise
+        except Exception as exc:
+            print(f"    Gemini speaker pass failed: {exc}", flush=True)
+            raise ExtractionFailed(f"Gemini speaker call failed: {exc}") from exc
+
+        try:
+            parsed = json.loads(raw)
+        except Exception as exc:
+            raise ExtractionFailed(
+                f"Gemini returned unparseable JSON for speakers: {exc}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ExtractionFailed(
+                f"Gemini returned {type(parsed).__name__} for speakers, "
+                "expected an object"
+            )
+        return _sanitize_speakers(parsed.get("speakers"), speakers)
 
 
 def item_transcript_text(item: dict, transcript_segments: list[dict]) -> str:
@@ -1190,6 +1253,121 @@ def _build_prompt(
     return "\n".join(lines)
 
 
+# A speaker gets fewer bullets than an item's Description: they are one
+# voice on one item, and a delegate who needs four bullets is being
+# transcribed rather than summarized.
+MAX_SAID_BULLETS = 3
+
+
+def _presentation_schema(speakers: list[str]) -> dict:
+    """Response schema for the speaker pass.
+
+    ``name`` is an enum of the roster, so the model cannot introduce a
+    speaker the agenda does not have — the roster is established
+    deterministically and this call only says what those people argued.
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "speakers": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "enum": list(speakers)},
+                        "said": {"type": "array", "items": {"type": "string"}},
+                        "stance": {
+                            "type": "string",
+                            "enum": ["support", "concern", "neutral"],
+                        },
+                    },
+                    "required": ["name", "said", "stance"],
+                },
+            },
+        },
+        "required": ["speakers"],
+    }
+
+
+def _build_presentation_prompt(
+    item: dict, transcript_text: str, speakers: list[str],
+) -> str:
+    title = item.get("title") or "(untitled)"
+    roster = "\n".join(f"- {name}" for name in speakers)
+    return "\n".join([
+        "Members of the public registered to address Saskatoon city "
+        "council on the agenda item below. Your job is to report what "
+        "each of them ARGUED, in their own terms.",
+        "",
+        f"Agenda item title: {title}",
+        "",
+        "The people who registered to speak:",
+        roster,
+        "",
+        "Transcript of the discussion (rough automatic speech-to-text, "
+        "so names are often misspelled and sentences garbled):",
+        _field(transcript_text, 12000),
+        "",
+        "Return a `speakers` list. Rules:",
+        "",
+        "- **Only report someone who actually spoke.** Registering is "
+        "not speaking: people withdraw, run out of time, or never take "
+        "the podium. If you cannot find a person's remarks in the "
+        "transcript, return them with an EMPTY `said` list. An empty "
+        "list is a correct and expected answer — inventing a plausible "
+        "argument for a no-show is the worst thing you can do here.",
+        "- Match people by ear, not by spelling. Speech-to-text will "
+        "render \"Pshebylo\" a dozen ways. Use the roster's spelling in "
+        "`name`.",
+        "- Do NOT report what councillors, the mayor, or city staff said. "
+        "Only the people on the roster above. If a councillor asks a "
+        "question and the speaker answers, the ANSWER is the speaker's.",
+        f"- `said` is 1 to {MAX_SAID_BULLETS} bullets, each at most "
+        f"{MAX_BULLET_WORDS} words, one point per bullet.",
+        "- Report their ARGUMENT, not their appearance. \"Spoke about "
+        "the rezoning\" and \"raised several concerns\" tell a reader "
+        "nothing. Write the concern: \"Says rear-lane traffic already "
+        "backs up at school pickup\".",
+        "- Keep what makes it theirs: the number they cited, the street "
+        "they live on, the business they run, the thing they asked "
+        "council to do.",
+        "- Never open a bullet with their own name — it is already on "
+        "the row above.",
+        "- `stance` is how they came down on the item: \"support\", "
+        "\"concern\", or \"neutral\" when they only supplied "
+        "information or asked for something unrelated to approval.",
+    ])
+
+
+def _sanitize_speakers(parsed, speakers: list[str]) -> list[dict]:
+    """Keep entries naming a rostered speaker who actually said something."""
+    if not isinstance(parsed, list):
+        return []
+    by_name = {name.lower(): name for name in speakers}
+    seen: set[str] = set()
+    results: list[dict] = []
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            continue
+        name = by_name.get(str(entry.get("name") or "").strip().lower())
+        if name is None or name in seen:
+            continue
+        said = _sanitize_description(entry.get("said"))
+        if not said:
+            # No remarks found is the honest answer for someone who
+            # registered and did not speak. It carries no substance, so
+            # it is dropped rather than stored as an empty presentation.
+            continue
+        seen.add(name)
+        stance = str(entry.get("stance") or "").strip().lower()
+        results.append({
+            "name": name,
+            "said": said[:MAX_SAID_BULLETS],
+            "stance": stance if stance in ("support", "concern") else "",
+        })
+    return results
+
+
 def _sanitize_description(value) -> list[str] | None:
     """Normalize the model's description bullets, or ``None`` for nothing.
 
@@ -1376,11 +1554,46 @@ def extract_item_summaries(
     # title is a title echo by construction, which is the failure this
     # aggregate exists to prevent.
     description: list[str] | None = None
+    presentations: list[dict] = []
     if extractor.enabled:
         description, semantic_chips = extractor.extract(
             item, transcript_text, exclude=covered,
         )
         results.extend(semantic_chips)
 
+        # The roster comes from the agenda deterministically; this fills in
+        # what those people argued.  Costs one call per item that has a
+        # speaker, and nothing at all for the six items in seven that do
+        # not.
+        roster = item.get("presentations") or []
+        speakers = [
+            p.get("name") for p in roster
+            if isinstance(p, dict) and p.get("name")
+        ]
+        if speakers:
+            said_by_name = {
+                s["name"]: s
+                for s in extractor.extract_speakers(
+                    item, transcript_text, speakers,
+                )
+            }
+            for entry in roster:
+                if not isinstance(entry, dict):
+                    continue
+                found = said_by_name.get(entry.get("name"))
+                if not found:
+                    continue
+                presentation = dict(entry)
+                presentation["said"] = found["said"]
+                # The transcript heard the stance first-hand; the minutes'
+                # verb ("expressed concerns") is a summary of it, and an
+                # RTS filing has no stance at all.
+                presentation["stance"] = found["stance"] or entry.get("stance") or ""
+                presentations.append(presentation)
+
     results.sort(key=lambda r: _CATEGORY_ORDER.get(r["category"], 999))
-    return {"description": description, "chips": results}
+    return {
+        "description": description,
+        "chips": results,
+        "presentations": presentations,
+    }
