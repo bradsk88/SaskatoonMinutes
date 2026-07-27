@@ -64,6 +64,7 @@ class TestSanitizeSpeakers:
         )
         assert out == [{
             "name": "Randy Pshebylo",
+            "organization": "",
             "said": ["Says parking already overflows."],
             "stance": "concern",
         }]
@@ -360,8 +361,8 @@ class TestSpeakersGetTheirOwnCardRow:
         assert speaker["vote_result"] == ""
         assert speaker["is_major"] is False
 
-    def test_a_card_carries_at_most_two_speaker_rows(self):
-        """Five delegations on one item would otherwise be the whole card."""
+    def test_the_payload_carries_every_speaker_for_the_card_to_choose_from(self):
+        """The card picks three; the payload must offer it the candidates."""
         from app.summarizer import extract_meeting_topics
         items = self._items(["Cited a study."])
         items[0]["presentations"] = [
@@ -373,7 +374,7 @@ class TestSpeakersGetTheirOwnCardRow:
             for i in range(5)
         ]
         rows = extract_meeting_topics(items, "City Council")
-        assert len([r for r in rows if r.get("kind") == "presentation"]) == 2
+        assert len([r for r in rows if r.get("kind") == "presentation"]) == 5
 
     def test_a_speaker_row_keeps_the_items_categories_for_the_filter(self):
         rows = self._rows(["Cited an economic impact study."])
@@ -381,3 +382,102 @@ class TestSpeakersGetTheirOwnCardRow:
         speaker = [r for r in rows if r.get("kind") == "presentation"][0]
         cats = {b["type"] for b in topic["badges"] if b["type"].startswith("cat-")}
         assert {b["type"] for b in speaker["badges"]} == cats
+
+
+class TestTheCardBudget:
+    """Five rows for what council did, plus up to three for who spoke.
+
+    Brad's rule: a speaker never displaces an agenda item, so a
+    well-attended meeting still reports as much of council's business as
+    a quiet one. Eight rows on a heavy meeting is acceptable.
+
+    The selection itself runs in the browser, so these pin the constants
+    the template declares — the same approach as
+    ``tests/test_summary_render_contract.py``.
+    """
+
+    import os
+    TEMPLATE = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "app", "templates", "index.html",
+    )
+
+    def _template(self) -> str:
+        return open(self.TEMPLATE, encoding="utf-8").read()
+
+    def test_council_keeps_five_slots(self):
+        assert "const CARD_TOPICS = 5;" in self._template()
+
+    def test_speakers_get_three_slots_of_their_own(self):
+        assert "const CARD_PRESENTATIONS = 3;" in self._template()
+
+    def test_council_rows_are_chosen_without_the_speakers(self):
+        """The filter that stops a delegate taking an agenda item's place."""
+        assert "topics.filter(t => t.kind !== 'presentation')" in self._template()
+
+    def test_a_speaker_whose_item_is_absent_names_it(self):
+        """Otherwise the row is a person reacting to nothing."""
+        assert "Spoke on ${escapeAttr(t.spoke_to)}" in self._template()
+
+    def test_the_payload_offers_more_speakers_than_the_card_shows(self):
+        from app.summarizer import MAX_PRESENTATION_ROWS
+        assert MAX_PRESENTATION_ROWS > 3
+
+
+class TestOrganizationIsCarried:
+    """Which organizations had a voice is the thing a resident scans for."""
+
+    def test_the_speaker_pass_reports_an_organization(self):
+        out = _sanitize_speakers(
+            [{"name": "Jason Aebig",
+              "organization": "Greater Saskatoon Chamber of Commerce",
+              "said": ["Cited a $1.37 billion impact study."], "stance": "support"}],
+            ["Jason Aebig"],
+        )
+        assert out[0]["organization"] == "Greater Saskatoon Chamber of Commerce"
+
+    def test_a_resident_speaking_for_themselves_has_none(self):
+        out = _sanitize_speakers(
+            [{"name": "A B", "organization": "", "said": ["Objected."], "stance": ""}],
+            ["A B"],
+        )
+        assert out[0]["organization"] == ""
+
+    def test_the_transcript_fills_the_gap_a_filing_leaves(self):
+        """An RTS filing is a name and a filename — it never names the org."""
+        from app.presentations import merge_substance
+        merged = merge_substance({
+            "presentations": [{"name": "Randy Pshebylo", "organization": "",
+                               "summary": "Registered to speak."}],
+            "summary": {"presentations": [{
+                "name": "Randy Pshebylo",
+                "organization": "Riversdale Business Improvement District",
+                "said": ["Businesses are leaving."], "stance": "concern",
+            }]},
+        })
+        assert merged[0]["organization"] == "Riversdale Business Improvement District"
+
+    def test_the_minutes_win_when_they_name_it(self):
+        """Official text beats a speech-to-text self-introduction."""
+        from app.presentations import merge_substance
+        merged = merge_substance({
+            "presentations": [{"name": "Karen Kobussen",
+                               "organization": "Saskatoon West Business Association",
+                               "summary": "Karen Kobussen expressed concerns."}],
+            "summary": {"presentations": [{
+                "name": "Karen Kobussen", "organization": "Saskatoon West Business",
+                "said": ["Past plans produced no measurable results."],
+                "stance": "concern",
+            }]},
+        })
+        assert merged[0]["organization"] == "Saskatoon West Business Association"
+
+    def test_the_row_shows_the_organization_beside_the_name(self):
+        from app.summarizer import _format_presentation_row
+        row = _format_presentation_row(
+            {"name": "Jason Aebig",
+             "organization": "Greater Saskatoon Chamber of Commerce",
+             "said": ["Cited a study."], "stance": "support"},
+            {"badges": [], "time_start_ms": 0, "rank": 0},
+        )
+        assert row["topic"] == "Jason Aebig, Greater Saskatoon Chamber of Commerce"

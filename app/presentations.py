@@ -126,6 +126,11 @@ def merge_substance(item: dict) -> list[dict]:
         combined = dict(entry)
         combined["said"] = list(found.get("said") or [])
         combined["stance"] = found.get("stance") or entry.get("stance") or ""
+        # A Request to Speak filing is a name and a filename, so the
+        # organization can only come from what the speaker said at the
+        # podium. The minutes' version wins when there is one.
+        if not (entry.get("organization") or "").strip():
+            combined["organization"] = found.get("organization") or ""
         merged.append(combined)
     return merged
 

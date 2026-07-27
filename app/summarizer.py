@@ -119,11 +119,12 @@ def extract_meeting_topics(
     return _with_presentation_rows(rows, ordered, rank_by_item)
 
 
-# How many speaker rows one card will carry.  A single item drew five
-# delegations on the Downtown Event District, and five speaker rows would
-# have been the whole card: the reader would learn one item's public
-# reaction and nothing about the rest of the meeting.
-MAX_PRESENTATION_ROWS = 2
+# How many speaker rows the payload carries.  The card shows at most
+# three of them (``CARD_PRESENTATIONS`` in the template) and can only use
+# speakers whose item it is already showing, so the payload holds enough
+# candidates for that choice rather than pre-empting it.  The cap is a
+# bound on a pathological meeting, not a design limit.
+MAX_PRESENTATION_ROWS = 8
 
 
 def _with_presentation_rows(
@@ -177,6 +178,12 @@ def _format_presentation_row(speaker: dict, topic_row: dict) -> dict:
     return {
         "kind": "presentation",
         "topic": f"{name}, {org}" if org else name,
+        # The item they came to speak to. The card shows this only when
+        # that item is not itself on the card — a delegation whose item
+        # did not rank still tells a resident that their business
+        # improvement district or First Nation had a voice, which is the
+        # question the row exists to answer.
+        "spoke_to": topic_row.get("topic") or "",
         # The stance takes the outcome badge's place: a delegation has no
         # outcome of its own, and how they came down on the item is the
         # one thing a reader wants before the words.

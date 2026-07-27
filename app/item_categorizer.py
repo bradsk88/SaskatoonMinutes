@@ -1275,13 +1275,14 @@ def _presentation_schema(speakers: list[str]) -> dict:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "enum": list(speakers)},
+                        "organization": {"type": "string"},
                         "said": {"type": "array", "items": {"type": "string"}},
                         "stance": {
                             "type": "string",
                             "enum": ["support", "concern", "neutral"],
                         },
                     },
-                    "required": ["name", "said", "stance"],
+                    "required": ["name", "organization", "said", "stance"],
                 },
             },
         },
@@ -1356,6 +1357,20 @@ def _build_presentation_prompt(
         "- `stance` is how they came down on the item: \"support\", "
         "\"concern\", or \"neutral\" when they only supplied "
         "information or asked for something unrelated to approval.",
+        "- `organization` is who they spoke FOR, taken from how they "
+        "introduce themselves — \"I'm Jason Aebig, representing the "
+        "Greater Saskatoon Chamber of Commerce\". This is the one thing "
+        "a resident scans the page for: whether the Chamber, a business "
+        "improvement district, a First Nation, or a neighbourhood "
+        "association had a voice at this meeting.",
+        "- Write the organization's real name, expanded and spelled "
+        "properly, not as the transcript garbles it: \"Riversdale "
+        "Business Improvement District\", not \"riversdale bid\". Do not "
+        "abbreviate to initials.",
+        "- Leave `organization` EMPTY when they speak for themselves. "
+        "Most delegates are residents with no affiliation, and inventing "
+        "one — or promoting \"I live in Nutana\" into an organization — "
+        "misrepresents who was in the room.",
     ])
 
 
@@ -1380,8 +1395,12 @@ def _sanitize_speakers(parsed, speakers: list[str]) -> list[dict]:
             continue
         seen.add(name)
         stance = str(entry.get("stance") or "").strip().lower()
+        org = re.sub(r"\s+", " ", clean_entities(
+            str(entry.get("organization") or "")
+        )).strip()
         results.append({
             "name": name,
+            "organization": org,
             "said": said[:MAX_SAID_BULLETS],
             "stance": stance if stance in ("support", "concern") else "",
         })
@@ -1605,6 +1624,14 @@ def extract_item_summaries(
                     continue
                 presentation = dict(entry)
                 presentation["said"] = found["said"]
+                # The minutes name the organization in official text
+                # ("Karen Kobussen, Saskatoon West Business Association");
+                # the transcript only has how they introduced themselves
+                # through speech-to-text. Official text wins where it
+                # exists, which for a Request to Speak filing it never
+                # does — that is the gap this fills.
+                if not (entry.get("organization") or "").strip():
+                    presentation["organization"] = found.get("organization") or ""
                 # The transcript heard the stance first-hand; the minutes'
                 # verb ("expressed concerns") is a summary of it, and an
                 # RTS filing has no stance at all.

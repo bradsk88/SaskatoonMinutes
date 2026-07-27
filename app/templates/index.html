@@ -84,6 +84,14 @@
     // it is the one label that records nothing.
     const CARD_TOPICS_MIN = 3;
 
+    // Guest speakers get slots of their own, on top of the five above,
+    // rather than competing for them. The five are what council did; a
+    // delegation is a different question — who had a voice — and letting
+    // the two share a budget meant a meeting with speakers reported less
+    // of council's business than one without. Eight rows on a heavy
+    // meeting is acceptable.
+    const CARD_PRESENTATIONS = 3;
+
     const selectedCategories = new Set();
 
     let activeTypeSlug = 'council';
@@ -246,6 +254,9 @@
         // read to decide what to open, and a badge whose claim only
         // appears on hover says nothing at all on a phone.
         let html = '<table class="topics-table"><tbody>';
+        // What the last council row on the card was, so a speaker row can
+        // tell whether the item it answers is above it or absent.
+        let lastTopic = null;
         topics.forEach(t => {
             let rowClass = '';
             if (t.is_consent) rowClass += ' topic-consent';
@@ -312,7 +323,14 @@
             // .topic-name made the speaker's name the second child, which
             // lost it the two-line clamp and let space-between centre it.
             if (isPresentation) {
-                html += `<div class="topic-speaker-mark">Spoke to council</div>`;
+                // "Spoke to council" when the item is right above; the
+                // item's name when it is not on the card at all, so the
+                // row is never a person reacting to nothing.
+                const orphan = t.spoke_to && t.spoke_to !== lastTopic;
+                const mark = orphan ? `Spoke on ${escapeAttr(t.spoke_to)}` : 'Spoke to council';
+                html += `<div class="topic-speaker-mark">${mark}</div>`;
+            } else {
+                lastTopic = t.topic;
             }
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${outcomeHtml}</div>`;
             // The takeaway is decided before the summary is drawn: when
@@ -450,23 +468,35 @@
     // fill in. Agenda order is preserved, because that is the order the
     // meeting happened in.
     function chooseCardTopics(topics) {
-        const rank = t => (t.rank != null ? t.rank : topics.indexOf(t));
-        const byRank = topics.slice().sort((a, b) => rank(a) - rank(b));
+        // Council's rows are chosen from council's rows only. A speaker
+        // never displaces an agenda item, so a well-attended meeting
+        // still reports as much of what council did as a quiet one.
+        const council = topics.filter(t => t.kind !== 'presentation');
+        const rank = t => (t.rank != null ? t.rank : council.indexOf(t));
+        const byRank = council.slice().sort((a, b) => rank(a) - rank(b));
         const earned = byRank.filter(t => t.outcome && t.outcome !== 'Discussed');
         const chosen = earned.slice(0, CARD_TOPICS);
         for (const t of byRank) {
             if (chosen.length >= CARD_TOPICS_MIN) break;
             if (!chosen.includes(t)) chosen.push(t);
         }
-        // A speaker row is a reaction to the item above it. Both share a
-        // rank, so selection can take the speaker and leave the item —
-        // and a delegate then appears on the card answering nothing.
-        const kept = topics.filter(t => chosen.includes(t));
-        let lastTopic = null;
-        return kept.filter(t => {
-            if (t.kind !== 'presentation') { lastTopic = t; return true; }
-            return lastTopic !== null;
-        });
+
+        // Then up to three speakers, on top — and not restricted to the
+        // items the card is showing. Whether a business improvement
+        // district or a First Nation had a voice is worth knowing even
+        // when the item they came for did not rank; such a row names the
+        // item instead of sitting mute under an unrelated one.
+        //
+        // Ranked, not agenda order: otherwise the earliest item on the
+        // agenda spends every speaker slot and the biggest debate of the
+        // meeting shows none of the people who came to it.
+        const speakers = topics
+            .filter(t => t.kind === 'presentation')
+            .sort((a, b) => rank(a) - rank(b))
+            .slice(0, CARD_PRESENTATIONS);
+
+        const keep = new Set([...chosen, ...speakers]);
+        return topics.filter(t => keep.has(t));
     }
 
     function renderTopicsInContainer(meetingId, payload, openHref) {
