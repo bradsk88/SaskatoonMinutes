@@ -291,6 +291,39 @@ Tait – Denounce 1 Million March 4 Children" clocks 9,876 minutes. Broken
 end bookmarks. Any duration ranking inherits it, and the detail page's
 timeline probably shows it too.
 
+## 14. A defeated item should say why on the index
+
+Brad's note, 2026-07-27. "Approved" needs no explanation; **defeated**
+does. A resident scanning the index wants the reason council said no, and
+that is the row most likely to be the reason they came.
+
+Small and worth checking before designing: **15 of ~1,900 live rows are
+defeated** — `Defeated` ×12, plus `Defeated (5-6)`, `(0-9)`, `(3-7)`.
+
+Most of the "why" is already extracted; the card just does not
+prioritize it:
+
+- *1st Avenue BRT (Link) Concept Changes*, defeated 5–6, carries Debate
+  Highlight, Who's Affected and Staff vs. Council chips.
+- *Priority Based Budgeting Criteria*, defeated 0–9, has Staff vs.
+  Council — "Council rejected the administration's proposed criteria".
+- *Municipal Tax Policy*, defeated 3–7, has **no chips at all** and a raw
+  agenda description that opens "Councillor Jeffries introduced the item
+  as chair…". For this one the why does not exist yet, so no amount of
+  card work surfaces it.
+
+So it is probably two changes, not one:
+
+- The card picks its single takeaway from `TAKEAWAY_ORDER`
+  (`index.html:193`), which is the same for every row. A defeated row
+  could prefer the categories that explain a no — Dissenting View, Staff
+  vs. Council, Debate Highlight — over Who's Affected or Cost.
+- Where no such chip exists, this is the coverage ceiling again, not a
+  rendering bug. See the note above about 956 rows with no chips.
+
+Not designed. Ask Brad what a defeated row should read like before
+building it — a mock row in `AskUserQuestion` is what has worked.
+
 ## Noted, not scheduled
 
 - Tabs reorder themselves by recency on every load
