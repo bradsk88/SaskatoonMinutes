@@ -303,3 +303,74 @@ class TestPushPreflight:
         _git("remote", "set-url", "origin", "/nonexistent/remote.git")
         with pytest.raises(PushAccessError, match="summaries"):
             verify_push_access("summaries")
+
+
+class TestSavingAnUnchangedValue:
+    """Re-saving a key whose bytes did not change is a no-op, not an error.
+
+    A summarize run redid two committee meetings that had no eligible
+    items, so their summaries came out byte-identical to what the branch
+    already held.  ``git commit`` exits 1 with nothing staged, the caller
+    counted each as a failed meeting, and the job was marked failed having
+    done all of its work and lost nothing.
+    """
+
+    def test_resaving_the_same_value_does_not_raise(self, repo_with_remote):
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("k1", {"x": 1})
+            c.save("k1", {"x": 1})  # must not raise
+
+    def test_resaving_the_same_value_adds_no_commit(self, repo_with_remote):
+        _, remote = repo_with_remote
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("k1", {"x": 1})
+            c.save("k1", {"x": 1})
+        assert _remote_log(str(remote), "test-cache") == ["Add data for k1"]
+
+    def test_a_later_session_resaving_the_same_value_does_not_raise(
+        self, repo_with_remote,
+    ):
+        """The incident's shape: the unchanged value is on the branch already."""
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("k1", {"x": 1})
+
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("k1", {"x": 1})  # must not raise
+
+        _, remote = repo_with_remote
+        assert _remote_log(str(remote), "test-cache") == ["Add data for k1"]
+
+    def test_a_changed_value_still_commits(self, repo_with_remote):
+        _, remote = repo_with_remote
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("k1", {"x": 1})
+            c.save("k1", {"x": 2})
+        assert _remote_log(str(remote), "test-cache") == [
+            "Add data for k1", "Add data for k1",
+        ]
+        content = _read_remote_blob(str(remote), "test-cache", "data/k1.json")
+        assert json.loads(content) == {"x": 2}
+
+    def test_a_session_of_only_unchanged_saves_does_not_push(
+        self, repo_with_remote, monkeypatch,
+    ):
+        """It wrote nothing, so it must not demand write credentials."""
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("k1", {"x": 1})
+
+        def _refuse(self):
+            raise AssertionError("pushed a session that committed nothing")
+
+        monkeypatch.setattr(GitBranchCache, "_push_branch", _refuse)
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("k1", {"x": 1})
+
+    def test_an_unchanged_save_does_not_mask_a_real_one(self, repo_with_remote):
+        _, remote = repo_with_remote
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("k1", {"x": 1})
+            c.save("k1", {"x": 1})
+            c.save("k2", {"y": 2})
+        assert _remote_log(str(remote), "test-cache") == [
+            "Add data for k2", "Add data for k1",
+        ]

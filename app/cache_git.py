@@ -141,6 +141,18 @@ class GitBranchCache:
         with open(os.path.join(self._worktree, rel_path), "w") as f:
             json.dump(value, f, separators=(",", ":"))
         _git("add", rel_path, cwd=self._worktree)
+        # Re-saving a key whose value did not change stages nothing, and
+        # `git commit` exits 1 on an empty commit -- which _git raises and
+        # the caller counts as a failed unit of work.  A summarize run
+        # that redid two committee meetings with no eligible items was
+        # marked failed for exactly this, having summarized all 87
+        # meetings it was asked to and lost nothing.
+        #
+        # Skipping beats --allow-empty: the branch is a cache read by
+        # `git show`, and a commit that changes no bytes is noise in a log
+        # people scan to see what a run actually did.
+        if not self._has_staged_changes():
+            return
         _git(
             "commit", "-m",
             f"Add {self.dir_name} for {key}",
@@ -188,6 +200,20 @@ class GitBranchCache:
                 # Empty index (fresh repo) — nothing to clear.
                 pass
         self._worktree = wt
+
+    def _has_staged_changes(self) -> bool:
+        """True when the index holds something a commit would record.
+
+        Asked of subprocess rather than :func:`_git`: ``--quiet`` reports
+        "there is something to commit" as exit 1, which _git would raise.
+        An unborn branch — the first save onto a fresh orphan — also
+        answers 1, which is right: that save must commit.
+        """
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=self._worktree, capture_output=True,
+        )
+        return result.returncode != 0
 
     def _has_commits(self) -> bool:
         try:
