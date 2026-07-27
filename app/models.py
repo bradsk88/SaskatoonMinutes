@@ -169,6 +169,23 @@ class Chip:
         return {"category": self.category, "text": self.text}
 
 
+def normalize_description(value) -> list[str] | None:
+    """Coerce a stored or model-supplied description to bullets, or ``None``.
+
+    A plain string is one bullet.  Descriptions were paragraphs until the
+    bullet change and the archive still holds thousands of them on disk;
+    they are not all regenerated at once, so the old shape has to keep
+    loading rather than reading as a Legacy ItemSummary and putting an
+    "older summary" apology under a perfectly good sentence.
+    """
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return None
+    bullets = [b.strip() for b in value if isinstance(b, str) and b.strip()]
+    return bullets or None
+
+
 @dataclass(frozen=True)
 class ItemSummary:
     """The summary of one agenda item: a Description plus its Chips.
@@ -179,13 +196,19 @@ class ItemSummary:
     a declinable description is what produced 2,567 title-echo summaries
     across the cached corpus.  See ``docs/adr/0003-item-summary-aggregate.md``.
 
+    It is a **list of bullets**, one per distinct fact, because a card row
+    is scanned rather than read: a paragraph makes the reader parse a
+    sentence to find out whether the item concerns them.  One bullet is a
+    valid Description — the count follows the facts, and a thin item gets
+    one bullet rather than four padded ones.
+
     ``description`` is ``None`` only for a **Legacy ItemSummary**: one
     cached before the aggregate existed, or produced by a run with no
     Gemini key.  Both are degraded artifacts, and the UI marks them as
     such rather than presenting them as meeting the current bar.
     """
 
-    description: str | None
+    description: list[str] | None
     chips: list[Chip] = field(default_factory=list)
 
     @property
@@ -199,9 +222,8 @@ class ItemSummary:
         # entries load as Legacy rather than needing a migration.
         if isinstance(data, list):
             return cls(description=None, chips=[Chip.from_dict(c) for c in data])
-        description = (data.get("description") or "").strip()
         return cls(
-            description=description or None,
+            description=normalize_description(data.get("description")),
             chips=[Chip.from_dict(c) for c in data.get("chips") or []],
         )
 

@@ -129,7 +129,7 @@ class TestRateLimitIsRetried:
             _answer(),
         ])
         description, _ = ex.extract(ITEM, TRANSCRIPT, exclude=set())
-        assert description == "Council raised the transit fine to $250."
+        assert description == ["Council raised the transit fine to $250."]
 
     def test_it_waits_the_delay_the_server_asked_for(self, no_waiting):
         ex = _extractor([

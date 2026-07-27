@@ -89,7 +89,7 @@ class TestChip:
 class TestItemSummary:
     def test_round_trip(self):
         raw = {
-            "description": "Raises transit fines to $250.",
+            "description": ["Raises transit fines to $250."],
             "chips": [{"category": "Outcome", "text": "Approved (8-3)"}],
         }
         s = ItemSummary.from_dict(raw)
@@ -98,7 +98,7 @@ class TestItemSummary:
 
     def test_description_is_required_to_not_be_legacy(self):
         s = ItemSummary.from_dict({
-            "description": "Does a concrete thing.", "chips": [],
+            "description": ["Does a concrete thing."], "chips": [],
         })
         assert s.is_legacy is False
 
@@ -113,6 +113,41 @@ class TestItemSummary:
 
     def test_missing_chips_key_is_an_empty_list(self):
         assert ItemSummary.from_dict({"description": "x"}).chips == []
+
+
+class TestDescriptionBullets:
+    """The Description is a list of bullets, one per distinct fact."""
+
+    def test_bullets_are_kept_in_order(self):
+        s = ItemSummary.from_dict({
+            "description": ["Rezones 902-938 3rd Avenue North", "Allows 83 units"],
+            "chips": [],
+        })
+        assert s.description == [
+            "Rezones 902-938 3rd Avenue North", "Allows 83 units",
+        ]
+
+    def test_a_stored_paragraph_loads_as_one_bullet(self):
+        """The archive holds thousands of string descriptions and they are
+        not all regenerated at once. A string is one bullet, not Legacy."""
+        s = ItemSummary.from_dict({
+            "description": "Raises transit fines to $250.", "chips": [],
+        })
+        assert s.description == ["Raises transit fines to $250."]
+        assert s.is_legacy is False
+
+    def test_blank_bullets_are_dropped(self):
+        s = ItemSummary.from_dict({"description": ["Real fact", "  ", ""]})
+        assert s.description == ["Real fact"]
+
+    def test_an_empty_bullet_list_is_legacy(self):
+        s = ItemSummary.from_dict({"description": [], "chips": []})
+        assert s.description is None
+        assert s.is_legacy is True
+
+    def test_a_list_of_only_blanks_is_legacy(self):
+        s = ItemSummary.from_dict({"description": ["   "], "chips": []})
+        assert s.is_legacy is True
 
 
 class TestLegacyItemSummary:

@@ -224,18 +224,31 @@ def _item(**over) -> dict:
 
 
 class TestTopicSummaryPrefersTheDescription:
-    def test_description_is_used_whole(self):
-        """220 characters is the Description's own bound — the card does
-        not re-truncate a sentence written to be read in full."""
-        description = "Raises the fine for fare evasion to $250 and " + "x" * 150
-        topic = _format_topic(_item(summary={"description": description, "chips": []}))
-        assert topic["summary"] == description
+    def test_bullets_are_carried_through_whole(self):
+        """The Description carries its own bound — the card does not
+        re-cut a bullet written to be read in full."""
+        bullets = [
+            "Raises the fine for fare evasion to $250",
+            "Lets inspectors issue tickets on the spot",
+        ]
+        topic = _format_topic(_item(summary={"description": bullets, "chips": []}))
+        assert topic["summary"] == bullets
+        assert topic["summary_is_description"] is True
+
+    def test_a_paragraph_description_is_one_bullet(self):
+        """Most of the archive still holds the paragraph shape on disk."""
+        topic = _format_topic(_item(summary={
+            "description": "Raises the fine for fare evasion to $250.",
+            "chips": [],
+        }))
+        assert topic["summary"] == ["Raises the fine for fare evasion to $250."]
         assert topic["summary_is_description"] is True
 
     def test_legacy_summary_falls_back_to_clipped_agenda_text(self):
         topic = _format_topic(_item(summary={"description": None, "chips": []}))
-        assert topic["summary"].startswith("The Standing Policy Committee")
-        assert topic["summary"].endswith("...")
+        assert len(topic["summary"]) == 1
+        assert topic["summary"][0].startswith("The Standing Policy Committee")
+        assert topic["summary"][0].endswith("...")
         assert topic["summary_is_description"] is False
 
     def test_no_summary_at_all_behaves_like_legacy(self):

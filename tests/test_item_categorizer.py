@@ -5,6 +5,7 @@ import pytest
 from app.item_categorizer import (
     CATEGORIES,
     CATEGORY_GROUP,
+    MAX_DESCRIPTION_BULLETS,
     MAX_DESCRIPTION_CHARS,
     MAX_DESCRIPTION_WORDS,
     MAX_SUMMARY_CHARS,
@@ -383,20 +384,22 @@ class TestDataCited:
 import json
 
 
-STUB_DESCRIPTION = "Council approved a specific, concrete thing this item does."
+STUB_DESCRIPTION = ["Council approved a specific, concrete thing this item does."]
 
 
 def _stub_extractor(
     response: list[dict],
     captured: dict | None = None,
-    description: str | None = STUB_DESCRIPTION,
+    description: str | list[str] | None = STUB_DESCRIPTION,
 ):
     """Build a GeminiExtractor whose generate() returns an ItemSummary as JSON.
 
     *response* is the chip list.  Any chip without an explicit
     ``usefulness`` field is treated as ``"high"`` for convenience.
-    ``description`` becomes the required description field; pass ``None``
-    to simulate a model that failed to supply one.
+    ``description`` becomes the required description field -- a list of
+    bullets, or a bare string to stand in for the paragraph shape the
+    archive still holds.  Pass ``None`` to simulate a model that failed
+    to supply one.
 
     If ``captured`` is provided, the extractor records the allowed_cats
     and the prompt it was called with.
@@ -410,7 +413,7 @@ def _stub_extractor(
         if captured is not None:
             captured["allowed_cats"] = list(allowed_cats)
             captured["prompt"] = prompt
-        return json.dumps({"description": description or "", "chips": filled})
+        return json.dumps({"description": description or [], "chips": filled})
 
     return GeminiExtractor(api_key=None, generate=_generate)
 
@@ -854,11 +857,13 @@ class TestGeminiRunsWithoutTranscript:
         stub = _stub_extractor(
             [{"category": "Who's Affected", "text": "Drivers on arterial roads"}],
             captured=captured,
-            description="Puts $5M toward repaving arterial roads across the city.",
+            description=["Puts $5M toward repaving arterial roads across the city."],
         )
         out = extract_item_summaries(item, [], gemini_extractor=stub)
         # No transcript at all, but the metadata alone still yields a summary.
-        assert out["description"] == "Puts $5M toward repaving arterial roads across the city."
+        assert out["description"] == [
+            "Puts $5M toward repaving arterial roads across the city."
+        ]
         assert any(o["category"] == "Who's Affected" for o in out["chips"])
 
 
@@ -874,10 +879,12 @@ class TestDescriptionIsMandatoryNotFallback:
         item = _summary_item(100, "Transit Route Changes")
         segments = [_seg(0, "Discussion of transit route 42.")]
         stub = _stub_extractor(
-            [], description="Reroutes bus 42 off Broadway and adds two stops.",
+            [], description=["Reroutes bus 42 off Broadway and adds two stops."],
         )
         out = extract_item_summaries(item, segments, gemini_extractor=stub)
-        assert out["description"] == "Reroutes bus 42 off Broadway and adds two stops."
+        assert out["description"] == [
+            "Reroutes bus 42 off Broadway and adds two stops."
+        ]
 
     def test_no_description_without_gemini(self):
         """Deterministic-only runs produce a Legacy ItemSummary, not filler."""
@@ -909,19 +916,92 @@ class TestDescriptionIsMandatoryNotFallback:
     def test_description_has_html_entities_cleaned(self):
         item = _summary_item(103, "Parks Funding")
         stub = _stub_extractor(
-            [], description="Funds Parks &amp; Recreation upgrades citywide.",
+            [], description=["Funds Parks &amp; Recreation upgrades citywide."],
         )
         out = extract_item_summaries(
             item, [_seg(0, "Talk.")], gemini_extractor=stub,
         )
-        assert "&amp;" not in out["description"]
-        assert "Parks & Recreation" in out["description"]
+        assert out["description"] == ["Funds Parks & Recreation upgrades citywide."]
+
+
+class TestDescriptionBullets:
+    """The Description is bullets: a card row is scanned, not read."""
+
+    def test_a_paragraph_from_the_archive_loads_as_one_bullet(self):
+        item = _summary_item(110, "Transit Route Changes")
+        stub = _stub_extractor([], description="Reroutes bus 42 off Broadway.")
+        out = extract_item_summaries(item, [_seg(0, "Talk.")], gemini_extractor=stub)
+        assert out["description"] == ["Reroutes bus 42 off Broadway."]
+
+    def test_a_bullet_glyph_the_model_typed_is_stripped(self):
+        """Asked for a list, the model still writes the dash into the
+        string — which would render beside the marker the page draws."""
+        item = _summary_item(111, "Transit Route Changes")
+        stub = _stub_extractor(
+            [], description=["- Reroutes bus 42", "• Adds two stops"],
+        )
+        out = extract_item_summaries(item, [_seg(0, "Talk.")], gemini_extractor=stub)
+        assert out["description"] == ["Reroutes bus 42", "Adds two stops"]
+
+    def test_blank_bullets_are_dropped(self):
+        item = _summary_item(112, "Transit Route Changes")
+        stub = _stub_extractor([], description=["Reroutes bus 42", "   ", ""])
+        out = extract_item_summaries(item, [_seg(0, "Talk.")], gemini_extractor=stub)
+        assert out["description"] == ["Reroutes bus 42"]
+
+    def test_a_list_of_only_blanks_is_a_missing_description(self):
+        item = _summary_item(113, "Transit Route Changes")
+        stub = _stub_extractor([], description=["  ", ""])
+        out = extract_item_summaries(item, [_seg(0, "Talk.")], gemini_extractor=stub)
+        assert out["description"] is None
+
+    def test_more_bullets_than_the_ceiling_are_cut(self):
+        """The card has a height budget; five bullets is padding."""
+        item = _summary_item(114, "Transit Route Changes")
+        stub = _stub_extractor([], description=[f"Fact {i}" for i in range(6)])
+        out = extract_item_summaries(item, [_seg(0, "Talk.")], gemini_extractor=stub)
+        assert len(out["description"]) == MAX_DESCRIPTION_BULLETS
+
+    def test_a_continuation_bullet_is_left_as_the_model_wrote_it(self):
+        """Joining it to the bullet above was tried and reverted: a
+        caveat welded onto an unrelated fact asserts something neither
+        bullet said. The eval counts these instead."""
+        item = _summary_item(115, "Garden and Garage Suites")
+        bullets = [
+            "Supports Housing Accelerator Fund conditions.",
+            "This is a public hearing, not final approval",
+        ]
+        stub = _stub_extractor([], description=list(bullets))
+        out = extract_item_summaries(item, [_seg(0, "Talk.")], gemini_extractor=stub)
+        assert out["description"] == bullets
+
+    def test_the_prompt_asks_for_bullets_driven_by_the_facts(self):
+        prompt = _build_prompt(
+            _summary_item(1, "Transit Bylaw"), "text", ["Who's Affected"],
+        )
+        assert "One bullet per DISTINCT fact" in prompt
+        assert f"1 to {MAX_DESCRIPTION_BULLETS} short bullets" in prompt
+
+    def test_the_prompt_forbids_a_bullet_that_continues_the_one_above(self):
+        """One sentence chopped into four is longer than the paragraph
+        it replaced and says less."""
+        prompt = _build_prompt(
+            _summary_item(1, "Transit Bylaw"), "text", ["Who's Affected"],
+        )
+        assert "Never split one fact across bullets" in prompt
 
 
 class TestSummarySchema:
     def test_description_is_required(self):
         schema = _summary_schema(["Who's Affected"])
         assert "description" in schema["required"]
+
+    def test_description_is_a_list_of_bullets(self):
+        """A string here is what made the model write a paragraph."""
+        schema = _summary_schema(["Who's Affected"])
+        desc = schema["properties"]["description"]
+        assert desc["type"] == "array"
+        assert desc["items"]["type"] == "string"
 
     def test_chips_are_constrained_to_allowed_categories(self):
         schema = _summary_schema(["Who's Affected"])

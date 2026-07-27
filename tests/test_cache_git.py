@@ -201,7 +201,7 @@ class TestTypedWrappers:
         summaries = {
             "1": ItemSummary(description=None, chips=[]),
             "7": ItemSummary(
-                description="Approves the subcommittee's 2026 work plan.",
+                description=["Approves the subcommittee's 2026 work plan."],
                 chips=[
                     Chip(category="Outcome", text="Approved"),
                     Chip(category="Vote Breakdown", text="5 for, 0 against"),
@@ -233,7 +233,7 @@ class TestTypedWrappers:
 
         summaries = {
             "7": ItemSummary(
-                description="Approves the plan.",
+                description=["Approves the plan."],
                 chips=[Chip(category="Outcome", text="Approved")],
             ),
         }
@@ -244,7 +244,7 @@ class TestTypedWrappers:
                 os.path.join(worktree, "summaries", "m1.json")
             ).read()
         assert raw == (
-            '{"7":{"description":"Approves the plan.",'
+            '{"7":{"description":["Approves the plan."],'
             '"chips":[{"category":"Outcome","text":"Approved"}]}}'
         )
 

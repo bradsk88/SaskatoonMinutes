@@ -20,11 +20,11 @@ TEMPLATE = os.path.join(
 class TestSerializedKeys:
     def test_to_dict_exposes_exactly_what_the_page_reads(self):
         summary = ItemSummary(
-            description="Raises transit fines to $250.",
+            description=["Raises transit fines to $250."],
             chips=[Chip(category="Outcome", text="Approved")],
         )
         assert summary.to_dict() == {
-            "description": "Raises transit fines to $250.",
+            "description": ["Raises transit fines to $250."],
             "chips": [{"category": "Outcome", "text": "Approved"}],
         }
 
@@ -37,6 +37,12 @@ class TestSerializedKeys:
 class TestTemplateReadsTheseKeys:
     def test_template_reads_summary_description(self):
         assert "summary.description" in open(TEMPLATE, encoding="utf-8").read()
+
+    def test_template_renders_the_description_as_a_bullet_list(self):
+        """The description is bullets, and a list of strings dropped into
+        a <p> renders as ``a,b,c`` with no separator a reader can see."""
+        source = open(TEMPLATE, encoding="utf-8").read()
+        assert '<ul class="item-description">' in source
 
     def test_template_reads_summary_chips(self):
         assert "summary.chips" in open(TEMPLATE, encoding="utf-8").read()
@@ -102,7 +108,7 @@ class TestTheTwoProducersUseDistinctKeys:
         from app.summarizer import summarize_agenda_items
 
         written = ItemSummary(
-            description="Raises transit fines to $250.",
+            description=["Raises transit fines to $250."],
             chips=[Chip(category="Outcome", text="Approved")],
         ).to_dict()
         items = summarize_agenda_items(
@@ -140,6 +146,15 @@ class TestIndexCardReadsTheTopicKeys:
 
     def test_card_marks_a_non_description_summary(self):
         assert "summary_is_description" in self._index()
+
+    def test_card_renders_the_description_as_a_bullet_list(self):
+        assert "topic-summary-bullets" in self._index()
+
+    def test_card_never_interpolates_the_bullet_array_as_text(self):
+        """``${t.summary}`` on an array renders "a,b" — comma-joined with
+        no space and no bullets. Each one is drawn on its own."""
+        assert "${t.summary}" not in self._index()
+        assert "escapeAttr(t.summary)" not in self._index()
 
     def test_card_carries_no_chip_badges(self):
         """Chips moved to the detail page.

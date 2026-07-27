@@ -68,10 +68,15 @@ def _judge_schema() -> dict:
 def build_judge_prompt(
     title: str,
     source: str,
-    description: str,
+    description: str | list[str],
     chips: list[dict],
 ) -> str:
     chip_lines = "\n".join(f"- {c['category']}: {c['text']}" for c in chips) or "(none)"
+    # The description is a list of bullets; it is shown as bullets so the
+    # judge scores each fact on its own rather than reading four lines as
+    # one sentence and blaming the whole block for one bad clause.
+    bullets = [description] if isinstance(description, str) else list(description)
+    desc_lines = "\n".join(f"- {b}" for b in bullets if b) or "(none)"
     return "\n".join([
         "You are auditing an AI-generated summary of one agenda item from "
         "a Saskatoon city council meeting. You have the source material "
@@ -113,7 +118,8 @@ def build_judge_prompt(
         "",
         "Summary under audit:",
         "",
-        f"Description: {description or '(none)'}",
+        "Description:",
+        desc_lines,
         "",
         "Chips:",
         chip_lines,
@@ -156,7 +162,7 @@ class SummaryJudge:
         self,
         title: str,
         source: str,
-        description: str | None,
+        description: str | list[str] | None,
         chips: list[dict],
     ) -> dict | None:
         """Return the verdict dict, or ``None`` when the call fails.
@@ -164,7 +170,7 @@ class SummaryJudge:
         ``None`` is distinct from a bad score: it means we learned
         nothing, so the caller must not treat it as a pass.
         """
-        prompt = build_judge_prompt(title, source, description or "", chips)
+        prompt = build_judge_prompt(title, source, description or [], chips)
         try:
             parsed = json.loads(self._call(prompt))
         except Exception as exc:

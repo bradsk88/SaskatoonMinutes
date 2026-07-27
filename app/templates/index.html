@@ -297,27 +297,38 @@
             }
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${outcomeHtml}</div>`;
             // The takeaway is decided before the summary is drawn: when
-            // a row has one, the summary gives up its third line so the
-            // row's height does not grow. A hook cut mid-sentence is
-            // worse than a description cut mid-sentence, and chip text
-            // runs to 122 characters -- three lines at this width.
+            // a row has one, the summary gives up a line so the row's
+            // height does not grow. A hook cut mid-sentence is worse
+            // than a description cut short, and chip text runs to 122
+            // characters -- three lines at this width.
             const takeaway = takeawayHtml(t);
-            if (t.summary) {
-                // A summary that is not the written Description is raw
-                // agenda text clipped at 120 characters. It is marked so
-                // the two are never mistaken for each other — but the
-                // mark is a two-word source label inside the clamped
-                // block, not the sentence of apology it used to be:
-                // seven rows in ten are on this path, and the apology
-                // was costing each of them two of the card's lines.
-                let summaryClass = t.summary_is_description
-                    ? 'topic-summary'
-                    : 'topic-summary topic-summary-raw';
+            const summaryLines = Array.isArray(t.summary)
+                ? t.summary
+                : (t.summary ? [t.summary] : []);
+            if (summaryLines.length && t.summary_is_description) {
+                // Bullets, one per fact, because a card row is scanned
+                // and not read. The row's height budget is unchanged,
+                // so it shows the first three bullets -- two when a
+                // takeaway is also competing for the space. Dropping a
+                // whole fact is cleaner than clamping the list
+                // mid-bullet, and the detail page carries all of them.
+                const shown = summaryLines.slice(0, takeaway ? 2 : 3);
+                const items = shown
+                    .map(b => `<li>${escapeAttr(b)}</li>`)
+                    .join('');
+                html += `<ul class="topic-summary topic-summary-bullets">${items}</ul>`;
+            } else if (summaryLines.length) {
+                // Not the written Description: raw agenda text clipped
+                // at 120 characters. It is marked so the two are never
+                // mistaken for each other — but the mark is a two-word
+                // source label inside the clamped block, not the
+                // sentence of apology it used to be: seven rows in ten
+                // are on this path, and the apology was costing each of
+                // them two of the card's lines.
+                let summaryClass = 'topic-summary topic-summary-raw';
                 if (takeaway) summaryClass += ' topic-summary-short';
-                const rawNote = t.summary_is_description
-                    ? ''
-                    : `<span class="topic-summary-note">From the agenda:</span> `;
-                html += `<div class="${summaryClass}">${rawNote}${escapeAttr(t.summary)}</div>`;
+                const rawNote = `<span class="topic-summary-note">From the agenda:</span> `;
+                html += `<div class="${summaryClass}">${rawNote}${escapeAttr(summaryLines[0])}</div>`;
             }
             html += takeaway;
             html += detailHref ? `</a>` : `</div>`;

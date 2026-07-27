@@ -18,6 +18,7 @@ from app.agenda_items import (
 )
 from app.agenda_text import clean_entities, format_money, plainify, titleize
 from app.item_categorizer import CATEGORY_GROUP, SEMANTIC_CATEGORIES
+from app.models import normalize_description
 from app.transcript_text import split_sentences
 
 
@@ -210,29 +211,31 @@ def _item_summary(item: dict) -> dict:
     return summary if isinstance(summary, dict) else {}
 
 
-def _topic_summary(item: dict) -> tuple[str, bool]:
-    """The one line of prose under a topic, and whether it is a Description.
+def _topic_summary(item: dict) -> tuple[list[str], bool]:
+    """The bullets under a topic, and whether they are the Description.
 
-    The Description is written as a lede for a busy resident and is
-    already bounded at 220 characters, so it is shown whole — truncating
-    a sentence written to be read in full is what the Description was
-    introduced to stop doing.
+    The Description is written as bullets for a busy resident and is
+    already bounded, so it is shown whole — truncating a line written to
+    be read in full is what the Description was introduced to stop doing.
 
     A Legacy ItemSummary has no Description, so the card falls back to
-    the raw eSCRIBE agenda blob, clipped.  The second return value lets
-    the page mark that fallback instead of hiding it.
+    the raw eSCRIBE agenda blob, clipped, as a single line. The second
+    return value lets the page mark that fallback instead of hiding it —
+    and keeps it out of the bullet list, because clipped agenda prose is
+    one run-on sentence and bulleting it would claim a structure it does
+    not have.
     """
-    description = (_item_summary(item).get("description") or "").strip()
+    description = normalize_description(_item_summary(item).get("description"))
     if description:
         return description, True
 
     content = item.get("content", "")
     if not content:
-        return "", False
+        return [], False
     fallback = clean_entities(content)
     if len(fallback) > 120:
         fallback = fallback[:117].rsplit(" ", 1)[0] + "..."
-    return fallback, False
+    return [fallback], False
 
 
 # Chip categories worth showing on a card.  Outcome and Vote Breakdown

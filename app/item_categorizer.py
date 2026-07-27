@@ -699,7 +699,7 @@ class GeminiExtractor:
 
     def extract(
         self, item: dict, transcript_text: str, exclude: set[str],
-    ) -> tuple[str | None, list[dict]]:
+    ) -> tuple[list[str] | None, list[dict]]:
         """Return ``(description, chips)`` for one agenda item.
 
         ``description`` is ``None`` only when the model answered and had
@@ -791,9 +791,11 @@ USEFULNESS_LEVELS: list[str] = ["high", "medium", "low"]
 ACCEPTED_USEFULNESS: set[str] = {"high", "medium"}
 
 
-# A Description is 1-2 sentences, so it gets more room than a chip.  Not
-# hard-trimmed: cutting a description mid-clause would be worse than one
-# that runs slightly long, and the eval reports overruns instead.
+# A Description is a few bullets, so it gets more room than a chip.  The
+# budget is the whole description, all bullets together — the reader's
+# cost is the block, not the line.  Not hard-trimmed: cutting a bullet
+# mid-clause would be worse than one that runs slightly long, and the
+# eval reports overruns instead.
 #
 # Do not raise this to "fit" descriptions that overrun.  The model reads
 # the number as a target rather than a ceiling — raising it 220 -> 280
@@ -818,6 +820,41 @@ MAX_DESCRIPTION_CHARS = 220
 MAX_DESCRIPTION_WORDS = 30
 MAX_SUMMARY_WORDS = 16
 
+# Bullets, not a paragraph: a card row is scanned, and a reader deciding
+# whether an item concerns them should not have to parse a sentence.
+#
+# The count follows the facts.  A ceiling of four with no floor is
+# deliberate — asked for a fixed number, the model chops one sentence
+# into four lines that each continue the last ("It shifts...", "This
+# allows...", "The change aligns..."), which is longer than the paragraph
+# and says less.  One bullet is a correct answer for most items.
+MAX_DESCRIPTION_BULLETS = 4
+
+# A bullet opening with one of these is the second half of the bullet
+# above it — "It shifts from industrial to residential use" is not a
+# fact, it is the back end of a sentence.
+#
+# The prompt forbids it and two rounds of prompt work moved it from 4/24
+# to 1/24, but never to zero.  The eval counts what is left; the list is
+# here so the prompt and the eval agree on what a continuation is.
+#
+# Do NOT "fix" a continuation by joining it to the bullet above it.  That
+# was tried: a caveat bullet ("This is a public hearing, not final
+# approval") got welded onto an unrelated fact and the pair asserted
+# something neither bullet said, which the judge scored 1 for
+# faithfulness.  A string join cannot tell a chopped sentence from a
+# separate thought, and inventing a claim is worse than a clumsy bullet.
+CONTINUATION_OPENERS: tuple[str, ...] = (
+    "it ", "this ", "these ", "those ", "that ", "they ",
+    "the change ", "the move ", "the decision ", "the plan ",
+    "which ", "also ", "and ",
+)
+
+# Per bullet.  Nine is what the good bullets in the fixture evidence run
+# to; ten is asked for so a bullet carrying a dollar figure and a period
+# is not forced to drop the period to fit.
+MAX_BULLET_WORDS = 10
+
 
 def _summary_schema(allowed_cats: list[str]) -> dict:
     """Response schema for one agenda item's ItemSummary.
@@ -831,7 +868,7 @@ def _summary_schema(allowed_cats: list[str]) -> dict:
     return {
         "type": "object",
         "properties": {
-            "description": {"type": "string"},
+            "description": {"type": "array", "items": {"type": "string"}},
             "chips": {
                 "type": "array",
                 "items": {
@@ -976,13 +1013,51 @@ def _build_prompt(
         "",
         "## description (required)",
         "",
-        "One or two sentences, at most "
-        f"{MAX_DESCRIPTION_WORDS} words, saying what this item "
-        "actually does and why it matters to a resident of Saskatoon. "
-        "This is the single most important field — it is what someone "
-        "reads instead of the agenda.",
+        f"A list of 1 to {MAX_DESCRIPTION_BULLETS} short bullets saying "
+        "what this item actually does and why it matters to a resident of "
+        "Saskatoon. This is the single most important field — it is what "
+        "someone reads instead of the agenda. Each bullet is a string of "
+        f"at most {MAX_BULLET_WORDS} words; the whole description is at "
+        f"most {MAX_DESCRIPTION_WORDS} words.",
         "",
-        "Rules for `description`:",
+        "How many bullets:",
+        "- One bullet per DISTINCT fact. The number of bullets is decided "
+        "by the material, not by a target. Most items hold one fact and "
+        "get ONE bullet. Only an item that genuinely does several "
+        "separate things gets several.",
+        "- Never split one fact across bullets. A bullet that opens with "
+        "\"It\", \"This\", \"These\", \"That\", \"They\" or \"The "
+        "change\" is a sentence you have chopped in half. Every bullet "
+        "must stand alone and be readable on its own.",
+        "- Before you return, read your bullets in reverse order. Any "
+        "bullet that stops making sense out of order is leaning on "
+        "another one. Fix it in one of two ways: name its subject "
+        "(\"This site is zoned low-density\" becomes \"1401 11th Street "
+        "West is zoned low-density\"), or, if naming the subject just "
+        "repeats the bullet above, delete it and fold anything new into "
+        "that bullet.",
+        "- Padding is worse than brevity. Three bullets restating one "
+        "rezoning (\"City rezones 3rd Avenue North properties\" / \"It "
+        "shifts from industrial to residential use\" / \"This allows "
+        "higher-density housing\") is one fact wearing three hats. Write "
+        "the single bullet \"Rezones 902-938 3rd Avenue North to "
+        "residential\" instead.",
+        "- Merging bullets must not lose a specific. When you fold two "
+        "bullets into one, the amount, address, partner or term from the "
+        "bullet you dropped moves into the bullet you kept.",
+        "- Now read your bullets next to the title. Every one of them "
+        "must carry something the title does not already say. \"City "
+        "applies for Carthy Foundation urban green infrastructure "
+        "funding\" under the title \"Carthy Foundation Funding – Urban "
+        "Green Infrastructure Research\" is the title with a verb in "
+        "front of it: the amount, the partner and the term are in the "
+        "source, and that is what the bullet is for.",
+        "- A bullet keeps the specifics. Losing the addresses, the "
+        "amount, or the date to make a bullet shorter is not an "
+        "improvement — that detail is the reason the bullet is worth "
+        "reading.",
+        "",
+        "Rules for each bullet:",
         "- Do NOT restate the agenda item's title. The reader can already "
         "see the title; repeating it tells them nothing. If your "
         "description would just be the title reworded, dig into the "
@@ -1021,8 +1096,8 @@ def _build_prompt(
         "not \"$14,000\"; \"an 8-month extension\" is not \"an "
         "extension\". Dropping the qualifier changes the fact, and the "
         "reader has no way to notice. Never drop a unit or a period to "
-        "fit the word budget — cut adjectives, cut a clause, cut the "
-        "second sentence, but a number keeps its unit.",
+        "fit the word budget — cut adjectives, cut a clause, cut a whole "
+        "bullet, but a number keeps its unit.",
         "- Plain language. No bureaucratic phrasing, no file numbers, no "
         "\"the Administration recommends that\".",
         "- State only what the source supports. If the material is thin, "
@@ -1108,25 +1183,38 @@ def _build_prompt(
         ])
     lines.extend([
         "",
-        "Return a JSON object with `description` and `chips`. An empty "
-        "`chips` list is valid if nothing fits; an empty `description` is "
-        "not.",
+        "Return a JSON object with `description` (a list of bullet "
+        "strings) and `chips`. An empty `chips` list is valid if nothing "
+        "fits; an empty `description` is not.",
     ])
     return "\n".join(lines)
 
 
-def _sanitize_description(value) -> str | None:
-    """Normalize the model's description, or ``None`` if it gave us nothing.
+def _sanitize_description(value) -> list[str] | None:
+    """Normalize the model's description bullets, or ``None`` for nothing.
 
     Deliberately does not fall back to the item's title.  Substituting the
     title is what the retired "In Plain Terms" fallback did, and a title
     echo is indistinguishable from a real summary once it is on the page —
     a missing description is visibly missing, which is the safer failure.
+
+    Leading bullet glyphs are stripped: asked for a list, the model still
+    sometimes writes ``"- Council rezones ..."`` in the string, which
+    would render as a second bullet marker beside the real one.
     """
-    if not isinstance(value, str):
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
         return None
-    text = re.sub(r"\s+", " ", clean_entities(value)).strip()
-    return text or None
+    bullets = []
+    for entry in value:
+        if not isinstance(entry, str):
+            continue
+        text = re.sub(r"\s+", " ", clean_entities(entry)).strip()
+        text = re.sub(r"^[-•*–—]\s*", "", text).strip()
+        if text:
+            bullets.append(text)
+    return bullets[:MAX_DESCRIPTION_BULLETS] or None
 
 
 def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
@@ -1222,7 +1310,8 @@ def extract_item_summaries(
 ) -> dict:
     """Build the ItemSummary payload for a single agenda item.
 
-    Returns ``{"description": str | None, "chips": [{"category", "text"}]}``
+    Returns ``{"description": list[str] | None, "chips":
+    [{"category", "text"}]}``
     with chips sorted by the canonical 22-category order — the shape
     :meth:`app.models.ItemSummary.from_dict` consumes.
 
@@ -1286,7 +1375,7 @@ def extract_item_summaries(
     # nothing honest to put there — deterministic text derived from the
     # title is a title echo by construction, which is the failure this
     # aggregate exists to prevent.
-    description: str | None = None
+    description: list[str] | None = None
     if extractor.enabled:
         description, semantic_chips = extractor.extract(
             item, transcript_text, exclude=covered,

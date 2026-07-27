@@ -44,6 +44,19 @@ class TestJudgePrompt:
         prompt = build_judge_prompt("T", "src", "desc", [])
         assert "return an empty string" in prompt
 
+    def test_bullets_are_shown_as_bullets(self):
+        """One bullet per line, so the judge scores each fact on its own
+        instead of blaming a whole block for one bad clause."""
+        prompt = build_judge_prompt(
+            "T", "src", ["Rezones the lots", "Allows 83 units"], [],
+        )
+        assert "- Rezones the lots\n- Allows 83 units" in prompt
+
+    def test_a_stored_paragraph_is_still_judged(self):
+        """Most of the archive holds the pre-bullet string shape."""
+        prompt = build_judge_prompt("T", "src", "Rezones the lots.", [])
+        assert "- Rezones the lots." in prompt
+
     def test_chips_are_listed_for_audit(self):
         prompt = build_judge_prompt(
             "T", "src", "desc",

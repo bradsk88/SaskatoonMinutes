@@ -199,7 +199,10 @@ class TestConsentItemsProduceSummaries:
             ),
         )
         out = extract_item_summaries(consent(), [], gemini_extractor=ex)
-        assert out["description"].startswith("Accepts a $250,000")
+        assert out["description"] == [
+            "Accepts a $250,000 Carthy Foundation grant for urban green "
+            "infrastructure research."
+        ]
 
     def test_deterministic_chips_still_run_on_consent_items(self):
         ex = GeminiExtractor(

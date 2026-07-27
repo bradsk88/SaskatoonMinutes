@@ -47,6 +47,7 @@ from app.summary_judge import (  # noqa: E402
 )
 from app.item_categorizer import (  # noqa: E402
     CATEGORIES,
+    CONTINUATION_OPENERS,
     MAX_DESCRIPTION_CHARS,
     SEMANTIC_CATEGORIES,
     GeminiExtractor,
@@ -65,6 +66,17 @@ MIN_SOFT_COVERAGE = 0.5
 # A chip that merely restates the title is filler.  Above this share of
 # all chips, the summary is a title echo rather than a summary.
 MAX_TITLE_ECHO = 0.35
+
+# A bullet that continues the one above it is one sentence chopped up.
+# The rule is not negotiable, but the gate is a share rather than zero,
+# because the generator is a sampled model: prompt work took this from
+# 4/24 to 1/24 and no wording takes it reliably to 0/24.  A gate that
+# goes red on one unlucky sample is a gate people learn to ignore.  The
+# count is printed on every run whether it fails or not.
+#
+# Repairing them in code is not the way out — see the note beside
+# CONTINUATION_OPENERS for what a string join did to faithfulness.
+MAX_DESCRIPTION_CONTINUATION = 0.10
 
 
 def load_fixtures() -> list[tuple[str, dict, list[dict]]]:
@@ -116,9 +128,26 @@ def is_title_echo(chip_text: str, title: str) -> bool:
 MIN_DESCRIPTION_NOVELTY = 0.5
 
 
-def is_description_echo(description: str, title: str) -> bool:
+def as_bullets(description) -> list[str]:
+    """The description as a bullet list, whatever shape it arrived in."""
+    if isinstance(description, str):
+        description = [description]
+    if not isinstance(description, list):
+        return []
+    return [b.strip() for b in description if isinstance(b, str) and b.strip()]
+
+
+def continuation_bullets(bullets: list[str]) -> list[str]:
+    """Bullets after the first that continue the bullet above them."""
+    return [
+        b for b in bullets[1:]
+        if b.lower().startswith(CONTINUATION_OPENERS)
+    ]
+
+
+def is_description_echo(description, title: str) -> bool:
     """True when the description says little the title didn't already say."""
-    desc_n, title_n = _normalize(description), _normalize(title)
+    desc_n, title_n = _normalize(" ".join(as_bullets(description))), _normalize(title)
     if not desc_n or not title_n:
         return False
     desc_words = desc_n.split()
@@ -141,19 +170,28 @@ class Report:
         self.missing_descriptions = 0
         self.description_echoes = 0
         self.description_overruns = 0
+        self.description_continuations = 0
+        self.bullets = 0
 
     def add_item(
         self, mid: str, item: dict, chips: list[dict],
-        description: str | None = None,
+        description=None,
     ) -> None:
         self.items += 1
         title = item.get("title") or ""
-        if description:
+        bullets = as_bullets(description)
+        continued = continuation_bullets(bullets)
+        if bullets:
             self.descriptions += 1
-            if is_description_echo(description, title):
+            self.bullets += len(bullets)
+            if is_description_echo(bullets, title):
                 self.description_echoes += 1
-            if len(description) > MAX_DESCRIPTION_CHARS:
+            # Measured over the whole description, all bullets together:
+            # the reader's cost is the block, not the line.
+            if sum(len(b) for b in bullets) > MAX_DESCRIPTION_CHARS:
                 self.description_overruns += 1
+            if continued:
+                self.description_continuations += 1
         else:
             self.missing_descriptions += 1
         # A soft chip that only restates the title is the metadata fallback
@@ -167,9 +205,12 @@ class Report:
             f"\n### {item.get('section_number', '')} {title[:70]}\n"
             f"<sub>{mid[:8]} · item {item['item_id']}</sub>\n"
         )
-        if description:
-            flag = " ⚠️ title echo" if is_description_echo(description, title) else ""
-            self.rows.append(f"> {description}{flag}\n")
+        if bullets:
+            echo = " ⚠️ title echo" if is_description_echo(bullets, title) else ""
+            for bullet in bullets:
+                mark = " ⚠️ continues the bullet above" if bullet in continued else ""
+                self.rows.append(f"> - {bullet}{mark}")
+            self.rows.append(f"{echo}\n")
         else:
             self.rows.append("> _**no description**_\n")
         if not chips:
@@ -186,6 +227,13 @@ class Report:
     @property
     def soft_coverage(self) -> float:
         return self.items_with_soft / self.items if self.items else 0.0
+
+    @property
+    def continuation_share(self) -> float:
+        return (
+            self.description_continuations / self.descriptions
+            if self.descriptions else 0.0
+        )
 
     @property
     def echo_share(self) -> float:
@@ -207,6 +255,10 @@ class Report:
             f"· missing: **{self.missing_descriptions}** "
             f"· title echoes: **{self.description_echoes}** "
             f"· over {MAX_DESCRIPTION_CHARS} chars: **{self.description_overruns}**",
+            f"- Bullets: **{self.bullets}** "
+            f"({self.bullets / self.descriptions:.1f} per description) "
+            f"· continuation bullets: **{self.description_continuations}**"
+            if self.descriptions else "- no descriptions",
             "",
             "| category | count |",
             "|---|---|",
@@ -284,6 +336,11 @@ def _source_material(item: dict, transcript: str) -> str:
     return "\n\n".join(parts)
 
 
+def _desc_line(description) -> str:
+    """A description on one line, for a diff row that is read as a pair."""
+    return " · ".join(as_bullets(description)) or "(none)"
+
+
 def build_report(results: dict) -> Report:
     report = Report()
     for key, entry in results.items():
@@ -348,7 +405,7 @@ def render_diff(baseline: dict, current: dict) -> str:
         if old is None:
             changed += 1
             lines.append(f"### + NEW {new['section_number']} {new['title'][:60]}")
-            lines.append(f"+ _description_ — {new.get('description') or '(none)'}")
+            lines.append(f"+ _description_ — {_desc_line(new.get('description'))}")
             for c in new["chips"]:
                 lines.append(f"+ **{c['category']}** — {c['text']}")
             lines.append("")
@@ -362,10 +419,11 @@ def render_diff(baseline: dict, current: dict) -> str:
             continue
 
         rows: list[str] = []
-        old_desc, new_desc = old.get("description"), new.get("description")
+        old_desc = as_bullets(old.get("description"))
+        new_desc = as_bullets(new.get("description"))
         if old_desc != new_desc:
-            rows.append(f"- _description_ — {old_desc or '(none)'}")
-            rows.append(f"+ _description_ — {new_desc or '(none)'}")
+            rows.append(f"- _description_ — {_desc_line(old_desc)}")
+            rows.append(f"+ _description_ — {_desc_line(new_desc)}")
 
         old_cats, new_cats = _by_category(old["chips"]), _by_category(new["chips"])
         for cat in sorted(set(old_cats) | set(new_cats), key=_category_sort):
@@ -402,7 +460,8 @@ def render_diff(baseline: dict, current: dict) -> str:
     unchanged = len(shared) - sum(
         1 for k in shared
         if baseline[k]["chips"] != current[k]["chips"]
-        or baseline[k].get("description") != current[k].get("description")
+        or as_bullets(baseline[k].get("description"))
+        != as_bullets(current[k].get("description"))
     )
     lines.append(f"**{changed} items changed, {unchanged} unchanged**")
     if gained:
@@ -627,6 +686,17 @@ def main() -> None:
             f"{report.missing_descriptions}/{report.items} items have no "
             f"description — it is a required schema field, so this is a "
             f"broken contract, not a soft miss"
+        )
+    # One fact chopped across several bullets is longer than the
+    # paragraph it replaced and says less — it is the reason the bullet
+    # count follows the facts instead of a target.
+    if report.continuation_share > MAX_DESCRIPTION_CONTINUATION:
+        failures.append(
+            f"{report.description_continuations}/{report.descriptions} "
+            f"descriptions ({report.continuation_share:.0%}) have a bullet "
+            f"that continues the one above it — that is one sentence "
+            f"chopped up, not several facts "
+            f"(limit {MAX_DESCRIPTION_CONTINUATION:.0%})"
         )
     if report.description_echoes:
         failures.append(

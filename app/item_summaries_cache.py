@@ -1,8 +1,13 @@
 """Typed :class:`~app.cache.Cache` for per-meeting item summaries.
 
-The on-disk shape is ``{item_id_str: {"description": str|null, "chips":
-[{"category": str, "text": str}, ...]}}`` — one
+The on-disk shape is ``{item_id_str: {"description": [str, ...]|null,
+"chips": [{"category": str, "text": str}, ...]}}`` — one
 :class:`~app.models.ItemSummary` per agenda item.
+
+``description`` was a single string until it became bullets, and most of
+the archive still holds strings.  Those load as a one-bullet Description
+rather than needing a rewrite of every cached meeting; the shape is
+normalized on load, so nothing downstream sees the old form.
 
 Entries written before the aggregate existed are a bare
 ``[{"category", "text"}, ...]`` list.  Those load as **Legacy

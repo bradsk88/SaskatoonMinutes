@@ -995,6 +995,28 @@ a.topic-link:hover {
 
 /* Where a takeaway follows, the description yields its third line so
    the row keeps the height 0013 set. */
+/* The written Description, as bullets. Overrides the line clamp above:
+   a clamped -webkit-box swallows the markers and can cut a bullet in
+   half. The count is bounded in markup instead, so what shows is always
+   a whole fact. */
+.topic-summary-bullets {
+    display: block;
+    -webkit-line-clamp: none;
+    line-clamp: none;
+    overflow: visible;
+    margin: 0.3rem 0 0;
+    padding-left: 1rem;
+    list-style: disc;
+}
+
+.topic-summary-bullets li {
+    margin-top: 0.15rem;
+}
+
+.topic-summary-bullets li::marker {
+    color: var(--color-text-muted);
+}
+
 .topic-summary-short {
     -webkit-line-clamp: 2;
     line-clamp: 2;
@@ -1384,9 +1406,15 @@ a.topic-link:hover {
    reads before the chips and carries more weight than any one of them. */
 .item-description {
     margin: 0.35rem 0 0.75rem;
+    padding-left: 1.15rem;
     font-size: 1rem;
     line-height: 1.5;
     color: var(--color-text);
+    list-style: disc;
+}
+
+.item-description li + li {
+    margin-top: 0.25rem;
 }
 
 .chip-legacy-note {
