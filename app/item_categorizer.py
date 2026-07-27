@@ -1304,9 +1304,16 @@ def _build_presentation_prompt(
         "The people who registered to speak:",
         roster,
         "",
-        "Transcript of the discussion (rough automatic speech-to-text, "
-        "so names are often misspelled and sentences garbled):",
-        _field(transcript_text, 12000),
+        # Whole, not truncated.  Delegates are heard one after another
+        # and five of them fill an hour: capped at 12,000 characters this
+        # prompt reported 1 of the 5 speakers on the Downtown Event
+        # District item, because the first was at offset 8,017 and the
+        # rest began at 15,360.  The model was not missing them — it was
+        # never shown them.  The description prompt passes the transcript
+        # whole for the same reason.
+        "<<<TRANSCRIPT — rough automatic speech-to-text, may contain errors>>>",
+        transcript_text,
+        "<<<END TRANSCRIPT>>>",
         "",
         "Return a `speakers` list. Rules:",
         "",
@@ -1319,6 +1326,19 @@ def _build_presentation_prompt(
         "- Match people by ear, not by spelling. Speech-to-text will "
         "render \"Pshebylo\" a dozen ways. Use the roster's spelling in "
         "`name`.",
+        "- **A name you cannot find is normal, and is not proof of a "
+        "no-show.** On one real item the transcript contained the string "
+        "\"Aebig\" zero times and \"Chamber\" nine — the speech-to-text "
+        "had mangled the name of a man who spoke for several minutes as "
+        "head of the Chamber of Commerce. Before concluding someone did "
+        "not speak, look for them by what they would be introduced as: "
+        "their organization, their business, their neighbourhood, the "
+        "thing they are known for.",
+        "- Delegates are called forward one after another, near the "
+        "start of the item, and usually introduce themselves before they "
+        "begin. A run of self-introductions is the roster arriving in "
+        "order; use that order to tell one speaker's remarks from the "
+        "next's.",
         "- Do NOT report what councillors, the mayor, or city staff said. "
         "Only the people on the roster above. If a councillor asks a "
         "question and the speaker answers, the ANSWER is the speaker's.",
