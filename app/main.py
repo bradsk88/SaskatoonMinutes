@@ -119,9 +119,9 @@ def api_meeting_topics(meeting_id: str):
             # topics are the ranked few rather than the whole meeting.
             "total_items": count_agenda_items(items),
             # People, not filings — see build_site.
-            "presentation_count": len({
+            "speaker_count": len({
                 p.get("name")
-                for i in items for p in (i.get("presentations") or [])
+                for i in items for p in (i.get("speakers") or [])
                 if p.get("name")
             }),
         })

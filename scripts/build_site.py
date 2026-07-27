@@ -27,7 +27,7 @@ from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
 from app.agenda_items import count_agenda_items
 from app.agenda_text import titleize
-from app.presentations import merge_substance
+from app.speakers import merge_remarks
 from app.summarizer import extract_meeting_topics, extract_badges
 from app.transcriber import correct_timestamps
 from app.transcript_cache import TranscriptCache
@@ -129,7 +129,7 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
             # speaker argued is cached with the summary.  Merged here so
             # both pages read one list.
             for item in items:
-                item["presentations"] = merge_substance(item)
+                item["speakers"] = merge_remarks(item)
 
             topics = extract_meeting_topics(items, m.title, max_topics=8)
             topics_data[mid] = {
@@ -138,9 +138,9 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 # People, not filings: one delegate who spoke to two
                 # items is one guest speaker, and counting rows said 11
                 # where 10 came.
-                "presentation_count": len({
+                "speaker_count": len({
                     p.get("name")
-                    for i in items for p in (i.get("presentations") or [])
+                    for i in items for p in (i.get("speakers") or [])
                     if p.get("name")
                 }),
             }

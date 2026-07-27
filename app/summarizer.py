@@ -19,7 +19,7 @@ from app.agenda_items import (
 from app.agenda_text import clean_entities, format_money, plainify, titleize
 from app.item_categorizer import CATEGORY_GROUP, SEMANTIC_CATEGORIES
 from app.models import normalize_description
-from app.presentations import merge_substance
+from app.speakers import merge_remarks
 from app.transcript_text import split_sentences
 
 
@@ -116,25 +116,25 @@ def extract_meeting_topics(
         {**_format_topic(item), "rank": rank_by_item[id(item)]}
         for item in ordered
     ]
-    return _with_presentation_rows(rows, ordered, rank_by_item)
+    return _with_speaker_rows(rows, ordered, rank_by_item)
 
 
 # How many speaker rows the payload carries.  The card shows at most
-# three of them (``CARD_PRESENTATIONS`` in the template) and can only use
+# three of them (``CARD_SPEAKERS`` in the template) and can only use
 # speakers whose item it is already showing, so the payload holds enough
 # candidates for that choice rather than pre-empting it.  The cap is a
 # bound on a pathological meeting, not a design limit.
-MAX_PRESENTATION_ROWS = 8
+MAX_SPEAKER_ROWS = 8
 
 
-def _with_presentation_rows(
+def _with_speaker_rows(
     rows: list[dict], ordered: list[dict], rank_by_item: dict,
 ) -> list[dict]:
     """Give the best guest speakers a row of their own, beside the topics.
 
     A resident listening to a meeting often finds the substance came from
     the people who came to speak, not from the report in front of council
-    — so a delegation competes for the card on the same terms as an
+    — so a speaker competes for the card on the same terms as an
     agenda item rather than being reduced to a count.
 
     Only a speaker whose remarks we actually have is eligible.  A row
@@ -144,7 +144,7 @@ def _with_presentation_rows(
     """
     candidates: list[tuple[int, dict, dict]] = []
     for item in ordered:
-        for speaker in merge_substance(item):
+        for speaker in merge_remarks(item):
             if speaker.get("said"):
                 candidates.append((rank_by_item[id(item)], item, speaker))
     if not candidates:
@@ -153,7 +153,7 @@ def _with_presentation_rows(
     # Best-ranked item first, and a speaker's position within the item
     # breaks the tie — that is the order council heard them in.
     candidates.sort(key=lambda c: c[0])
-    chosen = candidates[:MAX_PRESENTATION_ROWS]
+    chosen = candidates[:MAX_SPEAKER_ROWS]
 
     by_item: dict[int, list[dict]] = {}
     for _, item, speaker in chosen:
@@ -162,29 +162,29 @@ def _with_presentation_rows(
     out: list[dict] = []
     for row, item in zip(rows, ordered):
         out.append(row)
-        # Directly beneath the item they spoke to. A delegation is a
+        # Directly beneath the item they spoke to. A speaker is a
         # reaction to something, and a speaker row floating free of the
         # item it answers reads as a second meeting.
         for speaker in by_item.get(id(item), []):
-            out.append(_format_presentation_row(speaker, row))
+            out.append(_format_speaker_row(speaker, row))
     return out
 
 
-def _format_presentation_row(speaker: dict, topic_row: dict) -> dict:
+def _format_speaker_row(speaker: dict, topic_row: dict) -> dict:
     """One guest speaker as a card row, in the shape the topics table reads."""
     name = speaker.get("name") or "A speaker"
     org = (speaker.get("organization") or "").strip()
     stance = speaker.get("stance") or ""
     return {
-        "kind": "presentation",
+        "kind": "speaker",
         "topic": f"{name}, {org}" if org else name,
         # The item they came to speak to. The card shows this only when
-        # that item is not itself on the card — a delegation whose item
+        # that item is not itself on the card — a speaker whose item
         # did not rank still tells a resident that their business
         # improvement district or First Nation had a voice, which is the
         # question the row exists to answer.
         "spoke_to": topic_row.get("topic") or "",
-        # The stance takes the outcome badge's place: a delegation has no
+        # The stance takes the outcome badge's place: a speaker has no
         # outcome of its own, and how they came down on the item is the
         # one thing a reader wants before the words.
         #

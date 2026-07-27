@@ -317,10 +317,10 @@
         return `<div class="transcript-content">${parts}</div>`;
     }
 
-    function buildPresentationsHtml(item) {
-        const presentations = item.presentations || [];
-        if (presentations.length === 0) return '';
-        const cards = presentations.map(p => {
+    function buildSpeakersHtml(item) {
+        const speakers = item.speakers || [];
+        if (speakers.length === 0) return '';
+        const cards = speakers.map(p => {
             // "Registered" is what we can say about someone we only know
             // filed to speak. Once the transcript tells us what they
             // argued, that is the better label — badging a speaker whose
@@ -334,7 +334,7 @@
                 : p.stance === 'concern' ? 'Concern'
                 : 'Spoke';
             const orgHtml = p.organization
-                ? `<span class="presentation-org">${escapeHtml(p.organization)}</span>`
+                ? `<span class="speaker-org">${escapeHtml(p.organization)}</span>`
                 : '';
             // What they argued, when a summarize run has reached this
             // meeting. Falls back to the roster line — a narrated
@@ -342,22 +342,22 @@
             // speak about — which says they came but not what they said.
             const said = p.said || [];
             const bodyHtml = said.length
-                ? `<ul class="presentation-said">`
+                ? `<ul class="speaker-said">`
                   + said.map(s => `<li>${escapeHtml(s)}</li>`).join('')
                   + `</ul>`
-                : `<p class="presentation-summary">${escapeHtml(p.summary)}</p>`;
-            return `<div class="presentation-card">
-                <div class="presentation-card-header">
-                    <span class="presentation-name">${escapeHtml(p.name)}</span>
+                : `<p class="speaker-summary">${escapeHtml(p.summary)}</p>`;
+            return `<div class="speaker-card">
+                <div class="speaker-card-header">
+                    <span class="speaker-name">${escapeHtml(p.name)}</span>
                     ${orgHtml}
-                    <span class="badge presentation-stance ${stanceClass}">${stanceLabel}</span>
+                    <span class="badge speaker-stance ${stanceClass}">${stanceLabel}</span>
                 </div>
                 ${bodyHtml}
             </div>`;
         }).join('');
-        return `<div class="presentation-section">
-            <div class="presentation-section-title">Guest speakers <span class="presentation-count">${presentations.length}</span></div>
-            <div class="presentation-list">${cards}</div>
+        return `<div class="speaker-section">
+            <div class="speaker-section-title">Guest speakers <span class="speaker-count">${speakers.length}</span></div>
+            <div class="speaker-list">${cards}</div>
         </div>`;
     }
 
@@ -497,7 +497,7 @@
             : '';
 
         const chipsHtml = hasChips ? buildChipViewHtml(item) : '';
-        const presentationsHtml = buildPresentationsHtml(item);
+        const speakersHtml = buildSpeakersHtml(item);
 
         el.innerHTML = `
             <div class="item-header">
@@ -509,7 +509,7 @@
                 ${playBtnHtml}
             </div>
             ${badgesHtml ? `<div class="item-badges">${badgesHtml}</div>` : ''}
-            ${presentationsHtml}
+            ${speakersHtml}
             ${toggleHtml}
             ${chipsHtml}
             <div class="item-notes-view">${transcriptHtml}</div>

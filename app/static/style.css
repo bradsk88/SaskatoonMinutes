@@ -863,11 +863,11 @@ main {
 }
 
 /* === Presentations (guest speakers / delegations) === */
-.presentation-section {
+.speaker-section {
     margin-top: 0.6rem;
 }
 
-.presentation-section-title {
+.speaker-section-title {
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -876,7 +876,7 @@ main {
     margin-bottom: 0.35rem;
 }
 
-.presentation-count {
+.speaker-count {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -890,38 +890,38 @@ main {
     letter-spacing: normal;
 }
 
-.presentation-list {
+.speaker-list {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
 }
 
-.presentation-card {
+.speaker-card {
     padding: 0.6rem 0.8rem;
     background: var(--color-bg);
     border-radius: var(--radius);
     border: 1px solid var(--color-border);
 }
 
-.presentation-card-header {
+.speaker-card-header {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem;
 }
 
-.presentation-name {
+.speaker-name {
     font-weight: 600;
     font-size: 0.9rem;
     color: var(--color-text);
 }
 
-.presentation-org {
+.speaker-org {
     font-size: 0.82rem;
     color: var(--color-text-muted);
 }
 
-.presentation-stance {
+.speaker-stance {
     margin-left: auto;
     font-size: 0.7rem;
     font-weight: 600;
@@ -948,7 +948,7 @@ main {
     color: var(--color-text-muted);
 }
 
-.presentation-summary {
+.speaker-summary {
     margin-top: 0.3rem;
     font-size: 0.85rem;
     line-height: 1.5;
@@ -957,7 +957,7 @@ main {
 
 /* What a speaker argued, one point per line — the same shape as an
    item's Description, because it is the same kind of reading. */
-.presentation-said {
+.speaker-said {
     margin: 0.3rem 0 0;
     padding-left: 1rem;
     list-style: disc;
@@ -966,18 +966,18 @@ main {
     color: var(--color-text);
 }
 
-.presentation-said li {
+.speaker-said li {
     margin-top: 0.15rem;
 }
 
-.presentation-said li::marker {
+.speaker-said li::marker {
     color: var(--color-text-muted);
 }
 
 /* A guest speaker's row on the index card. Indented and rule-marked so a
    person is visibly not a decision, while still sitting in the same
    table as the topics rather than in a section of their own. */
-.topic-presentation .topic-content {
+.topic-speaker-row .topic-content {
     border-left: 2px solid var(--color-primary-light);
     padding-left: 0.6rem;
 }
@@ -1002,7 +1002,7 @@ main {
 }
 
 /* Index card's slight surface of the same data. */
-.presentation-badge {
+.speaker-badge {
     display: inline-block;
     margin-bottom: 0.5rem;
     font-size: 0.78rem;

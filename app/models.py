@@ -11,8 +11,8 @@ from dataclasses import asdict, dataclass, field
 
 
 @dataclass(frozen=True)
-class Presentation:
-    """One guest speaker's presentation to an agenda item (a delegation).
+class Speaker:
+    """One member of the public who addressed council on an agenda item.
 
     Extracted deterministically from PostMinutes prose — council's minutes
     narrate each delegate in their own sentence ("Karen Kobussen, Saskatoon
@@ -20,7 +20,7 @@ class Presentation:
     regex-over-official-text approach as the other hard chips.  When the
     prose only mentions someone in passing (e.g. "along with Tammy
     MacFarlane"), a submitted Request-to-Speak attachment fills the gap.
-    ``source`` records which so the UI can show a narrated presentation
+    ``source`` records which so the UI can show a narrated speaker
     with more confidence than a bare RTS filing.
 
     Those two sources establish **who spoke**, and neither says **what
@@ -42,14 +42,14 @@ class Presentation:
     def has_substance(self) -> bool:
         """True when the transcript told us what this speaker argued.
 
-        The index only ranks a presentation against the meeting's topics
+        The index only ranks a speaker against the meeting's topics
         when this holds: a row carrying a name and a filename is not worth
         a major topic's place on the card.
         """
         return bool(self.said)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Presentation":
+    def from_dict(cls, data: dict) -> "Speaker":
         return cls(
             name=data.get("name") or "",
             organization=data.get("organization") or "",
@@ -78,7 +78,7 @@ class AgendaItem:
     timestamp_inherited: bool = False
     is_recess: bool = False
     attachments: list = field(default_factory=list)
-    presentations: list[Presentation] = field(default_factory=list)
+    speakers: list[Speaker] = field(default_factory=list)
 
     @property
     def time_start_formatted(self) -> str | None:
@@ -266,9 +266,9 @@ class ItemSummary:
     chips: list[Chip] = field(default_factory=list)
     # What each guest speaker argued, keyed by the roster the agenda
     # yields deterministically.  Absent from every entry cached before
-    # presentations existed, which loads as an empty list — the speaker
+    # speakers existed, which loads as an empty list — the roster
     # roster still renders, just without substance.
-    presentations: list[Presentation] = field(default_factory=list)
+    speakers: list[Speaker] = field(default_factory=list)
 
     @property
     def is_legacy(self) -> bool:
@@ -284,8 +284,8 @@ class ItemSummary:
         return cls(
             description=normalize_description(data.get("description")),
             chips=[Chip.from_dict(c) for c in data.get("chips") or []],
-            presentations=[
-                Presentation.from_dict(p) for p in data.get("presentations") or []
+            speakers=[
+                Speaker.from_dict(p) for p in data.get("speakers") or []
             ],
         )
 
@@ -298,6 +298,6 @@ class ItemSummary:
         # speaker, so an always-present empty list would add the key to
         # all 16,210 cached items and rewrite every file on the branch to
         # record that nothing happened.
-        if self.presentations:
-            payload["presentations"] = [p.to_dict() for p in self.presentations]
+        if self.speakers:
+            payload["speakers"] = [p.to_dict() for p in self.speakers]
         return payload

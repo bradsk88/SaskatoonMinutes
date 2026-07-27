@@ -1,5 +1,5 @@
 from app.models import AgendaItem
-from app.presentations import extract_presentations
+from app.speakers import extract_speakers
 
 _HOMELESSNESS_CONTENT = (
     "Director of Planning and Development Anderson presented the report and "
@@ -49,65 +49,65 @@ def _homelessness_item() -> AgendaItem:
     )
 
 
-class TestExtractPresentations:
+class TestExtractSpeakers:
     def test_finds_multiple_named_delegates(self):
-        names = {p.name for p in extract_presentations(_homelessness_item())}
+        names = {p.name for p in extract_speakers(_homelessness_item())}
         assert {
             "Karen Kobussen", "Rob Wilgenhof", "Mathieu Gaudet",
             "Gordon Taylor", "Jodie Semkiw", "Robert Lafontaine",
         } <= names
 
     def test_excludes_staff_presenting_the_report(self):
-        names = {p.name for p in extract_presentations(_homelessness_item())}
+        names = {p.name for p in extract_speakers(_homelessness_item())}
         assert not any("Director" in n or "Anderson" in n for n in names)
 
     def test_excludes_pronoun_only_sentences(self):
         # "She responded to questions of Committee." must not become a
-        # presentation of its own.
-        names = [p.name for p in extract_presentations(_homelessness_item())]
+        # speaker of their own.
+        names = [p.name for p in extract_speakers(_homelessness_item())]
         assert "She" not in names
 
     def test_captures_organization(self):
-        presentations = extract_presentations(_homelessness_item())
-        karen = next(p for p in presentations if p.name == "Karen Kobussen")
+        speakers = extract_speakers(_homelessness_item())
+        karen = next(p for p in speakers if p.name == "Karen Kobussen")
         assert karen.organization == "Saskatoon West Business Association"
 
     def test_captures_multi_part_title_and_organization(self):
-        presentations = extract_presentations(_homelessness_item())
-        gordon = next(p for p in presentations if p.name == "Gordon Taylor")
+        speakers = extract_speakers(_homelessness_item())
+        gordon = next(p for p in speakers if p.name == "Gordon Taylor")
         assert gordon.organization == "Executive Director, The Salvation Army"
 
     def test_classifies_concern_stance(self):
-        presentations = extract_presentations(_homelessness_item())
-        karen = next(p for p in presentations if p.name == "Karen Kobussen")
+        speakers = extract_speakers(_homelessness_item())
+        karen = next(p for p in speakers if p.name == "Karen Kobussen")
         assert karen.stance == "concern"
 
     def test_classifies_support_stance(self):
-        presentations = extract_presentations(_homelessness_item())
-        rob = next(p for p in presentations if p.name == "Rob Wilgenhof")
+        speakers = extract_speakers(_homelessness_item())
+        rob = next(p for p in speakers if p.name == "Rob Wilgenhof")
         assert rob.stance == "support"
 
     def test_source_is_minutes_for_narrated_delegates(self):
-        presentations = extract_presentations(_homelessness_item())
-        karen = next(p for p in presentations if p.name == "Karen Kobussen")
+        speakers = extract_speakers(_homelessness_item())
+        karen = next(p for p in speakers if p.name == "Karen Kobussen")
         assert karen.source == "minutes"
 
     def test_registered_to_speak_but_not_narrated_is_still_found(self):
         # Tammy MacFarlane is only ever named as a companion in the
         # prose ("along with Tammy MacFarlane") but filed a Request to
         # Speak, so the attachment pass should surface her.
-        presentations = extract_presentations(_homelessness_item())
-        tammy = next(p for p in presentations if p.name == "Tammy MacFarlane")
+        speakers = extract_speakers(_homelessness_item())
+        tammy = next(p for p in speakers if p.name == "Tammy MacFarlane")
         assert tammy.source == "registered"
 
-    def test_written_comments_are_not_presentations(self):
-        # Landon Field submitted written comments, not a presentation.
-        names = {p.name for p in extract_presentations(_homelessness_item())}
+    def test_written_comments_are_not_speakers(self):
+        # Landon Field submitted written comments, and never took the podium.
+        names = {p.name for p in extract_speakers(_homelessness_item())}
         assert "Landon Field" not in names
 
     def test_no_duplicate_when_narrated_and_registered(self):
-        presentations = extract_presentations(_homelessness_item())
-        karen_entries = [p for p in presentations if p.name == "Karen Kobussen"]
+        speakers = extract_speakers(_homelessness_item())
+        karen_entries = [p for p in speakers if p.name == "Karen Kobussen"]
         assert len(karen_entries) == 1
 
     def test_hyphenated_surname_in_rts_filename_not_split(self):
@@ -127,16 +127,16 @@ class TestExtractPresentations:
                 "url": "https://example.com/x",
             }],
         )
-        presentations = extract_presentations(item)
-        names = [p.name for p in presentations]
+        speakers = extract_speakers(item)
+        names = [p.name for p in speakers]
         assert names == ["Colleen Christopherson-Cote"]
 
     def test_empty_content_and_attachments_yields_nothing(self):
         item = AgendaItem(item_id=1, title="t", content="", section_number="1")
-        assert extract_presentations(item) == []
+        assert extract_speakers(item) == []
 
-    def test_at_least_two_presentations_for_homelessness_meeting(self):
-        assert len(extract_presentations(_homelessness_item())) >= 2
+    def test_at_least_two_speakers_for_homelessness_meeting(self):
+        assert len(extract_speakers(_homelessness_item())) >= 2
 
 
 class TestItemsThatCannotHostADelegation:
@@ -145,7 +145,7 @@ class TestItemsThatCannotHostADelegation:
     125 attachments on the June 24 council meeting, so every Request to
     Speak in the meeting was found there a second time: the published
     count was 22 filings from 11 people, and the detail page grew a
-    "Presentations" block under Adjournment.
+    "Guest speakers" block under Adjournment.
     """
 
     def _rts(self) -> list[dict]:
@@ -154,26 +154,26 @@ class TestItemsThatCannotHostADelegation:
             "url": "https://example.com/1",
         }]
 
-    def test_adjournment_hosts_no_presentations(self):
+    def test_adjournment_hosts_no_speakers(self):
         item = AgendaItem(
             item_id=18, title="ADJOURNMENT", content="",
             section_number="18.", attachments=self._rts(),
         )
-        assert extract_presentations(item) == []
+        assert extract_speakers(item) == []
 
-    def test_call_to_order_hosts_no_presentations(self):
+    def test_call_to_order_hosts_no_speakers(self):
         item = AgendaItem(
             item_id=1, title="CALL TO ORDER", content="",
             section_number="1.", attachments=self._rts(),
         )
-        assert extract_presentations(item) == []
+        assert extract_speakers(item) == []
 
-    def test_a_recess_hosts_no_presentations(self):
+    def test_a_recess_hosts_no_speakers(self):
         item = AgendaItem(
             item_id=9, title="Recess", content="", section_number="9.",
             is_recess=True, attachments=self._rts(),
         )
-        assert extract_presentations(item) == []
+        assert extract_speakers(item) == []
 
     def test_a_real_item_still_does(self):
         item = AgendaItem(
@@ -181,7 +181,7 @@ class TestItemsThatCannotHostADelegation:
             title="Material Recovery Centre Expansion [CC2026-0402]",
             content="", section_number="8.1.4", attachments=self._rts(),
         )
-        assert [p.name for p in extract_presentations(item)] == ["Sherry Tarasoff"]
+        assert [p.name for p in extract_speakers(item)] == ["Sherry Tarasoff"]
 
 
 class TestStaffAndCouncilAreNotGuests:
@@ -201,11 +201,11 @@ class TestStaffAndCouncilAreNotGuests:
             "General Manager, Community Services Anger presented the report "
             "with a PowerPoint."
         )
-        assert extract_presentations(item) == []
+        assert extract_speakers(item) == []
 
     def test_a_councillor_is_not_a_guest(self):
         item = self._item("Councillor Jeffries expressed support for the report.")
-        assert extract_presentations(item) == []
+        assert extract_speakers(item) == []
 
     def test_a_chief_is_still_a_guest(self):
         """"Chief Kelly Wolfe" addressed the Downtown Event District item."""
@@ -213,11 +213,11 @@ class TestStaffAndCouncilAreNotGuests:
             "Chief Kelly Wolfe, Whitecap Dakota Nation, expressed support "
             "for the partnership."
         )
-        assert [p.name for p in extract_presentations(item)] == ["Chief Kelly Wolfe"]
+        assert [p.name for p in extract_speakers(item)] == ["Chief Kelly Wolfe"]
 
     def test_a_plain_guest_is_unaffected(self):
         item = self._item("Rob Wilgenhof expressed support for the City's efforts.")
-        assert [p.name for p in extract_presentations(item)] == ["Rob Wilgenhof"]
+        assert [p.name for p in extract_speakers(item)] == ["Rob Wilgenhof"]
 
 
 class TestRegisteredTopicIsReadable:
@@ -230,7 +230,7 @@ class TestRegisteredTopicIsReadable:
 
     def test_redacted_marker_is_not_published(self):
         item = self._with("8.4.1 RTS - Lisa Mulvaney - Fixed-term Loan_Redacted.pdf")
-        assert extract_presentations(item)[0].summary == (
+        assert extract_speakers(item)[0].summary == (
             "Registered to speak on: Fixed-term Loan"
         )
 
@@ -239,6 +239,6 @@ class TestRegisteredTopicIsReadable:
         item = self._with(
             "8.4.1 RTS - Lisa Mulvaney - Fixed-term Loan to TCU Place_Redacted(1).pdf"
         )
-        assert extract_presentations(item)[0].summary == (
+        assert extract_speakers(item)[0].summary == (
             "Registered to speak on: Fixed-term Loan to TCU Place"
         )

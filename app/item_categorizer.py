@@ -647,7 +647,7 @@ class GeminiExtractor:
         )
         return response.text or "{}"
 
-    def _call_presentations(self, prompt: str, speakers: list[str]) -> str:
+    def _call_remarks(self, prompt: str, speakers: list[str]) -> str:
         """The speaker pass.  Same client and retry path, different schema."""
         if self._generate is not None:
             return self._generate(prompt, speakers)
@@ -657,7 +657,7 @@ class GeminiExtractor:
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "response_json_schema": _presentation_schema(speakers),
+                "response_json_schema": _remarks_schema(speakers),
                 "temperature": 0.0,
             },
         )
@@ -776,7 +776,7 @@ class GeminiExtractor:
             )
         return description, chips
 
-    def extract_speakers(
+    def extract_remarks(
         self, item: dict, transcript_text: str, speakers: list[str],
     ) -> list[dict]:
         """What each named guest speaker argued, read off the transcript.
@@ -796,10 +796,10 @@ class GeminiExtractor:
         """
         if not speakers or not transcript_text.strip():
             return []
-        prompt = _build_presentation_prompt(item, transcript_text, speakers)
+        prompt = _build_remarks_prompt(item, transcript_text, speakers)
         try:
             raw = self._call_with_retry(
-                prompt, speakers, caller=self._call_presentations,
+                prompt, speakers, caller=self._call_remarks,
             )
         except QuotaExhausted:
             raise
@@ -1259,7 +1259,7 @@ def _build_prompt(
 MAX_SAID_BULLETS = 3
 
 
-def _presentation_schema(speakers: list[str]) -> dict:
+def _remarks_schema(speakers: list[str]) -> dict:
     """Response schema for the speaker pass.
 
     ``name`` is an enum of the roster, so the model cannot introduce a
@@ -1290,7 +1290,7 @@ def _presentation_schema(speakers: list[str]) -> dict:
     }
 
 
-def _build_presentation_prompt(
+def _build_remarks_prompt(
     item: dict, transcript_text: str, speakers: list[str],
 ) -> str:
     title = item.get("title") or "(untitled)"
@@ -1391,7 +1391,7 @@ def _sanitize_speakers(parsed, speakers: list[str]) -> list[dict]:
         if not said:
             # No remarks found is the honest answer for someone who
             # registered and did not speak. It carries no substance, so
-            # it is dropped rather than stored as an empty presentation.
+            # it is dropped rather than stored as an empty speaker.
             continue
         seen.add(name)
         stance = str(entry.get("stance") or "").strip().lower()
@@ -1593,7 +1593,7 @@ def extract_item_summaries(
     # title is a title echo by construction, which is the failure this
     # aggregate exists to prevent.
     description: list[str] | None = None
-    presentations: list[dict] = []
+    spoke: list[dict] = []
     if extractor.enabled:
         description, semantic_chips = extractor.extract(
             item, transcript_text, exclude=covered,
@@ -1604,26 +1604,24 @@ def extract_item_summaries(
         # what those people argued.  Costs one call per item that has a
         # speaker, and nothing at all for the six items in seven that do
         # not.
-        roster = item.get("presentations") or []
-        speakers = [
+        roster = item.get("speakers") or []
+        names = [
             p.get("name") for p in roster
             if isinstance(p, dict) and p.get("name")
         ]
-        if speakers:
-            said_by_name = {
-                s["name"]: s
-                for s in extractor.extract_speakers(
-                    item, transcript_text, speakers,
-                )
+        if names:
+            remarks_by_name = {
+                r["name"]: r
+                for r in extractor.extract_remarks(item, transcript_text, names)
             }
             for entry in roster:
                 if not isinstance(entry, dict):
                     continue
-                found = said_by_name.get(entry.get("name"))
+                found = remarks_by_name.get(entry.get("name"))
                 if not found:
                     continue
-                presentation = dict(entry)
-                presentation["said"] = found["said"]
+                speaker = dict(entry)
+                speaker["said"] = found["said"]
                 # The minutes name the organization in official text
                 # ("Karen Kobussen, Saskatoon West Business Association");
                 # the transcript only has how they introduced themselves
@@ -1631,16 +1629,16 @@ def extract_item_summaries(
                 # exists, which for a Request to Speak filing it never
                 # does — that is the gap this fills.
                 if not (entry.get("organization") or "").strip():
-                    presentation["organization"] = found.get("organization") or ""
+                    speaker["organization"] = found.get("organization") or ""
                 # The transcript heard the stance first-hand; the minutes'
                 # verb ("expressed concerns") is a summary of it, and an
                 # RTS filing has no stance at all.
-                presentation["stance"] = found["stance"] or entry.get("stance") or ""
-                presentations.append(presentation)
+                speaker["stance"] = found["stance"] or entry.get("stance") or ""
+                spoke.append(speaker)
 
     results.sort(key=lambda r: _CATEGORY_ORDER.get(r["category"], 999))
     return {
         "description": description,
         "chips": results,
-        "presentations": presentations,
+        "speakers": spoke,
     }

@@ -1,4 +1,4 @@
-"""Extracts guest-speaker presentations (delegations) from an agenda item.
+"""Extracts the guest speakers who addressed council on an agenda item.
 
 Council's PostMinutes narrate each delegate in their own sentence, e.g.
 "Karen Kobussen, Saskatoon West Business Association, expressed concerns
@@ -20,11 +20,11 @@ import re
 
 from app.agenda_items import is_procedural
 from app.agenda_text import clean_entities
-from app.models import AgendaItem, Presentation
+from app.models import AgendaItem, Speaker
 
 # A stable set of verbs eSCRIBE's minutes use to introduce a delegate's
 # turn at the podium. Deliberately narrow: a staff member "responding to a
-# question" is not a presentation, and casting the net wider starts
+# question" is not a guest speaker, and casting the net wider starts
 # matching narrative filler instead of delegate sentences.
 _VERB_RE = re.compile(
     r"\b(?:presented|addressed|appeared before|"
@@ -79,15 +79,15 @@ _RTS_ATTACHMENT_RE = re.compile(
 )
 
 
-def extract_presentations(item: AgendaItem) -> list[Presentation]:
-    """Return the guest presentations found in one agenda item.
+def extract_speakers(item: AgendaItem) -> list[Speaker]:
+    """Return the guest speakers found in one agenda item.
 
     Procedural items are skipped, and that is not a nicety.  eSCRIBE hangs
     the meeting's whole document package off ADJOURNMENT — 125 attachments
     on the June 24 council meeting — so every Request to Speak in the
     meeting was found a second time there.  The published count was double
     the truth (22 filings from 11 people) and the detail page grew a
-    "Presentations" block under Adjournment.
+    "Guest speakers" block under Adjournment.
     """
     if item.is_recess or is_procedural(item.title or ""):
         return []
@@ -96,7 +96,7 @@ def extract_presentations(item: AgendaItem) -> list[Presentation]:
     return results
 
 
-def merge_substance(item: dict) -> list[dict]:
+def merge_remarks(item: dict) -> list[dict]:
     """The item's speaker roster with cached remarks folded in.
 
     Two producers meet here.  The **roster** is rebuilt from the agenda on
@@ -108,8 +108,8 @@ def merge_substance(item: dict) -> list[dict]:
     Keyed by name, which is safe because the substance pass is given the
     roster as an enum and cannot answer with anyone else.
     """
-    roster = item.get("presentations") or []
-    cached = ((item.get("summary") or {}).get("presentations")) or []
+    roster = item.get("speakers") or []
+    cached = ((item.get("summary") or {}).get("speakers")) or []
     said_by_name = {
         entry.get("name"): entry
         for entry in cached
@@ -135,9 +135,9 @@ def merge_substance(item: dict) -> list[dict]:
     return merged
 
 
-def _from_minutes(content: str) -> list[Presentation]:
+def _from_minutes(content: str) -> list[Speaker]:
     text = clean_entities(content)
-    results: list[Presentation] = []
+    results: list[Speaker] = []
     seen: set[str] = set()
     for sentence in _SENTENCE_RE.split(text):
         sentence = sentence.strip()
@@ -161,7 +161,7 @@ def _from_minutes(content: str) -> list[Presentation]:
         if key in seen:
             continue
         seen.add(key)
-        results.append(Presentation(
+        results.append(Speaker(
             name=name,
             organization=_organization_from_parts(parts[1:]),
             stance=_classify_stance(sentence[m.start():]),
@@ -205,10 +205,10 @@ def _trim(text: str, limit: int = 240) -> str:
 
 
 def _from_registered_attachments(
-    attachments: list[dict], already: list[Presentation],
-) -> list[Presentation]:
+    attachments: list[dict], already: list[Speaker],
+) -> list[Speaker]:
     known = {p.name.lower() for p in already}
-    results: list[Presentation] = []
+    results: list[Speaker] = []
     for att in attachments:
         m = _RTS_ATTACHMENT_RE.search(att.get("name", ""))
         if not m:
@@ -218,7 +218,7 @@ def _from_registered_attachments(
             continue
         known.add(name.lower())
         topic = m.group("topic").strip()
-        results.append(Presentation(
+        results.append(Speaker(
             name=name,
             summary=f"Registered to speak on: {topic}" if topic else "Registered to speak.",
             source="registered",

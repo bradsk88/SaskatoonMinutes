@@ -86,11 +86,11 @@
 
     // Guest speakers get slots of their own, on top of the five above,
     // rather than competing for them. The five are what council did; a
-    // delegation is a different question — who had a voice — and letting
+    // speaker is a different question — who had a voice — and letting
     // the two share a budget meant a meeting with speakers reported less
     // of council's business than one without. Eight rows on a heavy
     // meeting is acceptable.
-    const CARD_PRESENTATIONS = 3;
+    const CARD_SPEAKERS = 3;
 
     const selectedCategories = new Set();
 
@@ -190,7 +190,7 @@
         // A speaker's badge carries their stance, not a verdict. It is
         // deliberately not green/red like an outcome: the reader must
         // not mistake "this person supported it" for "council passed it".
-        if (topic.kind === 'presentation') return 'outcome-stance';
+        if (topic.kind === 'speaker') return 'outcome-stance';
         if (topic.is_contested) return 'outcome-contested';
         if (topic.outcome && topic.outcome.startsWith('Defeated')) return 'outcome-defeated';
         if (topic.outcome && topic.outcome === 'Deferred') return 'outcome-deferred';
@@ -308,8 +308,8 @@
             // speak, not from the report in front of council — but it is
             // marked, because "Jason Aebig, Greater Saskatoon Chamber of
             // Commerce" is a person and every other row is a decision.
-            const isPresentation = t.kind === 'presentation';
-            if (isPresentation) rowClass += ' topic-presentation';
+            const isSpeaker = t.kind === 'speaker';
+            if (isSpeaker) rowClass += ' topic-speaker-row';
 
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
@@ -322,7 +322,7 @@
             // Its own line, above the flex row: dropping it inside
             // .topic-name made the speaker's name the second child, which
             // lost it the two-line clamp and let space-between centre it.
-            if (isPresentation) {
+            if (isSpeaker) {
                 // "Spoke to council" when the item is right above; the
                 // item's name when it is not on the card at all, so the
                 // row is never a person reacting to nothing.
@@ -417,12 +417,12 @@
     // Both producers hand over {topics, total_items}; older preloaded
     // blobs are a bare list. Normalized here so the renderer sees one shape.
     function normalizeTopicsPayload(payload) {
-        if (Array.isArray(payload)) return { topics: payload, total_items: null, presentation_count: 0 };
-        if (!payload) return { topics: [], total_items: null, presentation_count: 0 };
+        if (Array.isArray(payload)) return { topics: payload, total_items: null, speaker_count: 0 };
+        if (!payload) return { topics: [], total_items: null, speaker_count: 0 };
         return {
             topics: payload.topics || [],
             total_items: payload.total_items != null ? payload.total_items : null,
-            presentation_count: payload.presentation_count || 0,
+            speaker_count: payload.speaker_count || 0,
         };
     }
 
@@ -434,10 +434,10 @@
     // where the other nine went. The count survives for meetings a
     // summarize run has not reached, where the roster exists and the
     // substance does not.
-    function presentationBadgeHtml(count, shownTopics) {
+    function speakerBadgeHtml(count, shownTopics) {
         if (!count) return '';
-        if ((shownTopics || []).some(t => t.kind === 'presentation')) return '';
-        return `<div class="presentation-badge">${count} guest speaker${count === 1 ? '' : 's'}</div>`;
+        if ((shownTopics || []).some(t => t.kind === 'speaker')) return '';
+        return `<div class="speaker-badge">${count} guest speaker${count === 1 ? '' : 's'}</div>`;
     }
 
     // The card footer. It lives with the topics so it can say how many
@@ -471,7 +471,7 @@
         // Council's rows are chosen from council's rows only. A speaker
         // never displaces an agenda item, so a well-attended meeting
         // still reports as much of what council did as a quiet one.
-        const council = topics.filter(t => t.kind !== 'presentation');
+        const council = topics.filter(t => t.kind !== 'speaker');
         const rank = t => (t.rank != null ? t.rank : council.indexOf(t));
         const byRank = council.slice().sort((a, b) => rank(a) - rank(b));
         const earned = byRank.filter(t => t.outcome && t.outcome !== 'Discussed');
@@ -491,9 +491,9 @@
         // agenda spends every speaker slot and the biggest debate of the
         // meeting shows none of the people who came to it.
         const speakers = topics
-            .filter(t => t.kind === 'presentation')
+            .filter(t => t.kind === 'speaker')
             .sort((a, b) => rank(a) - rank(b))
-            .slice(0, CARD_PRESENTATIONS);
+            .slice(0, CARD_SPEAKERS);
 
         const keep = new Set([...chosen, ...speakers]);
         return topics.filter(t => keep.has(t));
@@ -503,17 +503,17 @@
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
 
-        const { topics, total_items, presentation_count } = normalizeTopicsPayload(payload);
+        const { topics, total_items, speaker_count } = normalizeTopicsPayload(payload);
 
         if (topics.length === 0) {
             renderTopicsMessage(
                 container, 'No substantive topics found.', 'topics-empty', openHref,
-                presentationBadgeHtml(presentation_count, []));
+                speakerBadgeHtml(speaker_count, []));
             return;
         }
 
         const shown = chooseCardTopics(topics);
-        const badge = presentationBadgeHtml(presentation_count, shown);
+        const badge = speakerBadgeHtml(speaker_count, shown);
         // "N other items" is only shown when the meeting's item count is
         // known. Guessing it from the topic list would undercount every
         // meeting, since topics are the ranked few, not the agenda.

@@ -1,9 +1,9 @@
 """What a guest speaker argued, read off the transcript.
 
 The roster — who registered or was narrated — is established
-deterministically in ``app.presentations``.  This is the second half:
+deterministically in ``app.speakers``.  This is the second half:
 a Gemini pass that says what those people actually argued, so a
-presentation can carry substance instead of a name and a filename.
+speaker can carry substance instead of a name and a filename.
 """
 
 import json
@@ -13,7 +13,7 @@ from app.item_categorizer import (
     _sanitize_speakers,
     extract_item_summaries,
 )
-from app.models import ItemSummary, Presentation
+from app.models import ItemSummary, Speaker
 
 
 def _extractor(speakers=None, description=None, captured=None):
@@ -123,7 +123,7 @@ class TestSanitizeSpeakers:
         assert _sanitize_speakers(["not an object"], ["A B"]) == []
 
 
-class TestExtractSpeakers:
+class TestExtractRemarks:
     def test_no_roster_means_no_call(self):
         called = []
 
@@ -132,7 +132,7 @@ class TestExtractSpeakers:
             return "{}"
 
         ex = GeminiExtractor(api_key=None, generate=_generate)
-        assert ex.extract_speakers(_item(), "some transcript", []) == []
+        assert ex.extract_remarks(_item(), "some transcript", []) == []
         assert called == []
 
     def test_no_transcript_means_no_call(self):
@@ -143,13 +143,13 @@ class TestExtractSpeakers:
             return "{}"
 
         ex = GeminiExtractor(api_key=None, generate=_generate)
-        assert ex.extract_speakers(_item(), "   ", ["Randy Pshebylo"]) == []
+        assert ex.extract_remarks(_item(), "   ", ["Randy Pshebylo"]) == []
         assert called == []
 
     def test_the_prompt_names_the_roster(self):
         captured = {}
         ex = _extractor(speakers=[], captured=captured)
-        ex.extract_speakers(_item(), "transcript text", ["Randy Pshebylo"])
+        ex.extract_remarks(_item(), "transcript text", ["Randy Pshebylo"])
         assert "Randy Pshebylo" in captured["prompt"]
         assert captured["speakers"] == ["Randy Pshebylo"]
 
@@ -157,7 +157,7 @@ class TestExtractSpeakers:
 class TestSummaryPassMergesSubstanceIntoTheRoster:
     def test_a_speaker_who_spoke_gains_bullets_and_a_stance(self):
         summaries = extract_item_summaries(
-            _item(presentations=_ROSTER),
+            _item(speakers=_ROSTER),
             [],
             gemini_extractor=_extractor(speakers=[{
                 "name": "Randy Pshebylo",
@@ -166,7 +166,7 @@ class TestSummaryPassMergesSubstanceIntoTheRoster:
             }]),
             transcript_text="a transcript of the discussion",
         )
-        assert summaries["presentations"] == [{
+        assert summaries["speakers"] == [{
             "name": "Randy Pshebylo",
             "organization": "",
             "stance": "concern",
@@ -178,7 +178,7 @@ class TestSummaryPassMergesSubstanceIntoTheRoster:
     def test_a_registered_no_show_is_left_out(self):
         """Two registered, one spoke: the other is not invented into the record."""
         summaries = extract_item_summaries(
-            _item(presentations=_ROSTER),
+            _item(speakers=_ROSTER),
             [],
             gemini_extractor=_extractor(speakers=[{
                 "name": "Cary Tarasoff",
@@ -187,9 +187,9 @@ class TestSummaryPassMergesSubstanceIntoTheRoster:
             }]),
             transcript_text="a transcript of the discussion",
         )
-        assert [p["name"] for p in summaries["presentations"]] == ["Cary Tarasoff"]
+        assert [p["name"] for p in summaries["speakers"]] == ["Cary Tarasoff"]
 
-    def test_an_item_with_no_roster_has_no_presentations(self):
+    def test_an_item_with_no_roster_has_no_speakers(self):
         summaries = extract_item_summaries(
             _item(),
             [],
@@ -198,7 +198,7 @@ class TestSummaryPassMergesSubstanceIntoTheRoster:
             }]),
             transcript_text="a transcript of the discussion",
         )
-        assert summaries["presentations"] == []
+        assert summaries["speakers"] == []
 
     def test_the_transcript_stance_wins_over_the_minutes_verb(self):
         """"expressed concerns" is the minutes' summary; the transcript heard it."""
@@ -207,7 +207,7 @@ class TestSummaryPassMergesSubstanceIntoTheRoster:
             "summary": "Karen Kobussen expressed concerns.", "source": "minutes",
         }]
         summaries = extract_item_summaries(
-            _item(presentations=roster),
+            _item(speakers=roster),
             [],
             gemini_extractor=_extractor(speakers=[{
                 "name": "Karen Kobussen",
@@ -216,93 +216,93 @@ class TestSummaryPassMergesSubstanceIntoTheRoster:
             }]),
             transcript_text="a transcript",
         )
-        assert summaries["presentations"][0]["stance"] == "support"
+        assert summaries["speakers"][0]["stance"] == "support"
 
-    def test_without_gemini_there_are_no_presentations(self):
+    def test_without_gemini_there_are_no_speakers(self):
         """A degraded run must not publish a roster as if it had substance."""
         summaries = extract_item_summaries(
-            _item(presentations=_ROSTER),
+            _item(speakers=_ROSTER),
             [],
             gemini_extractor=GeminiExtractor(api_key=None),
             transcript_text="a transcript",
         )
-        assert summaries["presentations"] == []
+        assert summaries["speakers"] == []
 
 
-class TestItemSummaryCarriesPresentations:
+class TestItemSummaryCarriesSpeakers:
     def test_round_trip(self):
         raw = {
             "description": ["Rezones the site."],
             "chips": [],
-            "presentations": [{
+            "speakers": [{
                 "name": "Randy Pshebylo", "organization": "Riversdale BID",
                 "stance": "concern", "summary": "Registered to speak.",
                 "source": "registered", "said": ["Says parking already overflows."],
             }],
         }
         summary = ItemSummary.from_dict(raw)
-        assert summary.presentations[0].said == ["Says parking already overflows."]
+        assert summary.speakers[0].said == ["Says parking already overflows."]
         assert summary.to_dict() == raw
 
-    def test_an_entry_cached_before_presentations_loads_empty(self):
+    def test_an_entry_cached_before_speakers_loads_empty(self):
         summary = ItemSummary.from_dict({"description": ["x"], "chips": []})
-        assert summary.presentations == []
+        assert summary.speakers == []
 
     def test_an_empty_list_is_not_written_to_disk(self):
         """Six items in seven have no speaker; the key would bloat all of them."""
         summary = ItemSummary(description=["x"], chips=[])
-        assert "presentations" not in summary.to_dict()
+        assert "speakers" not in summary.to_dict()
 
 
 class TestHasSubstance:
     def test_a_speaker_with_remarks_has_substance(self):
-        p = Presentation(name="A B", said=["Asked for a crosswalk."])
+        p = Speaker(name="A B", said=["Asked for a crosswalk."])
         assert p.has_substance is True
 
     def test_a_bare_registration_does_not(self):
-        p = Presentation(name="A B", summary="Registered to speak on: Rezoning")
+        p = Speaker(name="A B", summary="Registered to speak on: Rezoning")
         assert p.has_substance is False
 
 
 class TestMergeSubstanceIntoTheRoster:
     def test_cached_remarks_are_folded_into_the_roster(self):
-        from app.presentations import merge_substance
+        from app.speakers import merge_remarks
         item = {
-            "presentations": [
+            "speakers": [
                 {"name": "Jason Aebig", "organization": "", "stance": "",
                  "summary": "Registered to speak on: DEED", "source": "registered"},
             ],
-            "summary": {"presentations": [
+            "summary": {"speakers": [
                 {"name": "Jason Aebig", "said": ["Cited a $1.37 billion study."],
                  "stance": "support"},
             ]},
         }
-        merged = merge_substance(item)
+        merged = merge_remarks(item)
         assert merged[0]["said"] == ["Cited a $1.37 billion study."]
         assert merged[0]["stance"] == "support"
 
     def test_a_meeting_not_yet_summarized_keeps_its_roster(self):
-        from app.presentations import merge_substance
-        item = {"presentations": [
+        from app.speakers import merge_remarks
+        item = {"speakers": [
             {"name": "Jason Aebig", "summary": "Registered to speak on: DEED"},
         ]}
-        merged = merge_substance(item)
+        merged = merge_remarks(item)
         assert merged[0]["name"] == "Jason Aebig"
         assert merged[0].get("said") in (None, [])
 
     def test_a_speaker_with_no_cached_remarks_is_not_dropped(self):
-        from app.presentations import merge_substance
+        from app.speakers import merge_remarks
         item = {
-            "presentations": [
+            "speakers": [
                 {"name": "Timothy Cain", "summary": "Registered to speak."},
                 {"name": "Randy Pshebylo", "summary": "Registered to speak."},
             ],
-            "summary": {"presentations": [
+            "summary": {"speakers": [
                 {"name": "Randy Pshebylo", "said": ["Businesses are leaving."],
                  "stance": "concern"},
             ]},
         }
-        assert [p["name"] for p in merge_substance(item)] == [
+        assert [p["name"] for p in merge_remarks(item)] == [
             "Timothy Cain", "Randy Pshebylo",
         ]
 
@@ -321,10 +321,10 @@ class TestSpeakersGetTheirOwnCardRow:
             "vote_result": "CARRIED",
             "time_start_ms": 0,
             "time_end_ms": 1_200_000,
-            "presentations": [speaker],
+            "speakers": [speaker],
             "summary": {
                 "description": ["Approves an Indigenous partnership."],
-                "presentations": (
+                "speakers": (
                     [{"name": "Jason Aebig", "said": said, "stance": "support"}]
                     if said else []
                 ),
@@ -337,7 +337,7 @@ class TestSpeakersGetTheirOwnCardRow:
 
     def test_a_speaker_with_remarks_gets_a_row(self):
         rows = self._rows(["Downtown district could inject $1.37 billion."])
-        speaker_rows = [r for r in rows if r.get("kind") == "presentation"]
+        speaker_rows = [r for r in rows if r.get("kind") == "speaker"]
         assert len(speaker_rows) == 1
         assert speaker_rows[0]["topic"] == "Jason Aebig, Chamber of Commerce"
         assert speaker_rows[0]["summary"] == [
@@ -346,16 +346,16 @@ class TestSpeakersGetTheirOwnCardRow:
 
     def test_a_bare_registration_gets_no_row(self):
         """A name and a filename is not worth a major topic's place."""
-        assert [r for r in self._rows() if r.get("kind") == "presentation"] == []
+        assert [r for r in self._rows() if r.get("kind") == "speaker"] == []
 
     def test_the_row_follows_the_item_it_answers(self):
         rows = self._rows(["Cited an economic impact study."])
         kinds = [r.get("kind", "topic") for r in rows]
-        assert kinds == ["topic", "presentation"]
+        assert kinds == ["topic", "speaker"]
 
     def test_the_stance_replaces_the_outcome_badge(self):
         rows = self._rows(["Cited an economic impact study."])
-        speaker = [r for r in rows if r.get("kind") == "presentation"][0]
+        speaker = [r for r in rows if r.get("kind") == "speaker"][0]
         assert speaker["outcome"] == "In support"
         # Never a verdict: council's decision is on the row above.
         assert speaker["vote_result"] == ""
@@ -365,21 +365,21 @@ class TestSpeakersGetTheirOwnCardRow:
         """The card picks three; the payload must offer it the candidates."""
         from app.summarizer import extract_meeting_topics
         items = self._items(["Cited a study."])
-        items[0]["presentations"] = [
+        items[0]["speakers"] = [
             {"name": f"Speaker {i}", "organization": "", "summary": "Registered."}
             for i in range(5)
         ]
-        items[0]["summary"]["presentations"] = [
+        items[0]["summary"]["speakers"] = [
             {"name": f"Speaker {i}", "said": [f"Point {i}."], "stance": ""}
             for i in range(5)
         ]
         rows = extract_meeting_topics(items, "City Council")
-        assert len([r for r in rows if r.get("kind") == "presentation"]) == 5
+        assert len([r for r in rows if r.get("kind") == "speaker"]) == 5
 
     def test_a_speaker_row_keeps_the_items_categories_for_the_filter(self):
         rows = self._rows(["Cited an economic impact study."])
-        topic = [r for r in rows if r.get("kind") != "presentation"][0]
-        speaker = [r for r in rows if r.get("kind") == "presentation"][0]
+        topic = [r for r in rows if r.get("kind") != "speaker"][0]
+        speaker = [r for r in rows if r.get("kind") == "speaker"][0]
         cats = {b["type"] for b in topic["badges"] if b["type"].startswith("cat-")}
         assert {b["type"] for b in speaker["badges"]} == cats
 
@@ -409,19 +409,19 @@ class TestTheCardBudget:
         assert "const CARD_TOPICS = 5;" in self._template()
 
     def test_speakers_get_three_slots_of_their_own(self):
-        assert "const CARD_PRESENTATIONS = 3;" in self._template()
+        assert "const CARD_SPEAKERS = 3;" in self._template()
 
     def test_council_rows_are_chosen_without_the_speakers(self):
         """The filter that stops a delegate taking an agenda item's place."""
-        assert "topics.filter(t => t.kind !== 'presentation')" in self._template()
+        assert "topics.filter(t => t.kind !== 'speaker')" in self._template()
 
     def test_a_speaker_whose_item_is_absent_names_it(self):
         """Otherwise the row is a person reacting to nothing."""
         assert "Spoke on ${escapeAttr(t.spoke_to)}" in self._template()
 
     def test_the_payload_offers_more_speakers_than_the_card_shows(self):
-        from app.summarizer import MAX_PRESENTATION_ROWS
-        assert MAX_PRESENTATION_ROWS > 3
+        from app.summarizer import MAX_SPEAKER_ROWS
+        assert MAX_SPEAKER_ROWS > 3
 
 
 class TestOrganizationIsCarried:
@@ -445,11 +445,11 @@ class TestOrganizationIsCarried:
 
     def test_the_transcript_fills_the_gap_a_filing_leaves(self):
         """An RTS filing is a name and a filename — it never names the org."""
-        from app.presentations import merge_substance
-        merged = merge_substance({
-            "presentations": [{"name": "Randy Pshebylo", "organization": "",
+        from app.speakers import merge_remarks
+        merged = merge_remarks({
+            "speakers": [{"name": "Randy Pshebylo", "organization": "",
                                "summary": "Registered to speak."}],
-            "summary": {"presentations": [{
+            "summary": {"speakers": [{
                 "name": "Randy Pshebylo",
                 "organization": "Riversdale Business Improvement District",
                 "said": ["Businesses are leaving."], "stance": "concern",
@@ -459,12 +459,12 @@ class TestOrganizationIsCarried:
 
     def test_the_minutes_win_when_they_name_it(self):
         """Official text beats a speech-to-text self-introduction."""
-        from app.presentations import merge_substance
-        merged = merge_substance({
-            "presentations": [{"name": "Karen Kobussen",
+        from app.speakers import merge_remarks
+        merged = merge_remarks({
+            "speakers": [{"name": "Karen Kobussen",
                                "organization": "Saskatoon West Business Association",
                                "summary": "Karen Kobussen expressed concerns."}],
-            "summary": {"presentations": [{
+            "summary": {"speakers": [{
                 "name": "Karen Kobussen", "organization": "Saskatoon West Business",
                 "said": ["Past plans produced no measurable results."],
                 "stance": "concern",
@@ -473,8 +473,8 @@ class TestOrganizationIsCarried:
         assert merged[0]["organization"] == "Saskatoon West Business Association"
 
     def test_the_row_shows_the_organization_beside_the_name(self):
-        from app.summarizer import _format_presentation_row
-        row = _format_presentation_row(
+        from app.summarizer import _format_speaker_row
+        row = _format_speaker_row(
             {"name": "Jason Aebig",
              "organization": "Greater Saskatoon Chamber of Commerce",
              "said": ["Cited a study."], "stance": "support"},
