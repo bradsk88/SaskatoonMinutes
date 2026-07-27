@@ -26,6 +26,7 @@ import requests
 
 from app.agenda_text import clean_entities, titleize
 from app.models import AgendaItem, Meeting, MeetingDetail
+from app.presentations import extract_presentations
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -723,6 +724,8 @@ class EscribeMeetingSource:
                 motion = v.get("motion_text", "")
                 if motion and motion != item.recommendation:
                     item.recommendation = motion
+            # Depends on content and attachments, both set above.
+            item.presentations = extract_presentations(item)
 
         return MeetingDetail(
             agenda_items=agenda_items,
