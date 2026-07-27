@@ -436,11 +436,28 @@ def run_judge(results: dict) -> dict:
         print("judge: no GEMINI_API_KEY — skipping", file=sys.stderr)
         return {}
 
+    # Only what the model wrote.  The judge's question is "does the
+    # source support this sentence?", which is a question about a
+    # sentence someone composed.  Outcome and Vote Breakdown are neither
+    # composed nor a sentence -- format_outcome derives them from
+    # vote_result and the recommendation, and their own unit tests are
+    # what checks that derivation.
+    #
+    # Judging them anyway is what kept this eval red.  The judge grounds
+    # a claim against a single field, so it read the correct "First
+    # reading passed (9-0)" as unsupported: the tally is in vote_result
+    # and the fact that the first-reading motion carried is in the
+    # agenda notes, and it will not put the two together.  Three items
+    # scored <= 2 on chips that match the record exactly.
     def one(item: tuple):
         key, entry = item
+        written = [
+            c for c in (entry.get("chips") or [])
+            if c["category"] in SEMANTIC_CATEGORIES
+        ]
         return key, judge.judge(
             entry["title"], entry.get("_source", ""),
-            entry.get("description"), entry.get("chips") or [],
+            entry.get("description"), written,
         )
 
     with ThreadPoolExecutor(max_workers=EXTRACT_WORKERS) as pool:
