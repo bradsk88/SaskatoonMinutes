@@ -1033,6 +1033,17 @@ def _build_prompt(
         "continued support for residents\" — these are your inferences, "
         "not the city's decision, and a reader cannot tell the "
         "difference. Stop the sentence when the source stops.",
+        "- Never state the verdict or the vote. No \"passed\", "
+        "\"approved\", \"defeated\", \"carried\", \"received as "
+        "information\", \"council has not yet decided\", and no tally "
+        "like \"9-0\" or \"passed unanimously\". The card already shows "
+        "the outcome beside your sentence, so this is at best a repeat. "
+        "It is also where these summaries most often become wrong: a "
+        "single item carries several votes — first reading, an "
+        "amendment, the main motion — and the recorded tally belongs to "
+        "only one of them. Attaching it to the wrong one states a fact "
+        "the source does not support. Describe what the decision does, "
+        "and let the outcome field say how it went.",
         "",
         "## chips",
         "",
@@ -1054,6 +1065,13 @@ def _build_prompt(
         "written in the item metadata or between the TRANSCRIPT fences. "
         "A chip you inferred rather than "
         "found is worse than no chip — omit the category instead.",
+        "",
+        "The no-verdict rule above applies to chips too, and harder. A "
+        "chip is a short line, so a vote tally is most of it: \"First "
+        "reading passed 9-0\" and \"Outcome: Recommended to Council\" "
+        "spend the whole chip on what the outcome field already says, "
+        "and pin a tally to a vote that may not be the one it belongs "
+        "to. No chip states how a vote went.",
         "",
         "Rate each chip you emit with an honest `usefulness`. Rate it, do "
         "not act on it — emitting a chip and labelling it \"low\" is the "
