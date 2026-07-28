@@ -24,12 +24,29 @@ This overrides the rule already written down for the feed in `TODO.md` item 12, 
 
 ## Considered options
 
-**Reuse `extract_meeting_topics`, then apply the substance gate to what it returns.** Rejected on the measurements above. It also returns Speaker rows mixed in with agenda items — "Jasmine Carlton", "Sherry Tarasoff" — which carry no Description and so fall to the gate, leaving the feed silently short of its cap: 6 entries where 8 were asked for.
+**Reuse `extract_meeting_topics`, then apply the substance gate to what it returns.** Rejected on the measurements above. It also returns Speaker rows mixed in with agenda items — "Jasmine Carlton", "Sherry Tarasoff" — so a caller cannot treat the return value as a list of agenda items. That is a shape hazard, not a shortfall: the speaker rows are appended to the ranked items rather than competing for their slots, so the count is unaffected.
 
-**Fix the saturation and then reuse it.** The better long-term answer and it may still happen — the finding is `TODO.md` item 15, and it is a live defect on the index card today. Rejected as a prerequisite: it changes what every card on the site shows, which is a bigger decision than the feed, and `TODO.md` item 13's dirty spans should be settled first.
+**Fix the saturation and then reuse it.** The better long-term answer, and it happened the same day — see the amendment below.
 
 ## Consequences
 
 The two surfaces can now disagree about a meeting, and there is no test that would tell you. A reader who arrives from a feed entry may not find that item among the eight rows on the index card. That is accepted: the card links to the same detail page, and the entry links to the item's own anchor, so neither reader is stranded.
 
 Coverage, not ranking, is what binds today. Across the archive roughly 400 of 6,952 items carry a Description or an interpretive chip — about 1.5 per meeting — so the cap of 8 almost never applies. It becomes the real selector only as summarize coverage grows, which is the same ceiling `0009` and `0017` both ran into.
+
+## Amendment, 2026-07-28
+
+The saturation was fixed hours after this was written (`TODO.md` item 15). `duration_score` is now log-scaled at weight 0.45, reaching full weight at two hours, in place of `0.25 * min(1, minutes / 20)`. Measured over 12 real meetings, the card's recall of its meeting's longest substantive discussions went from **24/29 (82.8%) to 28/29 (96.6%)**, and only **4 of 96 card slots changed** — every row added was a long debate (155.5, 152.9, 100.3, 71.1 minutes), every row dropped was under 11 minutes.
+
+So the headline evidence above no longer describes the code. Two corrections follow, and the decision stands:
+
+- **The saturation argument is spent.** It was the sharpest reason and it is gone.
+- **One claim here was wrong.** The original text said reuse would leave the feed "silently short of its cap: 6 entries where 8 were asked for". It would not. `extract_meeting_topics` returns exactly `max_topics` agenda items and *appends* speaker rows to them; across all 12 meetings it returned 8 topic rows every time, and all 8 survived the substance gate every time. The text above is corrected.
+
+What still holds:
+
+- **The two surfaces answer different questions.** A card row is chosen for whether it is worth *clicking*; a feed entry for whether it is worth *reading in full*, because it arrives with no tabs, no filter and no second page. Re-measured after the fix, the two selections agree on **76 of 96** slots and differ on 20 each way — closer than before, and still not the same list.
+- **The card's score is built from proxies that are fine on a card and awkward in public.** A dollar sign appearing anywhere in the text, the number of dots in a section number, a 0.2 penalty for "standing policy committee" in the title. On a card, being wrong costs a reader a scroll. In a feed it is the stated reason something reached every subscriber.
+- **The return value is not a list of agenda items.** Any reuse has to filter Speaker rows out first.
+
+Had the saturation been fixed first, this decision would have been closer. It would still have gone the same way, on the second and third points.

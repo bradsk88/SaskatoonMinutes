@@ -349,42 +349,52 @@ So it is probably two changes, not one:
 Not designed. Ask Brad what a defeated row should read like before
 building it — a mock row in `AskUserQuestion` is what has worked.
 
-## 15. The card ranking saturates at twenty minutes and misses the biggest debates
+## 15. The card ranking saturated at twenty minutes — done
 
-Found 2026-07-28 while designing the feed (item 12), by running
-`extract_meeting_topics` against three real meetings and comparing it to
-a plain duration ranking over the same substance-gated items.
+Found 2026-07-28 while designing the feed (item 12), fixed the same day.
 
-`summarizer.py:96`:
+`summarizer.py` gave duration `0.25 * min(1, minutes / 20)`, which is
+**flat above twenty minutes**: a 155-minute budget debate and a
+21-minute one scored the same, and the tie fell to whether a dollar sign
+appeared in the text and how many dots were in the section number.
 
-```
-duration_score = 0.25 * min(1.0, _discussion_minutes(item) / 20.0)
-```
+Now log-scaled, weight 0.45, full weight at two hours. What the two
+formulas give:
 
-Above twenty minutes every item scores the same, so the longest debates
-are separated only by dollar signs in the title and dot-count in the
-section number. What that costs, top 8 per meeting:
+| discussion | old | new |
+|---|---|---|
+| 5 min | 0.062 | 0.168 |
+| 21 min | 0.250 | 0.290 |
+| 52 min | 0.250 | 0.373 |
+| 84 min | 0.250 | 0.417 |
+| 156 min | 0.250 | 0.450 |
 
-- **Nov 25 budget** — misses Capital Options (155.5m), Housing and
-  Homelessness funding (83.6m) and Arts, Culture and Events Venues
-  (81.3m). Includes Land Development (3.5m) and Community Support
-  (10.2m).
-- **Dec 3** — misses Downtown Event and Entertainment District (100.3m)
-  and Development Incentives Policy (71.1m). Includes a right-of-way
-  dedication (1.4m) and two items with no recorded discussion.
-- **Dec 17** — 6 of 8 agree. Misses an 11.0m item.
+**The shape was not the fix — the weight was.** Measured over 12 real
+meetings, `cap@120` and log-scaling at the old 0.25 weight both made
+recall *worse* (79.3%) than leaving it alone. Only raising the weight
+moved it. 0.45 was chosen because 0.40 gives 93.1% and 0.50 gives no
+more than 0.45 does.
 
-The saturation is defensible on a card where every row is one tap from
-the full page, which is the job it was written for. It is worth
-re-checking now that duration data is better than it was.
+Result, same 12 meetings — the meeting's longest substantive
+discussions appearing on its own card:
 
-Two candidate fixes, neither designed: raise or remove the cap, or make
-the score log-scaled so a two-hour debate outranks a twenty-minute one
-without swamping the other signals. Item 13 first — the dirty spans feed
-this.
+- **24/29 (82.8%) → 28/29 (96.6%)**
+- **4 of 96 card slots changed.** Every row in was long: Capital Options
+  155.5m, Downtown Event and Entertainment District 152.9m and 100.3m,
+  Development Incentives Policy 71.1m. Every row out was short: 10.2m,
+  5.4m, 1.4m, 0.0m.
 
-Related: the feed does **not** reuse this function, for exactly this
-reason. See item 12.
+The one remaining miss is Housing and Homelessness funding (83.6m) on
+the budget meeting, which had **eight** substantive items over twenty
+minutes for eight slots and lost three of them to budget-book sections
+carrying money and three chips each. That is a contest between signals,
+not saturation.
+
+Item 13 was listed as a prerequisite and was not needed:
+`discussion_minutes` already scores anything over three hours as zero, so
+the dirty spans could not ride the higher weight in. A test pins that.
+
+Amends ADR `0018`, whose headline evidence was this defect.
 
 ## 16. One try/catch owns the whole detail page render
 

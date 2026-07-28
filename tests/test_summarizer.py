@@ -375,6 +375,63 @@ class TestAWrittenDescriptionRaisesRanking:
         assert topics[0]["topic"].endswith("456 Side Street")
 
 
+class TestLongDebatesOutrankShortOnes:
+    """The duration term used to be flat above twenty minutes.
+
+    ``0.25 * min(1, minutes / 20)`` gave a 155-minute budget debate and a
+    21-minute one the same score, so above that threshold the ordering
+    fell to whether a dollar sign appeared in the text and how many dots
+    were in the section number.  Measured over 12 real meetings that put
+    5 of 29 of those meetings' longest substantive discussions off the
+    card while spending slots on a 1.4-minute right-of-way dedication.
+    """
+
+    def _timed(self, title, minutes):
+        return _item(
+            title=title,
+            time_start_ms=0,
+            time_end_ms=int(minutes * 60_000),
+        )
+
+    def test_a_two_hour_debate_outranks_a_twenty_minute_one(self):
+        from app.summarizer import extract_meeting_topics
+
+        short = self._timed("A Twenty Minute Item", 21)
+        long = self._timed("B Two Hour Debate", 155)
+        topics = extract_meeting_topics([short, long], "Council", max_topics=5)
+        by_title = {t["topic"]: t["rank"] for t in topics}
+        assert by_title["B Two Hour Debate"] < by_title["A Twenty Minute Item"]
+
+    def test_duration_still_separates_items_beyond_twenty_minutes(self):
+        """The specific defect: the scale must not be flat up there."""
+        from app.summarizer import (
+            _DURATION_LOG_FULL, _DURATION_WEIGHT, discussion_minutes,
+        )
+        import math
+
+        def term(minutes):
+            item = self._timed("x", minutes)
+            return _DURATION_WEIGHT * min(
+                1.0, math.log1p(discussion_minutes(item)) / _DURATION_LOG_FULL,
+            )
+
+        assert term(21) < term(52) < term(84) < term(156)
+
+    def test_a_broken_span_is_still_worth_nothing(self):
+        """9,876 minutes is a broken end bookmark, not the item of the year.
+
+        Raising the weight raises what a bad span could win, so the guard
+        matters more than it did.
+        """
+        from app.summarizer import extract_meeting_topics
+
+        broken = self._timed("A Broken Span", 9876)
+        real = self._timed("B Real Debate", 90)
+        topics = extract_meeting_topics([broken, real], "Council", max_topics=5)
+        by_title = {t["topic"]: t["rank"] for t in topics}
+        assert by_title["B Real Debate"] < by_title["A Broken Span"]
+
+
 class TestTopicsCarryTheirRank:
     """The card draws fewer rows than it is given and pads from the best
     of the rest, so it needs the score order the server already knows.

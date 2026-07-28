@@ -28,6 +28,17 @@ def summarize_agenda_items(agenda_items: list[dict], meeting_title: str) -> list
     return _summarize_extractive(agenda_items, meeting_title)
 
 
+# How much a card slot can be won on discussion time alone, and where
+# that weight is reached.  Second only to a contested vote (0.5), and
+# ahead of a dollar amount (0.3) or a written Description (0.25): how
+# long council sat on something is the record's own statement that it
+# mattered, and unlike the others it is a property of the meeting rather
+# than of our coverage.
+_DURATION_WEIGHT = 0.45
+_DURATION_FULL_MINUTES = 120
+_DURATION_LOG_FULL = math.log1p(_DURATION_FULL_MINUTES)
+
+
 def extract_meeting_topics(
     agenda_items: list[dict], meeting_title: str, max_topics: int = 8
 ) -> list[dict]:
@@ -90,10 +101,26 @@ def extract_meeting_topics(
 
         # How long council actually spent on it.  Unlike the Description,
         # this is a property of the meeting rather than of our coverage:
-        # forty minutes of debate is the record saying the item mattered.
-        # Reaches full weight at twenty minutes; the median discussed
-        # item runs 8.4.
-        duration_score = 0.25 * min(1.0, discussion_minutes(item) / 20.0)
+        # two hours of debate is the record saying the item mattered.
+        #
+        # Log-scaled, because the gap between 5 minutes and 30 says far
+        # more about an item than the gap between 90 and 120 -- and the
+        # median discussed item runs 8.4, so a linear scale spends most
+        # of its range where almost nothing sits.
+        #
+        # The previous form was ``0.25 * min(1, minutes / 20)``, which
+        # was **flat above twenty minutes**: a 155-minute budget debate
+        # and a 21-minute one scored identically on duration, and the tie
+        # fell to whether a dollar sign appeared in the text and how many
+        # dots were in the section number.  Measured over 12 real
+        # meetings, that left 5 of 29 of those meetings' longest
+        # substantive discussions off the card -- including Capital
+        # Options at 155 minutes and Downtown Event and Entertainment
+        # District at 100 -- while spending slots on a 1.4-minute
+        # right-of-way dedication.  See ADR ``0018``.
+        duration_score = _DURATION_WEIGHT * min(
+            1.0, math.log1p(discussion_minutes(item)) / _DURATION_LOG_FULL,
+        )
 
         score = (
             contested_score + money_score + vote_score

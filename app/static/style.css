@@ -1126,11 +1126,18 @@ main {
 .badge-stance-support { color: #15803d; }
 .badge-stance-concern { color: #be123c; }
 
-/* The fallback, for a speaker the transcript has talking without coming
-   down either way. The card does not draw it -- "Spoke" on a speaker row
-   says only what the row already is -- but a stance that arrives from an
-   older payload still has somewhere to land. */
-.badge-stance-none { color: var(--color-text-muted); }
+/* A speaker the transcript has talking without coming down either way.
+   It reads "Spoke", which says little -- but every other row on the card
+   ends in a badge, and the one row without one reads as a rendering
+   fault rather than as a fact about the speaker.
+
+   Muted, and a dashed border. It sits next to the "Resident" chip, which
+   is also grey and also outlined, and two solid grey pills touching were
+   one shape. Dashed says "we do not know" where solid says "we do". */
+.badge-stance-none {
+    color: var(--color-text-muted);
+    border-style: dashed;
+}
 
 /* Index card's slight surface of the same data. */
 .speaker-badge {

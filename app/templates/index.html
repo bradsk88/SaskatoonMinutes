@@ -360,12 +360,14 @@
                 ? `<span class="org-chip org-chip-${t.org_color == null ? 'none' : t.org_color}">`
                   + `${escapeAttr(t.organization)}</span>`
                 : '';
-            // A neutral stance renders nothing. "Spoke" on a speaker row
-            // says only what the row already is, and beside the outlined
-            // "Resident" chip it was a second grey pill saying less.
-            const stanceHtml = isSpeaker && !t.stance ? '' : outcomeHtml;
-            const metaHtml = orgHtml || stanceHtml
-                ? `<span class="topic-name-meta">${orgHtml}${stanceHtml}</span>`
+            // Every row ends in a badge, including a speaker who did not
+            // come down either way. "Spoke" says little on its own, but a
+            // row that alone has no badge where every row above it has
+            // one reads as a rendering fault rather than as a fact about
+            // the speaker. Layout consistency is the reason; the muted
+            // colour is what keeps it from claiming more than it knows.
+            const metaHtml = orgHtml || outcomeHtml
+                ? `<span class="topic-name-meta">${orgHtml}${outcomeHtml}</span>`
                 : '';
             html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${metaHtml}</div>`;
             // The takeaway is decided before the summary is drawn: when
