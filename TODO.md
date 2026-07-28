@@ -324,6 +324,43 @@ So it is probably two changes, not one:
 Not designed. Ask Brad what a defeated row should read like before
 building it — a mock row in `AskUserQuestion` is what has worked.
 
+## 15. The card ranking saturates at twenty minutes and misses the biggest debates
+
+Found 2026-07-28 while designing the feed (item 12), by running
+`extract_meeting_topics` against three real meetings and comparing it to
+a plain duration ranking over the same substance-gated items.
+
+`summarizer.py:96`:
+
+```
+duration_score = 0.25 * min(1.0, _discussion_minutes(item) / 20.0)
+```
+
+Above twenty minutes every item scores the same, so the longest debates
+are separated only by dollar signs in the title and dot-count in the
+section number. What that costs, top 8 per meeting:
+
+- **Nov 25 budget** — misses Capital Options (155.5m), Housing and
+  Homelessness funding (83.6m) and Arts, Culture and Events Venues
+  (81.3m). Includes Land Development (3.5m) and Community Support
+  (10.2m).
+- **Dec 3** — misses Downtown Event and Entertainment District (100.3m)
+  and Development Incentives Policy (71.1m). Includes a right-of-way
+  dedication (1.4m) and two items with no recorded discussion.
+- **Dec 17** — 6 of 8 agree. Misses an 11.0m item.
+
+The saturation is defensible on a card where every row is one tap from
+the full page, which is the job it was written for. It is worth
+re-checking now that duration data is better than it was.
+
+Two candidate fixes, neither designed: raise or remove the cap, or make
+the score log-scaled so a two-hour debate outranks a twenty-minute one
+without swamping the other signals. Item 13 first — the dirty spans feed
+this.
+
+Related: the feed does **not** reuse this function, for exactly this
+reason. See item 12.
+
 ## Noted, not scheduled
 
 - Tabs reorder themselves by recency on every load

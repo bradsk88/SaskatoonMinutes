@@ -68,6 +68,12 @@ swapping values, not untangling branches.
   An inherited timestamp identifies the *parent's* audio, never the item's, so transcript slicing refuses it outright. Otherwise every Consent Item in a block would be handed the same recording of the clerk reading the block into the record.
 
   Distinct from a **Section Header** — an agenda entry with no recommendation and no content, which either has no time span or borrows its parent's (`COMMITTEE REPORTS`, `ADMINISTRATIVE REPORTS`, `Standing Policy Committee on …`). Section Headers are structural containers and never get an ItemSummary.
+- **Feed Entry** — one published unit of the Atom feeds. Two feeds, differing only in granularity, never in what qualifies:
+  - **Meeting Day** (`/feed.xml`) — one entry per calendar day the city sat, whatever number of bodies sat that day, with the bodies as headings inside it. A busy Tuesday is one entry, never three. This is the default feed.
+  - **Item Entry** (`/feed-items.xml`) — one entry per qualifying agenda item.
+
+  An item **qualifies** by having something to say — a Description or an interpretive chip — and qualifying items are then ranked by discussion minutes, capped at 8 per meeting. Deliberately **not** the index card's ranking: `extract_meeting_topics` saturates duration at twenty minutes and mixes Speaker rows in with items, so it drops the longest debates of the year (`TODO.md` item 15).
+- **Settled** — a Meeting Day is publishable once every Meeting on it has cached summaries, or seven days have passed. Nothing is published thin and filled in later: a reader who saw the thin version would never be shown the full one. The seven days are what stops a meeting with no video from holding a day hostage forever.
 
 ## Architecture
 
