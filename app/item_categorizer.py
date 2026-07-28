@@ -1363,14 +1363,30 @@ def _build_remarks_prompt(
         "a resident scans the page for: whether the Chamber, a business "
         "improvement district, a First Nation, or a neighbourhood "
         "association had a voice at this meeting.",
+        # Real values the previous wording produced across the archive.
+        # It asked for who they spoke for and never said to drop the job,
+        # so the model answered with the whole self-introduction.
+        "- **The body, never the job.** Cut the title off the front and "
+        "keep only the organization: \"Executive Director, The Salvation "
+        "Army\" is `The Salvation Army`; \"I'm the CEO over at Nutrien "
+        "Wonderhub\" is `Nutrien Wonderhub`; \"Randy, chair of the "
+        "Riversdale BID\" is `Riversdale Business Improvement District`. "
+        "A reader wants to know the Salvation Army was in the room. That "
+        "an executive director was tells them nothing — every "
+        "organization sends one.",
+        "- **A job with no organization behind it is not an "
+        "organization.** \"Board Chair\", \"Property Owner\", "
+        "\"Commercial Property Owner\", \"CEO\", \"Director of Planning "
+        "and Development\" name a role, not a body that was represented. "
+        "If you cannot name the organization the role belongs to, leave "
+        "`organization` EMPTY.",
         "- Write the organization's real name, expanded and spelled "
         "properly, not as the transcript garbles it: \"Riversdale "
         "Business Improvement District\", not \"riversdale bid\". Do not "
         "abbreviate to initials.",
         "- Leave `organization` EMPTY when they speak for themselves. "
-        "Most delegates are residents with no affiliation, and inventing "
-        "one — or promoting \"I live in Nutana\" into an organization — "
-        "misrepresents who was in the room.",
+        "Inventing an affiliation — or promoting \"I live in Nutana\" "
+        "into an organization — misrepresents who was in the room.",
     ])
 
 

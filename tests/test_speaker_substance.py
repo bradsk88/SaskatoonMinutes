@@ -10,6 +10,7 @@ import json
 
 from app.item_categorizer import (
     GeminiExtractor,
+    _build_remarks_prompt,
     _sanitize_speakers,
     extract_item_summaries,
 )
@@ -504,3 +505,47 @@ class TestOrganizationIsCarried:
     def test_an_organization_carries_its_colour(self):
         row = self._row("Saskatoon Police Service")
         assert isinstance(row["org_color"], int)
+
+
+# ── The organization the prompt asks for ─────────────────────────────
+
+
+class TestThePromptAsksForTheBodyNotTheJob:
+    """It asked who they spoke FOR and never said to drop the title.
+
+    So the model answered with the whole self-introduction, and the
+    archive filled with job titles rendered as organization chips:
+    "Executive Director, The Salvation Army", "Director of Planning and
+    Development", "Board Chair", "CEO of Nutrien Wonderhub".
+    """
+
+    def _prompt(self):
+        return _build_remarks_prompt(
+            {"title": "Rezoning 123 Main Street"},
+            "a transcript of the discussion",
+            ["Randy Pshebylo"],
+        )
+
+    def test_it_says_to_cut_the_title_off_the_front(self):
+        prompt = self._prompt()
+        assert "The body, never the job" in prompt
+        assert "The Salvation Army" in prompt
+
+    def test_it_names_the_role_only_values_it_produced(self):
+        """The real ones, so the model recognises the shape it emitted."""
+        prompt = self._prompt()
+        for role in ("Board Chair", "Property Owner",
+                     "Director of Planning and Development"):
+            assert role in prompt
+
+    def test_a_role_with_no_body_behind_it_comes_back_empty(self):
+        assert "leave" in self._prompt().lower()
+        assert "not an organization" in self._prompt()
+
+    def test_it_no_longer_claims_most_delegates_are_unaffiliated(self):
+        """Sixty-three of seventy-two came for an organization."""
+        assert "Most delegates are residents" not in self._prompt()
+
+    def test_inventing_an_affiliation_is_still_forbidden(self):
+        prompt = self._prompt()
+        assert "I live in Nutana" in prompt
