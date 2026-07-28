@@ -82,6 +82,32 @@ class TestDetailPageExplainsItselfWithoutHover:
         assert "without individual debate" in source
 
 
+class TestASpeakerRowIsOneLine:
+    """The card answers who had a voice and how they came down on it.
+
+    A name, an organization, a stance. What they argued is on the detail
+    page -- on the card it was three or four more lines per speaker, and
+    once the archive was populated it was those lines that stopped the
+    index being scannable.
+    """
+
+    def test_the_row_does_not_announce_a_speaker_it_sits_beneath(self):
+        """The phrase under the item they spoke to said nothing new.
+
+        Matched as a rendered string, so the comment explaining why it
+        went does not keep the test passing.
+        """
+        source = _read(INDEX)
+        assert "'Spoke to council'" not in source
+        assert "`Spoke to council`" not in source
+
+    def test_an_orphaned_speaker_still_names_their_item(self):
+        """Their item may not have made the card. Then the row needs it."""
+        source = _read(INDEX)
+        assert "Spoke on ${escapeAttr(t.spoke_to)}" in source
+        assert "if (orphan) {" in source
+
+
 class TestIndexCardStaysThin:
     """The index skims; the detail page proves."""
 

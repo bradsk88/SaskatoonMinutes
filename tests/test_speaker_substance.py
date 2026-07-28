@@ -340,9 +340,17 @@ class TestSpeakersGetTheirOwnCardRow:
         speaker_rows = [r for r in rows if r.get("kind") == "speaker"]
         assert len(speaker_rows) == 1
         assert speaker_rows[0]["topic"] == "Jason Aebig, Chamber of Commerce"
-        assert speaker_rows[0]["summary"] == [
-            "Downtown district could inject $1.37 billion."
-        ]
+
+    def test_the_card_row_carries_no_remarks(self):
+        """The card says who had a voice and how they came down on it.
+
+        What they argued is three or four more lines, and with the
+        archive populated those lines were what stopped the index being
+        scannable. The detail page is where the words live.
+        """
+        rows = self._rows(["Downtown district could inject $1.37 billion."])
+        speaker = [r for r in rows if r.get("kind") == "speaker"][0]
+        assert speaker["summary"] == []
 
     def test_a_bare_registration_gets_no_row(self):
         """A name and a filename is not worth a major topic's place."""

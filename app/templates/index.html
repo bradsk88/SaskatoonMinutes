@@ -323,12 +323,14 @@
             // .topic-name made the speaker's name the second child, which
             // lost it the two-line clamp and let space-between centre it.
             if (isSpeaker) {
-                // "Spoke to council" when the item is right above; the
-                // item's name when it is not on the card at all, so the
-                // row is never a person reacting to nothing.
+                // Only when the item they answered is not the row above.
+                // "Spoke to council" sitting directly under the item they
+                // spoke to said nothing the position did not already say,
+                // and it cost the card a line on every speaker row.
                 const orphan = t.spoke_to && t.spoke_to !== lastTopic;
-                const mark = orphan ? `Spoke on ${escapeAttr(t.spoke_to)}` : 'Spoke to council';
-                html += `<div class="topic-speaker-mark">${mark}</div>`;
+                if (orphan) {
+                    html += `<div class="topic-speaker-mark">Spoke on ${escapeAttr(t.spoke_to)}</div>`;
+                }
             } else {
                 lastTopic = t.topic;
             }

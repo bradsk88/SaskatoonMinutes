@@ -196,7 +196,17 @@ def _format_speaker_row(speaker: dict, topic_row: dict) -> dict:
             "support": "In support", "concern": "Raised concerns",
         }.get(stance, "Spoke"),
         "outcome_detail": "",
-        "summary": list(speaker.get("said") or []),
+        # No summary. The card answers "who had a voice, and how did they
+        # come down on it" — a name, an organization, and a stance. What
+        # they argued is three or four more lines, and once the archive
+        # was populated it was those lines that made the index dense
+        # enough to stop being scannable. They are on the detail page,
+        # which is where a reader goes for what was said.
+        #
+        # A speaker still has to have said something to earn the row:
+        # only a speaker with remarks is a candidate above. The remarks
+        # are the qualification, not the content.
+        "summary": [],
         "summary_is_description": True,
         "vote_result": "",
         "is_major": False,
