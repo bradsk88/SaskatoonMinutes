@@ -998,9 +998,40 @@ main {
     color: var(--color-text);
 }
 
-.speaker-org {
-    font-size: 0.82rem;
+/* Who a speaker came for. The colour comes from the organization's own
+   name (app.speakers.organization_color), so Saskatoon Police Service is
+   the same colour on every page it appears on and a reader recognises it
+   before reading it. Ten slots for forty-one organizations: two will
+   collide, and the name is on the chip either way. */
+.org-chip {
+    border-radius: 999px;
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    vertical-align: 0.08em;
+    white-space: nowrap;
+}
+
+.org-chip-0 { background: #dbeafe; color: #1e40af; }
+.org-chip-1 { background: #dcfce7; color: #166534; }
+.org-chip-2 { background: #f3e8ff; color: #6b21a8; }
+.org-chip-3 { background: #ffedd5; color: #9a3412; }
+.org-chip-4 { background: #ccfbf1; color: #115e59; }
+.org-chip-5 { background: #ffe4e6; color: #9f1239; }
+.org-chip-6 { background: #fef3c7; color: #92400e; }
+.org-chip-7 { background: #cffafe; color: #155e75; }
+.org-chip-8 { background: #e0e7ff; color: #3730a3; }
+.org-chip-9 { background: #ecfccb; color: #3f6212; }
+
+/* A speaker who came for nobody. Deliberately the quietest chip on the
+   page: it is a fact about them, not an organization competing for
+   recognition with the ones that have a name. */
+.org-chip-none {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
     color: var(--color-text-muted);
+    font-weight: 500;
 }
 
 .speaker-stance {
@@ -1926,6 +1957,17 @@ footer a:hover {
     .chip-voices   { background: #2a1f3b; color: #d8b4fe; }
     .chip-impact   { background: #2a1a10; color: #fdba74; }
     .chip-future   { background: #0f2e2b; color: #5eead4; }
+
+    .org-chip-0 { background: #1e293b; color: #93c5fd; }
+    .org-chip-1 { background: #14281c; color: #86efac; }
+    .org-chip-2 { background: #2a1f3b; color: #d8b4fe; }
+    .org-chip-3 { background: #2a1a10; color: #fdba74; }
+    .org-chip-4 { background: #0f2e2b; color: #5eead4; }
+    .org-chip-5 { background: #2e1116; color: #fda4af; }
+    .org-chip-6 { background: #2b1f08; color: #fcd34d; }
+    .org-chip-7 { background: #0c2830; color: #67e8f9; }
+    .org-chip-8 { background: #1b1d3a; color: #a5b4fc; }
+    .org-chip-9 { background: #1c2a10; color: #bef264; }
 
     .item-view-toggle {
         background: #1f2430;

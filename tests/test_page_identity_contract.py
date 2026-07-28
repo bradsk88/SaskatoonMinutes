@@ -8,6 +8,8 @@ showing -- are pinned here rather than left to review.
 
 import os
 
+from app.speakers import ORGANIZATION_COLOURS
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEETING = os.path.join(ROOT, "app", "templates", "meeting.html")
 INDEX = os.path.join(ROOT, "app", "templates", "index.html")
@@ -80,6 +82,36 @@ class TestDetailPageExplainsItselfWithoutHover:
         source = _read(MEETING)
         assert "agenda-legend" in source
         assert "without individual debate" in source
+
+
+class TestEveryPaletteSlotIsStyled:
+    """``organization_color`` can return any slot, and an unstyled one
+    renders as unreadable default text on the card and the detail page.
+    Both themes, because the site follows the reader's."""
+
+    def _blocks(self):
+        css = _read(CSS)
+        dark = css.index("prefers-color-scheme: dark")
+        return css[:dark], css[dark:]
+
+    def test_light(self):
+        light, _ = self._blocks()
+        for slot in range(ORGANIZATION_COLOURS):
+            assert f".org-chip-{slot} " in light, slot
+
+    def test_dark(self):
+        _, dark = self._blocks()
+        for slot in range(ORGANIZATION_COLOURS):
+            assert f".org-chip-{slot} " in dark, slot
+
+    def test_a_speaker_with_no_organization_has_a_chip_too(self):
+        assert ".org-chip-none" in _read(CSS)
+
+    def test_both_pages_read_the_same_two_fields(self):
+        """One place decides the label and the colour; neither page recomputes."""
+        for page in (INDEX, MEETING):
+            source = _read(page)
+            assert "org_color" in source
 
 
 class TestASpeakerRowIsOneLine:

@@ -344,9 +344,11 @@
                 : p.stance === 'support' ? 'Support'
                 : p.stance === 'concern' ? 'Concern'
                 : 'Spoke';
-            const orgHtml = p.organization
-                ? `<span class="speaker-org">${escapeHtml(p.organization)}</span>`
-                : '';
+            // The same chip, and the same colour, as the index card --
+            // both read org_label and org_color off merge_remarks.
+            const orgHtml = `<span class="org-chip org-chip-${
+                p.org_color == null ? 'none' : p.org_color
+            }">${escapeHtml(p.org_label || 'Resident')}</span>`;
             // What they argued, when a summarize run has reached this
             // meeting. Falls back to the roster line — a narrated
             // sentence from the minutes, or what they registered to

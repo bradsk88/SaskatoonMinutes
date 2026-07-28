@@ -334,7 +334,15 @@
             } else {
                 lastTopic = t.topic;
             }
-            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${outcomeHtml}</div>`;
+            // Who the speaker came for, coloured by the organization's
+            // name so a reader recognises it across cards before reading
+            // it. A speaker who came for nobody says so -- a blank where
+            // every other speaker has a chip reads as missing data.
+            const orgHtml = isSpeaker && t.organization
+                ? ` <span class="org-chip org-chip-${t.org_color == null ? 'none' : t.org_color}">`
+                  + `${escapeAttr(t.organization)}</span>`
+                : '';
+            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}${orgHtml}</span>${outcomeHtml}</div>`;
             // The takeaway is decided before the summary is drawn: when
             // a row has one, the summary gives up a line so the row's
             // height does not grow. A hook cut mid-sentence is worse

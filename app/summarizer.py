@@ -19,7 +19,7 @@ from app.agenda_items import (
 from app.agenda_text import clean_entities, format_money, plainify, titleize
 from app.item_categorizer import CATEGORY_GROUP, SEMANTIC_CATEGORIES
 from app.models import normalize_description
-from app.speakers import merge_remarks
+from app.speakers import merge_remarks, organization_color, organization_label
 from app.transcript_text import split_sentences
 
 
@@ -173,11 +173,16 @@ def _with_speaker_rows(
 def _format_speaker_row(speaker: dict, topic_row: dict) -> dict:
     """One guest speaker as a card row, in the shape the topics table reads."""
     name = speaker.get("name") or "A speaker"
-    org = (speaker.get("organization") or "").strip()
+    org = speaker.get("organization") or ""
     stance = speaker.get("stance") or ""
     return {
         "kind": "speaker",
-        "topic": f"{name}, {org}" if org else name,
+        # The name alone. Who they came for is a chip beside it, coloured
+        # so that Saskatoon Police Service is recognisable across cards
+        # before the name is read.
+        "topic": name,
+        "organization": organization_label(org),
+        "org_color": organization_color(org),
         # The item they came to speak to. The card shows this only when
         # that item is not itself on the card — a speaker whose item
         # did not rank still tells a resident that their business

@@ -339,7 +339,8 @@ class TestSpeakersGetTheirOwnCardRow:
         rows = self._rows(["Downtown district could inject $1.37 billion."])
         speaker_rows = [r for r in rows if r.get("kind") == "speaker"]
         assert len(speaker_rows) == 1
-        assert speaker_rows[0]["topic"] == "Jason Aebig, Chamber of Commerce"
+        assert speaker_rows[0]["topic"] == "Jason Aebig"
+        assert speaker_rows[0]["organization"] == "Chamber of Commerce"
 
     def test_the_card_row_carries_no_remarks(self):
         """The card says who had a voice and how they came down on it.
@@ -480,12 +481,26 @@ class TestOrganizationIsCarried:
         })
         assert merged[0]["organization"] == "Saskatoon West Business Association"
 
-    def test_the_row_shows_the_organization_beside_the_name(self):
+    def _row(self, organization):
         from app.summarizer import _format_speaker_row
-        row = _format_speaker_row(
-            {"name": "Jason Aebig",
-             "organization": "Greater Saskatoon Chamber of Commerce",
+        return _format_speaker_row(
+            {"name": "Jason Aebig", "organization": organization,
              "said": ["Cited a study."], "stance": "support"},
             {"badges": [], "time_start_ms": 0, "rank": 0},
         )
-        assert row["topic"] == "Jason Aebig, Greater Saskatoon Chamber of Commerce"
+
+    def test_the_organization_is_a_chip_beside_the_name(self):
+        """The name is the row; the organization is a chip of its own."""
+        row = self._row("Greater Saskatoon Chamber of Commerce")
+        assert row["topic"] == "Jason Aebig"
+        assert row["organization"] == "Greater Saskatoon Chamber of Commerce"
+
+    def test_a_speaker_who_came_for_nobody_says_so(self):
+        """A blank chip where every other speaker has one reads as a bug."""
+        row = self._row("")
+        assert row["organization"] == "Resident"
+        assert row["org_color"] is None
+
+    def test_an_organization_carries_its_colour(self):
+        row = self._row("Saskatoon Police Service")
+        assert isinstance(row["org_color"], int)

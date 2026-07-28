@@ -1,5 +1,10 @@
 from app.models import AgendaItem
-from app.speakers import extract_speakers
+from app.speakers import (
+    ORGANIZATION_COLOURS,
+    extract_speakers,
+    organization_color,
+    organization_label,
+)
 
 _HOMELESSNESS_CONTENT = (
     "Director of Planning and Development Anderson presented the report and "
@@ -242,3 +247,67 @@ class TestRegisteredTopicIsReadable:
         assert extract_speakers(item)[0].summary == (
             "Registered to speak on: Fixed-term Loan to TCU Place"
         )
+
+
+# ── Organization chips ───────────────────────────────────────────────
+
+
+class TestOrganizationLabel:
+    def test_an_organization_speaks_for_itself(self):
+        assert organization_label("Wild About Saskatoon") == "Wild About Saskatoon"
+
+    def test_nobody_behind_the_speaker_is_still_something_to_say(self):
+        """Sixty-three of seventy-two speakers came for an organization.
+
+        A blank chip on the other nine reads as data we failed to fetch.
+        """
+        assert organization_label("") == "Resident"
+        assert organization_label("   ") == "Resident"
+        assert organization_label(None) == "Resident"
+
+
+class TestOrganizationColor:
+    def test_the_same_organization_is_always_the_same_colour(self):
+        """The whole point: recognised across cards before it is read."""
+        assert (organization_color("Saskatoon Police Service")
+                == organization_color("Saskatoon Police Service"))
+
+    def test_the_colour_does_not_move_between_processes(self):
+        """``hash()`` is salted per interpreter, so this must not use it.
+
+        The Flask app and the static build would otherwise disagree, and
+        one build would disagree with the next.
+        """
+        import subprocess
+        import sys
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "from app.speakers import organization_color;"
+             "print(organization_color('Saskatoon Police Service'))"],
+            capture_output=True, text=True, env={"PYTHONHASHSEED": "random"},
+        )
+        assert out.stdout.strip() == str(organization_color("Saskatoon Police Service"))
+
+    def test_spelling_noise_does_not_change_the_colour(self):
+        assert (organization_color("  wild   about saskatoon ")
+                == organization_color("Wild About Saskatoon"))
+
+    def test_no_organization_has_no_colour(self):
+        assert organization_color("") is None
+
+    def test_the_colour_is_a_palette_slot(self):
+        for name in ("Discover Saskatoon", "Strong Towns YXC", "Swale Watchers"):
+            assert 0 <= organization_color(name) < ORGANIZATION_COLOURS
+
+    def test_the_palette_is_actually_used(self):
+        """One colour for forty-one organizations would be no signal."""
+        names = [
+            "Saskatoon Police Service", "Wild About Saskatoon",
+            "Discover Saskatoon", "Bus Riders of Saskatoon",
+            "Strong Towns YXC", "Riversdale Business Improvement District",
+            "Downtown Saskatoon Business Improvement District",
+            "Saskatoon Fire Department", "Office of the Matriarchs",
+            "Métis Nation–Saskatchewan", "Swale Watchers",
+            "Meridian Development", "Police Commission",
+        ]
+        assert len({organization_color(n) for n in names}) >= 5

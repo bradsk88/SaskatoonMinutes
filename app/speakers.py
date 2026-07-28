@@ -17,6 +17,7 @@ someone else's sentence, e.g. "...along with Tammy MacFarlane.").
 from __future__ import annotations
 
 import re
+import zlib
 
 from app.agenda_items import is_procedural
 from app.agenda_text import clean_entities
@@ -96,6 +97,38 @@ def extract_speakers(item: AgendaItem) -> list[Speaker]:
     return results
 
 
+# Someone who came to speak for nobody but themselves.  Sixty-three of
+# the archive's seventy-two speakers came on behalf of an organization;
+# these nine did not, and a blank where every other speaker has a chip
+# reads as missing data rather than as the fact that it is.
+UNAFFILIATED_LABEL = "Resident"
+
+# How many chip colours the palette holds.  A colour is a recognition
+# aid, not an identifier: forty-one organizations share ten colours, so
+# two of them will collide, and the name is still right there on the chip.
+ORGANIZATION_COLOURS = 10
+
+
+def organization_label(organization: str) -> str:
+    """What the chip says: the organization, or that there was none."""
+    return (organization or "").strip() or UNAFFILIATED_LABEL
+
+
+def organization_color(organization: str) -> int | None:
+    """Which palette slot an organization gets. ``None`` when it has none.
+
+    The point is that Saskatoon Police Service is the same colour on
+    every page a reader ever sees it on, so the answer must not move.
+    ``hash()`` is salted per interpreter and would give one colour in the
+    Flask app and another in the static build — and a different one again
+    on the next build.  crc32 does not move.
+    """
+    name = " ".join((organization or "").split()).casefold()
+    if not name:
+        return None
+    return zlib.crc32(name.encode("utf-8")) % ORGANIZATION_COLOURS
+
+
 def merge_remarks(item: dict) -> list[dict]:
     """The item's speaker roster with cached remarks folded in.
 
@@ -132,6 +165,12 @@ def merge_remarks(item: dict) -> list[dict]:
         if not (entry.get("organization") or "").strip():
             combined["organization"] = found.get("organization") or ""
         merged.append(combined)
+    # Decided once, here, so the card and the detail page never disagree
+    # about what a speaker's chip says or what colour it is.
+    for entry in merged:
+        org = entry.get("organization") or ""
+        entry["org_label"] = organization_label(org)
+        entry["org_color"] = organization_color(org)
     return merged
 
 
