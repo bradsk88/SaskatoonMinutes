@@ -386,6 +386,31 @@ this.
 Related: the feed does **not** reuse this function, for exactly this
 reason. See item 12.
 
+## 16. One try/catch owns the whole detail page render
+
+Found 2026-07-28 while verifying the item anchors under jsdom.
+
+`loadMeeting` (`meeting.html:46`) wraps everything from parsing the
+payload to drawing the last card in a single `try`. Its `catch` replaces
+the header with "Failed to load meeting details." and leaves the agenda
+reading "Loading agenda..." forever.
+
+So anything that throws after the data is in hand takes the whole page
+with it. The one that surfaced was `setupStickyVideo` — a missing
+`IntersectionObserver` erased a fully-loaded 73-item agenda. That
+particular case is an artifact of the test environment and cannot happen
+in a browser that supports the site, which is why this is latent rather
+than a bug report.
+
+What is real is the shape: the video player, the sticky behaviour and the
+sort toggle are decorations around the agenda, and a decoration failing
+should cost its own feature, not the page. The message is also wrong for
+this class of failure — the details did load.
+
+Narrow the `try` to fetching and parsing, and let the presentational
+setup fail on its own. **Lowest priority of the numbered items**: nothing
+in production reaches it today.
+
 ## Noted, not scheduled
 
 - Tabs reorder themselves by recency on every load
