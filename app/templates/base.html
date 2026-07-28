@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}YXEMinutes{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Root-relative rather than absolute: a meeting page sits one
+         directory down, and the same markup has to be right on the Flask
+         app as on the deployed site. -->
+    <link rel="alternate" type="application/atom+xml" title="YXEMinutes — daily" href="/feed.xml">
+    <link rel="alternate" type="application/atom+xml" title="YXEMinutes — every item" href="/feed-items.xml">
 </head>
 <body>
     <header>
@@ -23,6 +28,14 @@
                 City of Saskatoon eSCRIBE Portal
             </a>.
             Summaries are AI-generated and may not be perfectly accurate.
+        </p>
+        <!-- Autodiscovery is invisible, so the one visible line is what
+             a returning reader actually finds. In the footer because it
+             is for someone coming back, not for a first visit. -->
+        <p class="footer-feeds">
+            Follow by feed —
+            <a href="/feed.xml">a day at a time</a>
+            or <a href="/feed-items.xml">every item</a>.
         </p>
     </footer>
     {% block scripts %}{% endblock %}

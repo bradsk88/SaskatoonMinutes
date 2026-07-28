@@ -4,9 +4,30 @@ from app.agenda_text import (
     clean_entities,
     format_money,
     plainify,
+    readable_date,
     titleize,
     trim_to_chip,
 )
+
+
+# ── readable_date ────────────────────────────────────────────────────
+
+
+class TestReadableDate:
+    """One home for it: a page title, a feed entry title and a feed
+    entry's context line all write the same date."""
+
+    def test_iso_becomes_readable(self):
+        assert readable_date("2025-06-17") == "June 17, 2025"
+
+    def test_unparseable_comes_back_unchanged(self):
+        assert readable_date("not-a-date") == "not-a-date"
+
+    def test_empty(self):
+        assert readable_date("") == ""
+
+    def test_none(self):
+        assert readable_date(None) == ""
 
 
 # ── format_money ─────────────────────────────────────────────────────

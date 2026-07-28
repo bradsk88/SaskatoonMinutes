@@ -9,6 +9,21 @@ from __future__ import annotations
 
 import html as html_mod
 import re
+from datetime import datetime
+
+
+def readable_date(iso: str) -> str:
+    """``"2025-06-17"`` -> ``"June 17, 2025"``; anything else comes back as-is.
+
+    One home for it because three surfaces now write the same date: a
+    static page's ``<title>``, a feed entry's title, and the line above a
+    feed entry's bullets.  A reader who sees "June 17, 2025" in a reader
+    and "17 June 2025" on the page has been shown two dates.
+    """
+    try:
+        return datetime.strptime(iso, "%Y-%m-%d").strftime("%B %-d, %Y")
+    except (ValueError, TypeError):
+        return iso or ""
 
 
 def clean_entities(text: str) -> str:

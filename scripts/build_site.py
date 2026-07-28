@@ -16,7 +16,7 @@ import re
 import shutil
 import sys
 import time
-from datetime import datetime
+from datetime import date
 
 # Ensure the project root is on the path so we can import app.*
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,7 +31,8 @@ from app.agenda_items import (
     count_discussed_items,
     mark_row_weights,
 )
-from app.agenda_text import titleize
+from app.agenda_text import readable_date, titleize
+from app.feeds import build_feeds
 from app.speakers import merge_remarks
 from app.summarizer import extract_meeting_topics, extract_badges
 from app.transcriber import correct_timestamps
@@ -170,6 +171,12 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 # header used to report 43 above 73 rendered cards.
                 "discussed_count": count_discussed_items(items),
                 "consent_count": count_consent_items(items),
+                # Whether a summarize run has reached this meeting at
+                # all.  The feed waits on it: a day publishes once every
+                # meeting on it is summarized, so that a subscriber gets
+                # one complete entry late rather than a thin one that
+                # quietly fills in afterwards (ADR 0019).
+                "has_summaries": bool(item_summaries),
             }
         except Exception as exc:
             print(f"    WARNING: Failed to get topics: {exc}")
@@ -186,6 +193,10 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 "item_count": 0,
                 "discussed_count": 0,
                 "consent_count": 0,
+                # No agenda means nothing to publish, and the day it sits
+                # on must not wait seven days for a meeting that will
+                # never arrive -- it has no qualifying items either way.
+                "has_summaries": True,
             }
     return topics_data, details_data
 
@@ -198,6 +209,10 @@ def fetch_all_data():
     # Shared across all tabs (meeting IDs are globally unique)
     all_topics: dict[str, list] = {}
     all_details: dict[str, dict] = {}
+    # What the feeds read.  Assembled here because this is the only place
+    # that knows which body a meeting belongs to -- a feed entry read in
+    # a reader has no tab to say where it came from.
+    feed_meetings: list[dict] = []
 
     with TranscriptCache.open() as transcript_cache, \
             ItemSummariesCache.open() as summaries_cache:
@@ -223,7 +238,19 @@ def fetch_all_data():
             all_topics.update(topics)
             all_details.update(details)
 
-    return all_tabs_meetings, all_topics, all_details
+            for m in meetings:
+                detail = details.get(m.meeting_id) or {}
+                feed_meetings.append({
+                    "meeting_id": m.meeting_id,
+                    "title": detail.get("title") or titleize(m.title),
+                    "body": tab["label"],
+                    "body_slug": slug,
+                    "date": detail.get("date") or m.date,
+                    "has_summaries": detail.get("has_summaries", False),
+                    "agenda_items": detail.get("agenda_items") or [],
+                })
+
+    return all_tabs_meetings, all_topics, all_details, feed_meetings
 
 
 def render_index_html(all_tabs_meetings, topics_data):
@@ -313,14 +340,6 @@ def render_index_html(all_tabs_meetings, topics_data):
     return output
 
 
-def _readable_date(iso: str) -> str:
-    """"2025-06-17" -> "June 17, 2025"; anything unparseable comes back as-is."""
-    try:
-        return datetime.strptime(iso, "%Y-%m-%d").strftime("%B %-d, %Y")
-    except (ValueError, TypeError):
-        return iso or ""
-
-
 def render_meeting_html(meeting_id, detail_data):
     """Render a static meeting detail page with preloaded agenda data."""
     with open(os.path.join(TEMPLATE_DIR, "base.html")) as f:
@@ -332,7 +351,7 @@ def render_meeting_html(meeting_id, detail_data):
     # shared link show, and none of those have the card that was clicked.
     # It names the meeting when the meeting is known.
     name = (detail_data.get("title") or "").strip()
-    date = _readable_date(detail_data.get("date") or "")
+    date = readable_date(detail_data.get("date") or "")
     if name and date:
         title_block = f"{name}, {date} - YXEMinutes"
     elif name:
@@ -396,7 +415,7 @@ def main():
         shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
 
-    all_tabs_meetings, topics_data, details_data = fetch_all_data()
+    all_tabs_meetings, topics_data, details_data, feed_meetings = fetch_all_data()
 
     print("Rendering static index.html...")
     html = render_index_html(all_tabs_meetings, topics_data)
@@ -425,10 +444,23 @@ def main():
     if os.path.exists(cname_path):
         shutil.copy2(cname_path, os.path.join(OUTPUT_DIR, "CNAME"))
 
+    # The feeds are regenerated from scratch on every build and keep no
+    # record of what they published.  That is safe because entry ids and
+    # timestamps come from the meeting date rather than from build time,
+    # so a rebuild whose data has not moved is byte-identical and no
+    # subscriber sees anything (ADR 0019).
+    feeds = build_feeds(feed_meetings, date.today())
+    for filename, xml in feeds.items():
+        with open(os.path.join(OUTPUT_DIR, filename), "w") as f:
+            f.write(xml)
+
     print(f"Static site built in {OUTPUT_DIR}/")
     print(f"  index.html ({len(html):,} bytes)")
     print(f"  {len(details_data)} meeting detail pages")
     print(f"  style.css")
+    for filename, xml in feeds.items():
+        entries = xml.count("<entry>")
+        print(f"  {filename} ({entries} entries)")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 """Static-build glue: the parts that shape what the pages read."""
 
-from scripts.build_site import _readable_date, _start_time_24h
+from scripts.build_site import _start_time_24h
 
 
 class TestStartTime24h:
@@ -31,14 +31,3 @@ class TestStartTime24h:
 
     def test_empty(self):
         assert _start_time_24h("") == ""
-
-
-class TestReadableDate:
-    def test_iso_becomes_readable(self):
-        assert _readable_date("2025-06-17") == "June 17, 2025"
-
-    def test_unparseable_comes_back_unchanged(self):
-        assert _readable_date("not-a-date") == "not-a-date"
-
-    def test_empty(self):
-        assert _readable_date("") == ""

@@ -86,14 +86,14 @@ def extract_meeting_topics(
         # to clipped agenda text under an "older summary" apology.  The
         # card exists to carry those lines, so having one is worth about
         # as much as a recorded vote.
-        description_score = 0.25 if _item_summary(item).get("description") else 0.0
+        description_score = 0.25 if item_summary(item).get("description") else 0.0
 
         # How long council actually spent on it.  Unlike the Description,
         # this is a property of the meeting rather than of our coverage:
         # forty minutes of debate is the record saying the item mattered.
         # Reaches full weight at twenty minutes; the median discussed
         # item runs 8.4.
-        duration_score = 0.25 * min(1.0, _discussion_minutes(item) / 20.0)
+        duration_score = 0.25 * min(1.0, discussion_minutes(item) / 20.0)
 
         score = (
             contested_score + money_score + vote_score
@@ -200,6 +200,10 @@ def _format_speaker_row(speaker: dict, topic_row: dict) -> dict:
         "outcome": {
             "support": "In support", "concern": "Raised concerns",
         }.get(stance, "Spoke"),
+        # The stance itself, so the card can colour the badge without
+        # matching on the words above.  "" is a speaker the transcript
+        # has talking without coming down either way.
+        "stance": stance if stance in ("support", "concern") else "",
         "outcome_detail": "",
         # No summary. The card answers "who had a voice, and how did they
         # come down on it" — a name, an organization, and a stance. What
@@ -232,8 +236,13 @@ def _format_speaker_row(speaker: dict, topic_row: dict) -> dict:
 _MAX_PLAUSIBLE_DISCUSSION_MINUTES = 180
 
 
-def _discussion_minutes(item: dict) -> float:
+def discussion_minutes(item: dict) -> float:
     """How long the meeting spent on this item, in minutes.
+
+    Public because the feed ranks on it (ADR ``0019``).  The feed does
+    not reuse the card's score -- see ADR ``0018`` -- but it does reuse
+    this, because the two guards below are exactly what keep a broken
+    end bookmark out of a published ranking.
 
     Zero when the item has no span of its own.  A Consent Item inherits
     its parent section's, which measures the clerk reading a block into
@@ -307,7 +316,7 @@ def _card_badges(item: dict) -> list[dict]:
     return kept + chips
 
 
-def _item_summary(item: dict) -> dict:
+def item_summary(item: dict) -> dict:
     """The item's serialized ItemSummary, or an empty dict.
 
     ``summary`` is the ItemSummary object and nothing else writes to it —
@@ -333,7 +342,7 @@ def _topic_summary(item: dict) -> tuple[list[str], bool]:
     one run-on sentence and bulleting it would claim a structure it does
     not have.
     """
-    description = normalize_description(_item_summary(item).get("description"))
+    description = normalize_description(item_summary(item).get("description"))
     if description:
         return description, True
 
@@ -350,8 +359,29 @@ def _topic_summary(item: dict) -> tuple[list[str], bool]:
 # are excluded because the outcome badge already carries them.  What is
 # left is the interpretive set — the categories the model only fills in
 # when it found something to say.
-_CARD_CHIP_CATEGORIES: tuple[str, ...] = ("Cost & Funding",) + tuple(
+#
+# Public because the feed's substance gate is defined in terms of it: an
+# item earns an entry by carrying a Description *or* one of these.  Two
+# lists of "the categories that mean the model found something" would
+# drift, and the gate is the whole of what the feed selects on.
+CARD_CHIP_CATEGORIES: tuple[str, ...] = ("Cost & Funding",) + tuple(
     SEMANTIC_CATEGORIES
+)
+
+# The chip categories worth one line, most telling first.  A reader
+# deciding whether to spend time is served better by what went wrong or
+# went unanswered than by who it affects, which is the most common
+# category and the least surprising.
+#
+# Mirrored by ``TAKEAWAY_ORDER`` in ``app/templates/index.html``, which
+# cannot import this.  ``test_feeds`` parses the template and fails if
+# the two disagree, because the card and the feed choosing different
+# takeaways for the same item is the kind of drift nobody notices.
+TAKEAWAY_ORDER: tuple[str, ...] = (
+    "Dissenting View", "Debate Highlight", "Unanswered Question",
+    "Staff vs. Council", "Promise Made", "Precedent Set",
+    "Legal Risk Flagged", "Equity Impact", "Environmental Impact",
+    "Cost & Funding", "Public Sentiment", "Who's Affected",
 )
 
 _MAX_CHIP_BADGES = 3
@@ -364,12 +394,12 @@ def _chip_badges(item: dict) -> list[dict]:
     sentence and a card has room for a word.  The sentence rides along as
     the tooltip.
     """
-    chips = _item_summary(item).get("chips") or []
+    chips = item_summary(item).get("chips") or []
     badges = []
     seen = set()
     for chip in chips:
         category = chip.get("category", "")
-        if category not in _CARD_CHIP_CATEGORIES or category in seen:
+        if category not in CARD_CHIP_CATEGORIES or category in seen:
             continue
         seen.add(category)
         badges.append({

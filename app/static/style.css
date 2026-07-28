@@ -1105,14 +1105,32 @@ main {
     margin-bottom: 0.1rem;
 }
 
-/* Not the green of an approval nor the amber of a contested vote: this
-   is one person's position, and green beside "Raised concerns" reads as
-   a verdict that went their way. Slate keeps it a label. */
-.badge-outcome-stance {
-    background: #e2e8f0;
-    color: #334155;
+/* A speaker's stance, outlined where an outcome badge is filled.
+   The fill is what carried the confusion: a solid green badge in the
+   outcome's slot read as "council passed it" rather than "this person
+   liked it". Outlined, the shape says whose claim it is before the
+   colour says which way, so the stance can be the green and rose a
+   reader understands without a legend.
+
+   Fill is also what separates it from the organization chip now sitting
+   beside it -- those are ten pastel fills including green and rose, and
+   two filled pastel pills touching read as one. */
+.badge-stance-support,
+.badge-stance-concern,
+.badge-stance-none {
+    background: transparent;
+    border: 1px solid currentColor;
     font-weight: 600;
 }
+
+.badge-stance-support { color: #15803d; }
+.badge-stance-concern { color: #be123c; }
+
+/* The fallback, for a speaker the transcript has talking without coming
+   down either way. The card does not draw it -- "Spoke" on a speaker row
+   says only what the row already is -- but a stance that arrives from an
+   older payload still has somewhere to land. */
+.badge-stance-none { color: var(--color-text-muted); }
 
 /* Index card's slight surface of the same data. */
 .speaker-badge {
@@ -1205,6 +1223,24 @@ a.topic-link:hover {
     justify-content: space-between;
     gap: 0.5rem;
     font-weight: 600;
+    /* The right-hand group can hold an organization name and a stance.
+       "Greater Saskatoon Chamber of Commerce" is 37 characters, so on a
+       narrow card it drops below the title rather than squeezing it to
+       nothing. The 640px rule below stacks them outright; this covers
+       the widths in between. */
+    flex-wrap: wrap;
+}
+
+/* What the row says about itself, at the end of the title line: the
+   organization a speaker came for, and how they came down on it -- or,
+   on an ordinary row, the outcome. Grouped so the two travel together
+   when the line wraps, rather than the stance stranding on its own. */
+.topic-name-meta {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-left: auto;
 }
 
 /* A card row is bounded. Agenda titles run long -- a third of the rows
@@ -1713,6 +1749,12 @@ footer {
     margin-top: 3rem;
 }
 
+/* Under the provenance line, not beside it: one is what the page is
+   made of, the other is how to keep getting it. */
+.footer-feeds {
+    margin-top: 0.5rem;
+}
+
 footer a {
     color: var(--color-accent);
     text-decoration: none;
@@ -1759,6 +1801,12 @@ footer a:hover {
         background: #1f2937;
         color: #fca5a5;
     }
+
+    /* The stance stays outlined here too -- the border is currentColor,
+       so only the hues move. Both are lifted for contrast against the
+       dark surface; the light-mode greens and roses go muddy on it. */
+    .badge-stance-support { color: #4ade80; }
+    .badge-stance-concern { color: #fb7185; }
 
     .item-attach-count {
         color: #9ca3af;
@@ -2075,6 +2123,14 @@ footer a:hover {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.3rem;
+    }
+
+    /* Stacked, the group belongs under the title it qualifies. The
+       auto margin that pushes it right on a wide row left a one-chip
+       row right-aligned and a two-chip row left-aligned, on the same
+       card. */
+    .topic-name-meta {
+        margin-left: 0;
     }
 
     .item-header {

@@ -187,10 +187,11 @@
     }
 
     function outcomeClass(topic) {
-        // A speaker's badge carries their stance, not a verdict. It is
-        // deliberately not green/red like an outcome: the reader must
-        // not mistake "this person supported it" for "council passed it".
-        if (topic.kind === 'speaker') return 'outcome-stance';
+        // A speaker's badge carries their stance, not a verdict, so it is
+        // outlined where an outcome badge is filled. That is what keeps
+        // green from reading as "council passed it": the shape says this
+        // is one person's position before the colour says which way.
+        if (topic.kind === 'speaker') return `stance-${topic.stance || 'none'}`;
         if (topic.is_contested) return 'outcome-contested';
         if (topic.outcome && topic.outcome.startsWith('Defeated')) return 'outcome-defeated';
         if (topic.outcome && topic.outcome === 'Deferred') return 'outcome-deferred';
@@ -315,7 +316,7 @@
             html += `<td class="topic-cell">`;
             html += `<div class="topic-row">`;
             if (detailHref) {
-                html += `<a href="${detailHref}" class="topic-content topic-link">`;
+                html += `<a href="${escapeAttr(detailHref)}" class="topic-content topic-link">`;
             } else {
                 html += `<div class="topic-content">`;
             }
@@ -338,11 +339,23 @@
             // name so a reader recognises it across cards before reading
             // it. A speaker who came for nobody says so -- a blank where
             // every other speaker has a chip reads as missing data.
+            //
+            // It sits with the stance rather than after the name: the two
+            // answer one question -- who came, and how they came down --
+            // and reading them together beats reading one at each end of
+            // the row.
             const orgHtml = isSpeaker && t.organization
-                ? ` <span class="org-chip org-chip-${t.org_color == null ? 'none' : t.org_color}">`
+                ? `<span class="org-chip org-chip-${t.org_color == null ? 'none' : t.org_color}">`
                   + `${escapeAttr(t.organization)}</span>`
                 : '';
-            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}${orgHtml}</span>${outcomeHtml}</div>`;
+            // A neutral stance renders nothing. "Spoke" on a speaker row
+            // says only what the row already is, and beside the outlined
+            // "Resident" chip it was a second grey pill saying less.
+            const stanceHtml = isSpeaker && !t.stance ? '' : outcomeHtml;
+            const metaHtml = orgHtml || stanceHtml
+                ? `<span class="topic-name-meta">${orgHtml}${stanceHtml}</span>`
+                : '';
+            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${metaHtml}</div>`;
             // The takeaway is decided before the summary is drawn: when
             // a row has one, the summary gives up a line so the row's
             // height does not grow. A hook cut mid-sentence is worse
@@ -580,12 +593,11 @@
             const card = document.createElement('div');
             card.className = 'meeting-card' + (m.is_cancelled ? ' meeting-card-cancelled' : '');
 
-            let openHref;
-            if (isStatic) {
-                openHref = `meeting/${m.meeting_id}.html`;
-            } else {
-                openHref = `/meeting/${m.meeting_id}`;
-            }
+            // The meeting id is an upstream eSCRIBE value going into an
+            // href, so it is encoded rather than trusted -- the same rule
+            // every other upstream field on this page already follows.
+            const mid = encodeURIComponent(m.meeting_id);
+            const openHref = isStatic ? `meeting/${mid}.html` : `/meeting/${mid}`;
 
             const date = new Date(m.date + 'T00:00:00');
             const dateStr = date.toLocaleDateString('en-CA', {

@@ -215,9 +215,11 @@
         const raw = summary.description;
         const description = Array.isArray(raw) ? raw.filter(Boolean) : (raw ? [raw] : []);
         if (!description.length && !chips.length) {
+            // No disclaimer here: there is no AI output on this branch to
+            // qualify, and a caveat about summaries under "no summary"
+            // reads as though one is being hidden.
             return `<div class="item-chip-view">
                 <p class="chip-empty">No AI summary available for this item yet.</p>
-                <p class="item-ai-disclaimer">Summaries are AI-generated from the meeting transcript and may contain errors.</p>
             </div>`;
         }
         // The description is the lede — it is what someone reads instead of
@@ -466,6 +468,16 @@
         const el = document.createElement('div');
         el.className = 'agenda-item';
         el.dataset.itemId = item.item_id;
+        // A stable address for one agenda item, which is what a feed
+        // entry and a shared link both point at. Deliberately not the
+        // video position: a consent item's timestamp belongs to its
+        // parent section, so the items most likely to be missed were
+        // exactly the ones that could not be pointed at.
+        //
+        // Synthetic Recess rows all carry item_id -1, so a meeting with
+        // two recesses would emit the same id twice. They are drawn by
+        // buildRecessEl and never reach here, but the guard says why.
+        if (item.item_id >= 0) el.id = `item-${item.item_id}`;
         if (item.time_start_ms !== null) el.dataset.timeMs = item.time_start_ms;
 
         const isConsent = item.timestamp_inherited === true;
@@ -631,7 +643,28 @@
                 ], { duration: 450, delay: i * STAGGER, fill: 'forwards', easing: 'ease-out' });
             });
         }
+        scrollToAnchoredItem();
     }
+
+    // The browser resolves #item-58 while the page is still a skeleton —
+    // the cards are drawn by this file, not served in the HTML — so by
+    // the time the element exists the browser has already given up. A
+    // reader arriving from a feed entry landed at the top of a 70-row
+    // page, which is the failure the anchor was added to prevent.
+    //
+    // Reuses the reveal a timestamp link gets: centred rather than
+    // pinned to the top, because the sticky player owns the top of the
+    // viewport, and flashed, because a page that jumps without saying
+    // where looks broken.
+    function scrollToAnchoredItem() {
+        const hash = window.location.hash;
+        if (!hash.startsWith('#item-')) return;
+        revealAgendaItem(document.getElementById(hash.slice(1)));
+    }
+
+    // Same page, different item: a hash change moves nothing on its own
+    // once the page is already drawn.
+    window.addEventListener('hashchange', scrollToAnchoredItem);
 
     function applyTranscriptClamps() {
         const CLAMP_HEIGHT = 96; // ~6.2em at default font size
@@ -747,8 +780,7 @@
         observer.observe(sentinel);
     }
 
-    function scrollToAgendaItem(timeMs) {
-        const el = document.querySelector(`.agenda-item[data-time-ms="${timeMs}"]`);
+    function revealAgendaItem(el) {
         if (!el) return;
         // Expand clamped transcript so the user can read it
         const transcript = el.querySelector('.transcript-clamped');
@@ -764,6 +796,12 @@
             void el.offsetWidth;
             el.classList.add('highlight');
         }, 50);
+    }
+
+    function scrollToAgendaItem(timeMs) {
+        revealAgendaItem(
+            document.querySelector(`.agenda-item[data-time-ms="${timeMs}"]`),
+        );
     }
 
     function seekVideo(timeMs) {

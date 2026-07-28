@@ -97,4 +97,6 @@ Scraped upstream data (escribemeetings) is **not** routed through Cache — it's
   - `LiveEscribeTransport` — production; HTTP via `requests`.
   - `FixtureEscribeTransport` — test; replays recorded HTML/JSON from disk. Lets `EscribeMeetingSource` be tested end-to-end without network.
 
+- **`app/feeds.py`** — the Atom feeds. Pure: dicts in, XML strings out, so a real feed can be built from fixtures with no network and no site build. `build_site` calls it once at the end, from data it already holds, so the feeds cost no extra fetch. XML is assembled with `ElementTree` rather than string templates — one unescaped `&` in an upstream title makes the whole file invalid, and readers reject invalid XML outright rather than degrading.
+
 `Meeting` and `AgendaItem` are domain types and live in `app/models.py`, not inside any adapter.

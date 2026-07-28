@@ -371,6 +371,14 @@ class TestSpeakersGetTheirOwnCardRow:
         assert speaker["vote_result"] == ""
         assert speaker["is_major"] is False
 
+    def test_the_stance_travels_as_a_value_the_card_can_colour_on(self):
+        """The card colours the badge; matching on "In support" would
+        break the moment the wording is reconsidered -- and it has been
+        once already, "Raised concerns" over "Opposed"."""
+        rows = self._rows(["Cited an economic impact study."])
+        speaker = [r for r in rows if r.get("kind") == "speaker"][0]
+        assert speaker["stance"] == "support"
+
     def test_the_payload_carries_every_speaker_for_the_card_to_choose_from(self):
         """The card picks three; the payload must offer it the candidates."""
         from app.summarizer import extract_meeting_topics

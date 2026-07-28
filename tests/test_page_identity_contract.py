@@ -107,6 +107,20 @@ class TestEveryPaletteSlotIsStyled:
     def test_a_speaker_with_no_organization_has_a_chip_too(self):
         assert ".org-chip-none" in _read(CSS)
 
+    def test_a_stance_is_coloured_in_both_themes(self):
+        """Same reason as the palette: the site follows the reader's theme."""
+        light, dark = self._blocks()
+        for stance in ("support", "concern"):
+            assert f".badge-stance-{stance} " in light, stance
+            assert f".badge-stance-{stance} " in dark, stance
+
+    def test_a_stance_is_outlined_and_an_outcome_is_filled(self):
+        """The shape is what stops green reading as "council passed it"."""
+        css = _read(CSS)
+        stance = css[css.index(".badge-stance-support,"):]
+        assert "background: transparent;" in stance[:400]
+        assert "border: 1px solid currentColor;" in stance[:400]
+
     def test_both_pages_read_the_same_two_fields(self):
         """One place decides the label and the colour; neither page recomputes."""
         for page in (INDEX, MEETING):

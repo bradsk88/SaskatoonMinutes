@@ -26,6 +26,12 @@ items keep the priority they were given.
 - **1. Escaping** — `item.title`, `item.section_number` and `data.error`
   now go through `escapeHtml`; `escapeAttr` on the index covers `>` and
   null. Pinned by `tests/test_page_identity_contract.py`.
+  The open section below is the original description and is stale — it
+  names two line numbers that were fixed long ago. Re-audited on
+  2026-07-28 while building the feeds: every title path was already
+  escaped, and the one gap left was the meeting id going into an `href`
+  unencoded. Now `encodeURIComponent` at the source and `escapeAttr` at
+  the seam.
 - **2. Meeting identity** — `MeetingDetail` gained `title`/`date`/
   `start_time`, read from the agenda HTML that `load_detail` already
   fetches (`_extract_meeting_info`), so it costs no extra request. The
@@ -178,14 +184,21 @@ meeting available without loading every topic list. Separate job from
 item 4 — the card redesign does not depend on it, and this one is
 backend work.
 
-## 7. Link to a single agenda item
+## 7. Link to a single agenda item — done
 
-Deep links are `?t=<ms>` only (`meeting.html:641`). Consent items have no
-distinct timestamp, so **the items most likely to be missed are the ones
-that cannot be pointed at**. Sharing one item is the sharing that matters
-here; a shareable filtered index is not.
+Built 2026-07-28, because the feed needed it: an entry has to point at
+one item, and `?t=<ms>` could not address a consent item at all.
 
-Stable per-item anchors that do not depend on video position.
+`#item-<item_id>` on every agenda card. The id is set as the card is
+drawn, and the page scrolls to it after rendering — a fragment the
+browser resolves against a skeleton is silently dropped, which is what
+made this look impossible. Reuses the reveal a timestamp link already
+gets: centred, because the sticky player owns the top of the viewport,
+and flashed, so a page that jumps says where it went. Recess rows share
+`item_id` -1 and are excluded.
+
+Still open from the original note: the index card links to the meeting
+page, not to the item. Nothing forces that now.
 
 ## 8. Let the details page carry the density
 
@@ -256,33 +269,32 @@ second or so, so the contents are visible without the height.
 From ratifying `0006`: collapsed is right, obscured is the cost, and
 this is the way to pay it down.
 
-## 12. Publish the index as an RSS feed, one entry per major discussion
+## 12. Publish the index as an Atom feed — done
 
-The index is going out as a feed. A feed entry has no tabs, no filter
-and no hover — it stands alone or it fails.
+Built 2026-07-28. Two files, written by `app/feeds.py` on every build:
 
-**Selected**: an item earns an entry by having something to say — a
-written Description or an interpretive chip. **Sorted** by how long
-council spent on it.
+- `/feed.xml` — one entry per calendar day the city sat, bodies as
+  headings inside it. The default.
+- `/feed-items.xml` — one entry per qualifying item.
 
-The line that carries the chip is built and on the card already — see
-`0017`. What is left is the feed itself: the XML, the entry granularity
-and the per-item links it needs (item 7).
+The gate held: an item earns an entry with a Description or an
+interpretive chip. What changed is the ranking. Measured against three
+real meetings, the card's ranking misses the longest debates of the
+year, so the feed ranks on `discussion_minutes` directly and caps at 8
+per meeting — ADR `0018`, and item 15 below.
 
-Measured over the archive to settle the gate:
+A day publishes once settled: every meeting on it has summaries, or
+seven days have passed. ADR `0019` has the reasoning, including why the
+feed keeps no record of what it published.
 
-- 1,612 of 6,952 items carry their own time span (23%). Consent items
-  inherit their parent's; 22 meetings have no timings at all.
-- 1,025 items ran 5 minutes or longer, 1–5 per meeting for most
-  meetings. Median discussed item is 8.4 minutes.
-- But only 266 of those have a Description and 326 an interpretive
-  chip. Duration alone would publish ~700 entries reading "council
-  spent twenty minutes on this" with no account of what came of it.
+Left undone on purpose:
 
-So substance gates and duration ranks. ~300 entries today, growing with
-summarize coverage.
-
-Depends on nothing else, but see 13 — the durations are dirty.
+- **No per-body feeds.** Sixteen bodies, fifteen of which would be empty
+  for months at a time. The body rides along as an Atom `<category>`, so
+  a reader that filters can.
+- **Retention is 30 days and 100 items**, not the whole archive.
+- **The feed is not linked from the header**, only the footer and
+  autodiscovery.
 
 ## 13. Cap or repair the broken discussion spans
 
