@@ -3,7 +3,7 @@
 import os
 import re
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
 from app import feeds
@@ -226,7 +226,17 @@ class DayEntries(unittest.TestCase):
 
     def test_timestamps_come_from_the_meeting_date_not_the_build(self):
         first = self.feed().findall(f"{ATOM}entry")[0]
-        self.assertEqual("2026-07-20T00:00:00Z", first.find(f"{ATOM}updated").text)
+        self.assertEqual(
+            "2026-07-20T12:00:00-06:00", first.find(f"{ATOM}updated").text,
+        )
+
+    def test_an_entry_lands_on_its_own_day_in_saskatoon(self):
+        """Midnight UTC is the evening before here, and read a day early."""
+        stamp = datetime.fromisoformat(
+            self.feed().findall(f"{ATOM}entry")[0].find(f"{ATOM}updated").text
+        )
+        local = stamp.astimezone(timezone(timedelta(hours=-6)))
+        self.assertEqual(date(2026, 7, 20), local.date())
 
     def test_rebuilding_on_a_later_day_changes_nothing(self):
         """The deploy runs six times a day; subscribers must see one entry."""

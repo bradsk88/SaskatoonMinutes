@@ -60,6 +60,11 @@ SETTLE_DAYS = 7
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
 
+# Saskatchewan keeps central standard time all year and never moves for
+# daylight saving, so one fixed offset is the whole rule -- no zone
+# database, and no date on which the answer changes.
+SASKATOON_TZ = timezone(timedelta(hours=-6))
+
 AI_DISCLOSURE = (
     "Summaries are AI-generated from the meeting transcript and may "
     "contain errors."
@@ -353,18 +358,25 @@ def _day_link(meetings: list[dict]) -> str:
 # --------------------------------------------------------------------------
 
 def _timestamp(day: str) -> str:
-    """A day as an Atom timestamp.
+    """A day as an Atom timestamp, at midday in Saskatoon.
 
     From the meeting date and never from build time: the deploy runs six
     times a day, and an ``<updated>`` that moved with it would republish
     every entry in the file to every subscriber six times a day.
+
+    Midday and not midnight because a reader shows the entry in the
+    reader's own timezone.  Midnight UTC on the day council sat is the
+    evening *before* in Saskatoon, so every entry read a day early and a
+    Tuesday meeting looked like a Monday one.  Noon local has half a day
+    of slack on either side, which is enough for every timezone a reader
+    of a Saskatoon council feed plausibly sits in.
     """
     parsed = _parse_date(day)
     if parsed is None:
-        return "1970-01-01T00:00:00Z"
+        return datetime(1970, 1, 1, 12, tzinfo=SASKATOON_TZ).isoformat()
     return datetime(
-        parsed.year, parsed.month, parsed.day, tzinfo=timezone.utc
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        parsed.year, parsed.month, parsed.day, 12, tzinfo=SASKATOON_TZ
+    ).isoformat()
 
 
 def _feed_root(title: str, self_path: str, updated: str) -> ET.Element:
