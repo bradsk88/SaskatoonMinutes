@@ -229,6 +229,48 @@ class TestRoutineRowsAreDemoted:
         assert ".routine-row" in css
 
 
+class TestHeadingsAreRulesNotCards:
+    """"Standing Policy Committee on Finance" is a name for the group
+    below it. Drawn as a card it wore a NOT DISCUSSED badge and a topic
+    chip, and read like a decision nobody had examined."""
+
+    def test_a_heading_gets_its_own_element(self):
+        source = _read(MEETING)
+        assert "if (item.is_heading) return buildHeadingEl(item);" in source
+
+    def test_a_heading_escapes_its_upstream_text(self):
+        source = _read(MEETING)
+        block = source[source.index("function buildHeadingEl"):]
+        block = block[:block.index("function buildItemEl")]
+        assert "${escapeHtml(item.title)}" in block
+
+    def test_a_heading_is_styled_as_a_rule(self):
+        assert ".agenda-heading" in _read(CSS)
+
+    def test_a_rule_over_nothing_is_dropped(self):
+        """Video order can separate a heading from the items it names."""
+        source = _read(MEETING)
+        assert "return !!next && !next.is_heading;" in source
+
+
+class TestConsentItemsShowWhatTheyDecided:
+    """A consent item's summary was written, cached, and then dropped.
+
+    The card showed a list of PDFs where the index card showed the
+    sentence -- for a $1.2M loan to TCU Place, among sixteen others.
+    Passing in one motion says how council decided, not whether what
+    they decided matters.
+    """
+
+    def test_a_consent_item_is_not_denied_its_summary(self):
+        source = _read(MEETING)
+        assert "!isConsent && !!item.summary" not in source
+        assert "const hasChips = !!item.summary" in source
+
+    def test_a_consent_item_still_says_it_was_not_debated(self):
+        assert "badge-consent" in _read(MEETING)
+
+
 class TestConsentItemsAreNotLinkedToTheWrongAudio:
     """A consent item's timestamp is its parent's.
 

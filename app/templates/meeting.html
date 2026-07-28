@@ -447,8 +447,19 @@
         return el;
     }
 
+    // A heading names the group below it and has nothing else to say.
+    // Drawn as a card it carried a NOT DISCUSSED badge and a topic chip,
+    // which read as a decision that had gone unexamined.
+    function buildHeadingEl(item) {
+        const el = document.createElement('div');
+        el.className = 'agenda-heading';
+        el.innerHTML = `<span>${escapeHtml(item.title)}</span>`;
+        return el;
+    }
+
     function buildItemEl(item, outOfOrder, idx) {
         if (item.is_recess) return buildRecessEl(item);
+        if (item.is_heading) return buildHeadingEl(item);
 
         const el = document.createElement('div');
         el.className = 'agenda-item';
@@ -491,7 +502,12 @@
             ? buildAttachmentsOnlyHtml(item)
             : buildTranscriptHtml(item);
 
-        const hasChips = !isConsent && !!item.summary
+        // A consent item's summary was written, cached, and then thrown
+        // away here: the card showed a list of PDFs where the index card
+        // showed the sentence. Passing in one motion is a statement about
+        // how council decided, not about whether what they decided
+        // matters -- a $1.2M loan to TCU Place went through on consent.
+        const hasChips = !!item.summary
             // An empty bullet list is truthy in JS, so length is the test.
             && ((Array.isArray(item.summary.description)
                     ? item.summary.description.length > 0
@@ -564,8 +580,18 @@
         const container = document.getElementById('agenda-items');
         // An older build has no flag on its rows, and everything stays a
         // card — the same page this one replaced.
-        const items = allItems.filter(i => !i.is_routine);
+        const kept = allItems.filter(i => !i.is_routine);
         const routine = allItems.filter(i => i.is_routine);
+        // In video order a heading can end up separated from the items it
+        // names: they are timed by when council discussed them, it is
+        // timed by its parent section. A rule drawn over nothing reads as
+        // a broken page, so it is dropped here rather than in the data --
+        // the same heading is worth drawing in agenda order.
+        const items = kept.filter((item, i) => {
+            if (!item.is_heading) return true;
+            const next = kept[i + 1];
+            return !!next && !next.is_heading;
+        });
         const outOfOrder = computeOutOfOrder(items);
 
         container.innerHTML = '';

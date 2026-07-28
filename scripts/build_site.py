@@ -29,7 +29,7 @@ from app.agenda_items import (
     count_agenda_items,
     count_consent_items,
     count_discussed_items,
-    mark_routine_rows,
+    mark_row_weights,
 )
 from app.agenda_text import titleize
 from app.speakers import merge_remarks
@@ -136,7 +136,7 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
             for item in items:
                 item["speakers"] = merge_remarks(item)
 
-            mark_routine_rows(items)
+            mark_row_weights(items)
 
             topics = extract_meeting_topics(items, m.title, max_topics=8)
             topics_data[mid] = {

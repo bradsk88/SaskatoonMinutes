@@ -8,7 +8,7 @@ from app.agenda_items import (
     format_outcome,
     is_major_decision,
     is_procedural,
-    mark_routine_rows,
+    mark_row_weights,
 )
 
 
@@ -345,7 +345,7 @@ class TestCountAgendaItems:
         assert count_agenda_items([]) == 0
 
 
-# ── mark_routine_rows ────────────────────────────────────────────────
+# ── mark_row_weights ────────────────────────────────────────────────
 
 
 def _row(number, title, **kw):
@@ -366,7 +366,7 @@ class TestMarkRoutineRows:
     """Which rows are meeting furniture rather than meeting business."""
 
     def _routine(self, items):
-        mark_routine_rows(items)
+        mark_row_weights(items)
         return [i["title"] for i in items if i["is_routine"]]
 
     def test_procedural_rows_are_routine(self):
@@ -417,6 +417,32 @@ class TestMarkRoutineRows:
         assert self._routine(items) == []
 
 
+class TestHeadingWeight:
+    """A heading that survives the strip is drawn as a rule, not a card."""
+
+    def _headings(self, items):
+        mark_row_weights(items)
+        return [i["title"] for i in items if i["is_heading"]]
+
+    def test_a_heading_over_items_is_a_heading(self):
+        items = [
+            _row("10.3", "Community Services", time_start_ms=None),
+            _row("10.3.4", "East Side Leisure Centre", content="A report."),
+        ]
+        assert self._headings(items) == ["Community Services"]
+
+    def test_business_is_not_a_heading(self):
+        items = [_row("10.3.4", "East Side Leisure Centre", content="A report.")]
+        assert self._headings(items) == []
+
+    def test_a_routine_row_is_not_also_a_heading(self):
+        """The strip already has it. Two weights would draw it twice."""
+        items = [_row("15.", "URGENT BUSINESS", time_start_ms=None)]
+        mark_row_weights(items)
+        assert items[0]["is_routine"] is True
+        assert items[0]["is_heading"] is False
+
+
 # ── count_discussed_items / count_consent_items ──────────────────────
 
 
@@ -424,7 +450,7 @@ class TestHeaderCounts:
     """The header's numbers have to be what the page draws."""
 
     def _counted(self, items):
-        mark_routine_rows(items)
+        mark_row_weights(items)
         return count_discussed_items(items), count_consent_items(items)
 
     def test_counts_only_what_is_drawn_at_full_weight(self):

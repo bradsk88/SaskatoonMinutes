@@ -86,22 +86,28 @@ def _section_prefix(item: dict) -> str:
     return f"{number}." if number else ""
 
 
-def mark_routine_rows(items: list[dict]) -> None:
-    """Flag each row as meeting furniture or as business, in place.
+def mark_row_weights(items: list[dict]) -> None:
+    """Tell each row how much of the page it has earned, in place.
 
-    Furniture is the scaffolding every meeting carries and that never
-    reports anything: the call to order, the conflict declarations, the
-    adjournment, and the headings — ``URGENT BUSINESS``, ``GIVING
-    NOTICE`` — that stand over nothing.  Across 276 meetings, not one
-    instance of these has ever had a summary written for it.
+    Three weights.  ``is_routine`` is the scaffolding every meeting
+    carries and that never reports anything: the call to order, the
+    conflict declarations, the adjournment, and the headings — ``URGENT
+    BUSINESS``, ``GIVING NOTICE`` — that stand over nothing.  Across 276
+    meetings, not one instance of these has ever had a summary written
+    for it.  A row escapes it by holding substance of its own or by
+    having items filed beneath it, so ``QUESTION PERIOD`` keeps its card
+    and an empty ``IN CAMERA SESSION`` does not.
 
-    A row stays business when it either holds substance of its own or has
-    items filed beneath it, so ``QUESTION PERIOD`` keeps its card and an
-    empty ``IN CAMERA SESSION`` does not.
+    ``is_heading`` is what is left of the headings: a name for the group
+    below it, and nothing else to say.  The page draws it as a rule
+    rather than a card.
+
+    Everything else is business, and gets a card.
     """
     prefixes = [_section_prefix(item) for item in items]
     for item, prefix in zip(items, prefixes):
         item["is_routine"] = _is_routine(item, prefix, prefixes)
+        item["is_heading"] = not item["is_routine"] and is_section_header(item)
 
 
 def _is_routine(item: dict, prefix: str, prefixes: list[str]) -> bool:

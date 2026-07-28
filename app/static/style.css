@@ -626,8 +626,32 @@ main {
     padding: 1rem 1.25rem;
 }
 
+/* A consent item carries the same summary as any other item now, so it
+   gets the same room to say it. It was squeezed when it showed nothing
+   but its attachments. */
 .agenda-item-consent {
-    padding: 0.6rem 1.25rem;
+    padding: 1rem 1.25rem;
+}
+
+/* A heading names the group below it. A rule, not a card: drawn as a
+   card it wore a NOT DISCUSSED badge and read like a decision. */
+.agenda-heading {
+    align-items: center;
+    color: var(--color-text-muted);
+    display: flex;
+    font-size: 0.8rem;
+    font-weight: 600;
+    gap: 0.75rem;
+    letter-spacing: 0.04em;
+    margin: 1rem 0 0;
+    text-transform: uppercase;
+}
+
+.agenda-heading::after {
+    background: var(--color-border);
+    content: "";
+    flex: 1;
+    height: 1px;
 }
 
 /* The scaffolding every meeting carries: call to order, conflict

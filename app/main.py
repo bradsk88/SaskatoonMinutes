@@ -13,7 +13,7 @@ from app.agenda_items import (
     count_agenda_items,
     count_consent_items,
     count_discussed_items,
-    mark_routine_rows,
+    mark_row_weights,
 )
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
@@ -83,7 +83,7 @@ def api_meeting_detail(meeting_id: str):
         for item in items:
             item["badges"] = extract_badges(item)
 
-        mark_routine_rows(items)
+        mark_row_weights(items)
 
         # Summarize if requested
         if request.args.get("summarize", "false").lower() == "true":
