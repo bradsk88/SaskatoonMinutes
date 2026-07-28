@@ -239,13 +239,18 @@ def _from_minutes(content: str) -> list[Speaker]:
             continue
         if _is_role_not_person(name):
             continue
+        organization = _organization_from_parts(parts[1:])
+        if _is_city_unit(organization):
+            continue
+        if _is_staff_presenting(sentence, name, organization):
+            continue
         key = name.lower()
         if key in seen:
             continue
         seen.add(key)
         results.append(Speaker(
             name=name,
-            organization=_organization_from_parts(parts[1:]),
+            organization=organization,
             stance=_classify_stance(sentence[m.start():]),
             summary=_trim(sentence),
             source="minutes",
@@ -256,6 +261,89 @@ def _from_minutes(content: str) -> list[Speaker]:
 def _is_role_not_person(name: str) -> bool:
     """True when the "name" is a job title — staff or a council member."""
     return any(word.lower().strip(".,") in _ROLE_WORDS for word in name.split())
+
+
+# A member of the public does not present *the report*.  The report is
+# Administration's, and "presented the report and responded to questions
+# of the Board" is the clerk's standing formula for a staff member
+# working through their own item.  ``_VERB_RE`` matches "presented",
+# which is how thirty-two staff appearances were published as guest
+# speakers -- the police chief, the city auditor, the fire chief, the
+# Development Review Manager six times over.
+_PRESENTED_RE = re.compile(
+    r"\bpresented\s+the\s+(?:report|item|presentation)\b", re.IGNORECASE,
+)
+
+# The other half of that formula.  Council and its committees put
+# questions to the people who work for them.
+_ANSWERED_THE_BODY_RE = re.compile(
+    r"\b(?:responded|answered)\b[^.]{0,40}?\bquestions\s+of\s+(?:the\s+)?"
+    r"(?:board|committee|council)\b",
+    re.IGNORECASE,
+)
+
+# Ranks and titles that only an employee of the body carries.  Used only
+# to settle a bare "X presented the report." with no formula behind it.
+#
+# "Chief" alone is deliberately absent, for the same reason it is absent
+# from ``_ROLE_WORDS``: Chief Kelly Wolfe of Muskeg Lake Cree Nation
+# addressed council as a guest, and a rule that reads an Indigenous
+# leader's title as a city job is worse than the staff it would catch.
+# Every city chief in the archive is caught by the formula instead.
+_STAFF_TITLES = {
+    "auditor", "commissioner", "constable", "deputy", "director",
+    "inspector", "manager", "sergeant", "solicitor", "superintendent",
+}
+
+
+# The City's own organizational units.  A guest speaker comes from a
+# business, a First Nation, an association or a neighbourhood; nobody
+# introduces themselves as a Division.  This is the employer test that
+# ``_ROLE_WORDS`` cannot do -- that one reads a person's name, and
+# "Darryl Dawson" is a perfectly good name.  He is the Development
+# Review Manager, Community Services Division, and he appeared as a
+# guest speaker six times.
+#
+# Matched after ``clean_organization`` has taken the job title off, so
+# "Executive Director, The Salvation Army" is tested as "The Salvation
+# Army" and stays.
+# Anywhere in the name: "City of Saskatoon" and "City of Saskatoon
+# Administration" are the same employer.
+_THE_CITY_RE = re.compile(r"\bcity\s+of\s+saskatoon\b", re.IGNORECASE)
+
+# Only as the last word, so a "Division" that is the unit's own name is
+# caught while one buried in a longer title is not.
+_CITY_DIVISION_RE = re.compile(r"\bdivision$", re.IGNORECASE)
+
+
+def _is_city_unit(organization: str) -> bool:
+    """True when the organization is a part of the City, not a guest."""
+    name = clean_organization(organization)
+    return bool(_THE_CITY_RE.search(name) or _CITY_DIVISION_RE.search(name))
+
+
+def _is_staff_presenting(sentence: str, name: str, organization: str) -> bool:
+    """True when the minutes are narrating staff working through an item.
+
+    Two ways to be sure, because one is not enough.  The clerk's full
+    formula — presented the report, then answered the body's questions —
+    is unambiguous on its own.  A bare "City Auditor Thomson presented
+    the report." is not, so it also needs a rank or title that only an
+    employee carries.
+
+    That second gate is the whole point of the split.  "Auntie Advocate
+    Swiftwolfe presented the report with a PowerPoint" is the Office of
+    the Matriarchs presenting its own work, and dropping her would
+    silence the guest this feature exists to surface.  Erring toward
+    keeping a speaker is the right way to be wrong here: a staff row is
+    clutter, a missing delegate is a person the page says was not there.
+    """
+    if not _PRESENTED_RE.search(sentence):
+        return False
+    if _ANSWERED_THE_BODY_RE.search(sentence):
+        return True
+    words = f"{name} {organization}".lower().replace(",", " ").split()
+    return any(word.strip(".") in _STAFF_TITLES for word in words)
 
 
 def _organization_from_parts(parts: list[str]) -> str:

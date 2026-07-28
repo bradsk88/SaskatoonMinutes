@@ -1,6 +1,7 @@
 from app.models import AgendaItem
 from app.speakers import (
     ORGANIZATION_COLOURS,
+    _is_city_unit,
     clean_organization,
     extract_speakers,
     organization_color,
@@ -225,6 +226,84 @@ class TestStaffAndCouncilAreNotGuests:
         item = self._item("Rob Wilgenhof expressed support for the City's efforts.")
         assert [p.name for p in extract_speakers(item)] == ["Rob Wilgenhof"]
 
+    # ── Staff working through their own item ──
+    #
+    # ``_VERB_RE`` matches "presented", which published thirty-two staff
+    # appearances as guest speakers across the archive: the police chief,
+    # the city auditor, the fire chief, the Development Review Manager
+    # six times over. Their names are ordinary, so the name test could
+    # not see them.
+
+    def test_the_clerks_staff_formula_is_not_a_guest(self):
+        item = self._item(
+            "Chief McBride presented the report and responded to questions "
+            "of the Board."
+        )
+        assert extract_speakers(item) == []
+
+    def test_the_formula_covers_answered_as_well_as_responded(self):
+        item = self._item(
+            "Sergeant Aaron Moser presented the report and answered "
+            "questions of the Board, along with Chief McBride."
+        )
+        assert extract_speakers(item) == []
+
+    def test_a_bare_presentation_needs_a_rank_to_be_staff(self):
+        item = self._item("City Auditor Thomson presented the report.")
+        assert extract_speakers(item) == []
+
+    def test_a_bare_presentation_by_a_guest_is_kept(self):
+        """The Office of the Matriarchs presenting its own work.
+
+        Dropping her would silence the guest this feature exists to
+        surface. A staff row is clutter; a missing delegate is a person
+        the page says was not there, so the doubt goes her way.
+        """
+        item = self._item(
+            "Auntie Advocate Swiftwolfe presented the report with a PowerPoint."
+        )
+        assert [p.name for p in extract_speakers(item)] == [
+            "Auntie Advocate Swiftwolfe"
+        ]
+
+    def test_a_chief_presenting_for_their_nation_is_still_a_guest(self):
+        """"Chief" is not a staff rank here, and must never become one."""
+        item = self._item(
+            "Chief Kelly Wolfe presented the report with a PowerPoint."
+        )
+        assert [p.name for p in extract_speakers(item)] == ["Chief Kelly Wolfe"]
+
+    def test_presenting_something_that_is_not_the_report_is_not_the_formula(self):
+        item = self._item(
+            "Sherry Tarasoff, via teleconference, presented a video "
+            "expressing opposition."
+        )
+        assert [p.name for p in extract_speakers(item)] == ["Sherry Tarasoff"]
+
+    # ── The employer test ──
+
+    def test_a_city_division_is_not_a_guest(self):
+        """His name is ordinary and his sentence is not the formula."""
+        item = self._item(
+            "Darryl Dawson, Development Review Manager, Community Services "
+            "Division, presented the proposed amendment to the Zoning Bylaw."
+        )
+        assert extract_speakers(item) == []
+
+    def test_the_city_itself_is_not_a_guest(self):
+        item = self._item(
+            "Jane Doe, City of Saskatoon, spoke in support of the proposal."
+        )
+        assert extract_speakers(item) == []
+
+    def test_a_director_of_a_real_organization_is_still_a_guest(self):
+        """"Director" in the title must not condemn the body behind it."""
+        item = self._item(
+            "Gordon Taylor, Executive Director, The Salvation Army, "
+            "expressed support for the Plan."
+        )
+        assert [p.name for p in extract_speakers(item)] == ["Gordon Taylor"]
+
 
 class TestRegisteredTopicIsReadable:
     def _with(self, filename: str) -> AgendaItem:
@@ -367,3 +446,27 @@ class TestCleanOrganization:
                 == "The Salvation Army")
         assert (organization_color("Executive Director, The Salvation Army")
                 == organization_color("The Salvation Army"))
+
+
+class TestCityUnits:
+    """The employer test, on its own."""
+
+    def test_a_division_is_the_city(self):
+        assert _is_city_unit("Community Services Division") is True
+
+    def test_the_corporation_is_the_city_however_it_is_written(self):
+        assert _is_city_unit("City of Saskatoon") is True
+        assert _is_city_unit("City of Saskatoon Administration") is True
+
+    def test_a_title_in_front_does_not_hide_the_division(self):
+        """Tested after the job title comes off, or it would be missed."""
+        assert _is_city_unit(
+            "Development Review Manager, Community Services Division"
+        ) is True
+
+    def test_a_guest_organization_is_not_the_city(self):
+        for name in ("The Salvation Army", "Saskatoon West Business Association",
+                     "Downtown Saskatoon Business Improvement District",
+                     "Muskeg Lake Cree Nation", "Métis Nation–Saskatchewan",
+                     "Wild About Saskatoon", ""):
+            assert _is_city_unit(name) is False, name
