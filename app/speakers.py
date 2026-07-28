@@ -109,9 +109,50 @@ UNAFFILIATED_LABEL = "Resident"
 ORGANIZATION_COLOURS = 10
 
 
+# Job titles the model put in the organization field before the prompt
+# told it not to.  Deliberately separate from ``_ROLE_WORDS``: that set
+# disqualifies a *name* and has to stay narrow enough to let "Chief Kelly
+# Wolfe" through, while this one only ever reads the words in front of a
+# comma in an organization, where "chief" carries no such risk.
+_ORG_ROLE_TAIL = {
+    "administrator", "ceo", "cfo", "chair", "chairman", "chairperson",
+    "chairwoman", "commissioner", "coo", "coordinator", "director",
+    "executive", "manager", "officer", "owner", "president",
+    "superintendent", "supervisor", "treasurer",
+}
+
+
+def clean_organization(organization: str) -> str:
+    """Drop a job title the model left in front of the organization.
+
+    "Executive Director, The Salvation Army" is the Salvation Army; the
+    title tells a reader nothing, because every organization sends one.
+    The prompt asks for the body alone now, but the archive was written
+    before it did and a re-run costs a full summarize pass — so this
+    cleans what is already cached, every build, for free.
+
+    Only the unambiguous shape: a comma with a role noun in front of it.
+    "CEO of Nutrien Wonderhub" and "Director of Planning and Development"
+    are the same shape as each other and mean different things — one is a
+    job at a named organization, the other is a job at no organization at
+    all — and no rule here can tell them apart. They are left alone
+    rather than guessed at, because the fallback for an emptied field is
+    "Resident", and calling a CEO a resident is a worse error than
+    printing their title.
+    """
+    text = " ".join((organization or "").split())
+    head, sep, tail = text.partition(",")
+    if not sep or not tail.strip():
+        return text
+    words = head.strip().rstrip(".").split()
+    if words and words[-1].lower() in _ORG_ROLE_TAIL:
+        return tail.strip()
+    return text
+
+
 def organization_label(organization: str) -> str:
     """What the chip says: the organization, or that there was none."""
-    return (organization or "").strip() or UNAFFILIATED_LABEL
+    return clean_organization(organization) or UNAFFILIATED_LABEL
 
 
 def organization_color(organization: str) -> int | None:
@@ -123,7 +164,7 @@ def organization_color(organization: str) -> int | None:
     Flask app and another in the static build — and a different one again
     on the next build.  crc32 does not move.
     """
-    name = " ".join((organization or "").split()).casefold()
+    name = clean_organization(organization).casefold()
     if not name:
         return None
     return zlib.crc32(name.encode("utf-8")) % ORGANIZATION_COLOURS
@@ -166,11 +207,13 @@ def merge_remarks(item: dict) -> list[dict]:
             combined["organization"] = found.get("organization") or ""
         merged.append(combined)
     # Decided once, here, so the card and the detail page never disagree
-    # about what a speaker's chip says or what colour it is.
+    # about what a speaker's chip says or what colour it is -- and so the
+    # job titles already cached on the summaries branch are cleaned on
+    # every build rather than waiting on a re-run.
     for entry in merged:
-        org = entry.get("organization") or ""
-        entry["org_label"] = organization_label(org)
-        entry["org_color"] = organization_color(org)
+        entry["organization"] = clean_organization(entry.get("organization") or "")
+        entry["org_label"] = organization_label(entry["organization"])
+        entry["org_color"] = organization_color(entry["organization"])
     return merged
 
 

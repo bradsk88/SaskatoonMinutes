@@ -1,6 +1,7 @@
 from app.models import AgendaItem
 from app.speakers import (
     ORGANIZATION_COLOURS,
+    clean_organization,
     extract_speakers,
     organization_color,
     organization_label,
@@ -311,3 +312,58 @@ class TestOrganizationColor:
             "Meridian Development", "Police Commission",
         ]
         assert len({organization_color(n) for n in names}) >= 5
+
+
+class TestCleanOrganization:
+    """The model put the whole self-introduction in the field.
+
+    The prompt asks for the body alone now, but the archive was written
+    before it did, so this runs every build over what is already cached.
+    """
+
+    def test_a_title_in_front_of_a_comma_is_dropped(self):
+        assert (clean_organization("Executive Director, The Salvation Army")
+                == "The Salvation Army")
+
+    def test_a_long_staff_title_is_dropped_too(self):
+        assert (clean_organization(
+            "Development Review Section Manager, Community Services Division")
+            == "Community Services Division")
+
+    def test_an_organization_with_no_title_is_untouched(self):
+        for name in ("Saskatoon Police Service", "Métis Nation–Saskatchewan",
+                     "Saskatoon & Region Home Builders' Association",
+                     "Riversdale Business Improvement District"):
+            assert clean_organization(name) == name
+
+    def test_a_comma_that_is_part_of_the_name_survives(self):
+        """Only a role noun in front of the comma triggers the cut."""
+        assert (clean_organization("Kindrachuk Agrey Architecture, Saskatoon")
+                == "Kindrachuk Agrey Architecture, Saskatoon")
+
+    def test_a_title_with_nothing_behind_it_is_left_alone(self):
+        """Emptying it would render "Resident", which is a different lie."""
+        assert clean_organization("Board Chair") == "Board Chair"
+        assert clean_organization("Executive Director,") == "Executive Director,"
+
+    def test_the_shape_no_rule_can_read_is_left_alone(self):
+        """One is a job at a named body, one is a job at no body at all."""
+        assert (clean_organization("CEO of Nutrien Wonderhub")
+                == "CEO of Nutrien Wonderhub")
+        assert (clean_organization("Director of Planning and Development")
+                == "Director of Planning and Development")
+
+    def test_whitespace_is_normalized(self):
+        assert clean_organization("  Wild   About  Saskatoon ") == "Wild About Saskatoon"
+
+    def test_nothing_stays_nothing(self):
+        assert clean_organization("") == ""
+        assert clean_organization(None) == ""
+
+    def test_the_chip_and_the_colour_both_read_the_cleaned_name(self):
+        """Otherwise the title would still pick the colour, and the same
+        organization would be two colours depending on who represented it."""
+        assert (organization_label("Executive Director, The Salvation Army")
+                == "The Salvation Army")
+        assert (organization_color("Executive Director, The Salvation Army")
+                == organization_color("The Salvation Army"))
