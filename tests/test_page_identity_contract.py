@@ -169,20 +169,64 @@ class TestIndexCardStaysThin:
         assert "cardFooterHtml(" in block
 
 
-class TestTheTwoPagesAgreeOnMeetingSize:
-    """The card says "N other items" and the header says "N agenda items".
+class TestTheHeaderCountMatchesThePage:
+    """The header used to say "43 agenda items" above 73 rendered cards.
 
-    Both must be the same count, produced once in Python.  Counting the
-    detail page's rendered rows instead includes recesses and section
-    headers, which made a 43-item meeting report 73.
+    One number could not be honest about a page with three weights on
+    it, so the header names each: what was discussed, and what passed in
+    the consent block.  Both are counted once, in Python, from the same
+    list the page renders.
     """
 
-    def test_header_prefers_the_shared_count(self):
+    def test_header_reads_the_python_side_counts(self):
         source = _read(MEETING)
-        assert "data.item_count" in source
+        assert "data.discussed_count" in source
+        assert "data.consent_count" in source
 
-    def test_card_and_header_both_read_a_python_side_count(self):
+    def test_an_older_build_without_the_counts_still_reports_a_size(self):
+        assert "data.item_count" in _read(MEETING)
+
+    def test_card_reads_a_python_side_count(self):
         assert "total_items" in _read(INDEX)
+
+
+class TestRoutineRowsAreDemoted:
+    """Every meeting carries the same scaffolding, and it says nothing.
+
+    Call to order, conflict declarations, adjournment, and the headings
+    that stand over nothing were 26 of the 73 rows on June 24, each drawn
+    at the same weight as a $95M decision.  They keep their place and
+    their play buttons, in one closed strip.
+    """
+
+    def test_the_page_splits_routine_rows_out_of_the_cards(self):
+        source = _read(MEETING)
+        assert "i.is_routine" in source
+        assert "el.className = 'routine-strip'" in source
+
+    def test_the_strip_starts_closed(self):
+        """It is a <details> with no open attribute."""
+        source = _read(MEETING)
+        assert "createElement('details')" in source
+        assert "el.open = true" not in source
+
+    def test_a_routine_row_keeps_its_jump_to_the_video(self):
+        source = _read(MEETING)
+        block = source[source.index("function buildRoutineStripEl"):]
+        block = block[:block.index("function renderAgendaItems")]
+        assert "seekVideo(" in block
+
+    def test_a_routine_row_escapes_its_upstream_text(self):
+        source = _read(MEETING)
+        block = source[source.index("function buildRoutineStripEl"):]
+        block = block[:block.index("function renderAgendaItems")]
+        assert "${escapeHtml(item.title)}" in block
+        assert "${escapeHtml(item.section_number)}" in block
+
+    def test_the_strip_is_styled(self):
+        css = _read(CSS)
+        assert ".routine-strip" in css
+        assert ".routine-row" in css
 
 
 class TestConsentItemsAreNotLinkedToTheWrongAudio:

@@ -3,9 +3,12 @@
 from app.agenda_items import (
     categorize_topic,
     count_agenda_items,
+    count_consent_items,
+    count_discussed_items,
     format_outcome,
     is_major_decision,
     is_procedural,
+    mark_routine_rows,
 )
 
 
@@ -340,3 +343,99 @@ class TestCountAgendaItems:
 
     def test_empty_meeting(self):
         assert count_agenda_items([]) == 0
+
+
+# ── mark_routine_rows ────────────────────────────────────────────────
+
+
+def _row(number, title, **kw):
+    base = {
+        "section_number": number,
+        "title": title,
+        "content": "",
+        "recommendation": "",
+        "time_start_ms": 1000,
+        "timestamp_inherited": False,
+        "is_recess": False,
+    }
+    base.update(kw)
+    return base
+
+
+class TestMarkRoutineRows:
+    """Which rows are meeting furniture rather than meeting business."""
+
+    def _routine(self, items):
+        mark_routine_rows(items)
+        return [i["title"] for i in items if i["is_routine"]]
+
+    def test_procedural_rows_are_routine(self):
+        items = [_row("1.", "CALL TO ORDER"), _row("18.", "ADJOURNMENT")]
+        assert self._routine(items) == ["CALL TO ORDER", "ADJOURNMENT"]
+
+    def test_business_is_not_routine(self):
+        items = [_row("10.3.4", "East Side Leisure Centre", content="A report.")]
+        assert self._routine(items) == []
+
+    def test_procedural_row_with_its_own_account_stays(self):
+        """Question Period is where residents get answered. It is not furniture."""
+        items = [_row("6.", "QUESTION PERIOD", content="x" * 2089)]
+        assert self._routine(items) == []
+
+    def test_boilerplate_length_is_not_enough_to_stay(self):
+        """A row can be long and still only restate the agenda template."""
+        items = [_row("1.", "CALL TO ORDER", content="x" * 140)]
+        assert self._routine(items) == ["CALL TO ORDER"]
+
+    def test_heading_over_nothing_is_routine(self):
+        items = [
+            _row("9.2", "Standing Policy Committee Transportation",
+                 time_start_ms=None),
+            _row("10.1.1", "Right-of-Way Dedication", content="A report."),
+        ]
+        assert self._routine(items) == ["Standing Policy Committee Transportation"]
+
+    def test_heading_over_items_is_kept(self):
+        items = [
+            _row("10.3", "Community Services", time_start_ms=None),
+            _row("10.3.4", "East Side Leisure Centre", content="A report."),
+        ]
+        assert self._routine(items) == []
+
+    def test_prefix_match_is_by_section_not_by_digits(self):
+        """``1.` must not adopt ``10.1`` as its child."""
+        items = [
+            _row("1.", "UNFINISHED BUSINESS", time_start_ms=None),
+            _row("10.1", "Transportation", time_start_ms=None),
+            _row("10.1.1", "Right-of-Way Dedication", content="A report."),
+        ]
+        assert self._routine(items) == ["UNFINISHED BUSINESS"]
+
+    def test_recess_is_never_routine(self):
+        """It has its own row and its own duration; the strip would hide it."""
+        items = [_row("", "Recess", is_recess=True)]
+        assert self._routine(items) == []
+
+
+# ── count_discussed_items / count_consent_items ──────────────────────
+
+
+class TestHeaderCounts:
+    """The header's numbers have to be what the page draws."""
+
+    def _counted(self, items):
+        mark_routine_rows(items)
+        return count_discussed_items(items), count_consent_items(items)
+
+    def test_counts_only_what_is_drawn_at_full_weight(self):
+        items = [
+            _row("1.", "CALL TO ORDER"),
+            _row("9.2", "Transportation", time_start_ms=None),
+            _row("10.3.4", "East Side Leisure Centre", content="A report."),
+            _row("8.4.1", "TCU Place Loan", timestamp_inherited=True,
+                 recommendation="That a loan of $1.2M be approved."),
+        ]
+        assert self._counted(items) == (1, 1)
+
+    def test_empty_meeting(self):
+        assert self._counted([]) == (0, 0)

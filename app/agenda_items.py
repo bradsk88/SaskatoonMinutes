@@ -69,6 +69,75 @@ def is_section_header(item: dict) -> bool:
     return item.get("time_start_ms") is None or bool(item.get("timestamp_inherited"))
 
 
+# A Procedural Item is furniture until it carries a substantial account of
+# its own.  Length is a blunt test, but the two kinds separate cleanly:
+# across the June 24 council meeting, the rows that say something real —
+# Question Period (2,089 characters of residents' questions) and Council
+# Members (988 characters of acknowledgments) — sit far above the rows
+# that only restate the template: the call to order at 140 characters
+# ("The Chair will call the meeting to order..."), the adjournment at 38
+# ("The meeting adjourned at 4:21 p.m.").
+ROUTINE_CONTENT_FLOOR = 500
+
+
+def _section_prefix(item: dict) -> str:
+    """``8.1.`` for section number ``8.1``. Empty when unnumbered."""
+    number = (item.get("section_number") or "").strip().rstrip(".")
+    return f"{number}." if number else ""
+
+
+def mark_routine_rows(items: list[dict]) -> None:
+    """Flag each row as meeting furniture or as business, in place.
+
+    Furniture is the scaffolding every meeting carries and that never
+    reports anything: the call to order, the conflict declarations, the
+    adjournment, and the headings — ``URGENT BUSINESS``, ``GIVING
+    NOTICE`` — that stand over nothing.  Across 276 meetings, not one
+    instance of these has ever had a summary written for it.
+
+    A row stays business when it either holds substance of its own or has
+    items filed beneath it, so ``QUESTION PERIOD`` keeps its card and an
+    empty ``IN CAMERA SESSION`` does not.
+    """
+    prefixes = [_section_prefix(item) for item in items]
+    for item, prefix in zip(items, prefixes):
+        item["is_routine"] = _is_routine(item, prefix, prefixes)
+
+
+def _is_routine(item: dict, prefix: str, prefixes: list[str]) -> bool:
+    if item.get("is_recess"):
+        return False
+    if is_procedural(item.get("title") or ""):
+        return len((item.get("content") or "").strip()) < ROUTINE_CONTENT_FLOOR
+    if not is_section_header(item):
+        return False
+    # A heading that groups nothing groups nothing on the page either.
+    return not any(
+        other != prefix and prefix and other.startswith(prefix)
+        for other in prefixes
+    )
+
+
+def count_discussed_items(items: list[dict]) -> int:
+    """How many rows the detail page draws at full weight.
+
+    The header counts these so the number and the page cannot disagree —
+    they did, at 43 against 73 rendered cards.
+    """
+    return sum(
+        1 for item in items
+        if not item.get("is_recess")
+        and not item.get("is_routine")
+        and not is_section_header(item)
+        and not is_consent_item(item)
+    )
+
+
+def count_consent_items(items: list[dict]) -> int:
+    """How many rows passed in the consent block without individual debate."""
+    return sum(1 for item in items if is_consent_item(item))
+
+
 def count_agenda_items(items: list[dict]) -> int:
     """How many real agenda items a meeting has.
 

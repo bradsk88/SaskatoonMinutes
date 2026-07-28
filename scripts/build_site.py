@@ -25,7 +25,12 @@ sys.path.insert(0, PROJECT_ROOT)
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
-from app.agenda_items import count_agenda_items
+from app.agenda_items import (
+    count_agenda_items,
+    count_consent_items,
+    count_discussed_items,
+    mark_routine_rows,
+)
 from app.agenda_text import titleize
 from app.speakers import merge_remarks
 from app.summarizer import extract_meeting_topics, extract_badges
@@ -131,6 +136,8 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
             for item in items:
                 item["speakers"] = merge_remarks(item)
 
+            mark_routine_rows(items)
+
             topics = extract_meeting_topics(items, m.title, max_topics=8)
             topics_data[mid] = {
                 "topics": topics,
@@ -159,6 +166,10 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 # Shared with the index card's "N other items" so the two
                 # pages report the same meeting size.
                 "item_count": count_agenda_items(items),
+                # What the header says, and what the page draws. The
+                # header used to report 43 above 73 rendered cards.
+                "discussed_count": count_discussed_items(items),
+                "consent_count": count_consent_items(items),
             }
         except Exception as exc:
             print(f"    WARNING: Failed to get topics: {exc}")
@@ -173,6 +184,8 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 "date": m.date,
                 "start_time": _start_time_24h(m.start_time),
                 "item_count": 0,
+                "discussed_count": 0,
+                "consent_count": 0,
             }
     return topics_data, details_data
 

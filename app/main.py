@@ -9,7 +9,12 @@ import os
 from flask import Flask, current_app, render_template, jsonify, request
 from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
-from app.agenda_items import count_agenda_items
+from app.agenda_items import (
+    count_agenda_items,
+    count_consent_items,
+    count_discussed_items,
+    mark_routine_rows,
+)
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS, _SLUG_TO_TYPE
@@ -78,6 +83,8 @@ def api_meeting_detail(meeting_id: str):
         for item in items:
             item["badges"] = extract_badges(item)
 
+        mark_routine_rows(items)
+
         # Summarize if requested
         if request.args.get("summarize", "false").lower() == "true":
             title = request.args.get("title", "City Council Meeting")
@@ -94,6 +101,10 @@ def api_meeting_detail(meeting_id: str):
             # instead would include recesses and section headers and make
             # the card look like it had lost thirty items.
             "item_count": count_agenda_items(items),
+            # What the header says, and what the page draws. The header
+            # used to report 43 above 73 rendered cards.
+            "discussed_count": count_discussed_items(items),
+            "consent_count": count_consent_items(items),
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

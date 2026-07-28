@@ -146,12 +146,23 @@
             <a href="https://pub-saskatoon.escribemeetings.com/Meeting.aspx?Id=${encodeURIComponent(meetingId)}&Agenda=Agenda&lang=English"
                target="_blank" rel="noopener">View on eSCRIBE &rarr;</a>`;
         const when = [date, time].filter(Boolean).join(' &middot; ');
-        // Prefer the count the index card also uses. Falling back to the
-        // rendered row count would count recesses and section headers,
-        // and the two pages would disagree about the same meeting.
-        const count = data.item_count != null ? data.item_count : itemCount;
+        // The header counts what the page draws, split by the weight it
+        // draws them at. One number could not do this honestly: it said
+        // "43 agenda items" above 73 rendered cards, because the count
+        // excluded section headers and the page drew them anyway.
+        const discussed = data.discussed_count;
+        const consent = data.consent_count;
+        const counts = discussed != null
+            ? [
+                `${discussed} discussed`,
+                consent ? `${consent} approved without debate` : '',
+              ].filter(Boolean).join(' &middot; ')
+            // An older build has neither count. Fall back rather than
+            // print nothing where the meeting's size belongs.
+            : (data.item_count != null ? `${data.item_count} agenda items`
+               : (itemCount !== null ? `${itemCount} agenda items` : ''));
         const meta = [
-            count !== null ? `${count} agenda items` : '',
+            counts,
             data.video_url ? 'Video available' : '',
         ].filter(Boolean).join(' &middot; ');
         return `
@@ -517,8 +528,44 @@
         return el;
     }
 
-    function renderAgendaItems(items, animate) {
+    // Every meeting carries the same scaffolding — the call to order, the
+    // conflict declarations, the adjournment, and the headings that stand
+    // over nothing. Across 276 meetings not one of these has ever had a
+    // summary written for it, and drawn as full cards they were 26 of the
+    // 73 rows on June 24. They keep their place in the record, and their
+    // play buttons, in one strip instead of twenty-six cards.
+    function buildRoutineStripEl(items) {
+        const rows = items.map(item => {
+            const playHtml = item.time_start_ms !== null
+                ? `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
+                     data-tooltip="Jump to this point in the video">
+                     &#9654; ${item.time_start_formatted}
+                   </button>`
+                : '';
+            return `<li class="routine-row">
+                <span class="item-number">${escapeHtml(item.section_number)}</span>
+                <span class="routine-title">${escapeHtml(item.title)}</span>
+                ${playHtml}
+            </li>`;
+        }).join('');
+        const el = document.createElement('details');
+        el.className = 'routine-strip';
+        el.innerHTML = `
+            <summary class="routine-summary">
+                Routine meeting business
+                <span class="routine-count">${items.length}</span>
+            </summary>
+            <ul class="routine-list">${rows}</ul>
+        `;
+        return el;
+    }
+
+    function renderAgendaItems(allItems, animate) {
         const container = document.getElementById('agenda-items');
+        // An older build has no flag on its rows, and everything stays a
+        // card — the same page this one replaced.
+        const items = allItems.filter(i => !i.is_routine);
+        const routine = allItems.filter(i => i.is_routine);
         const outOfOrder = computeOutOfOrder(items);
 
         container.innerHTML = '';
@@ -545,6 +592,7 @@
             }
             container.appendChild(el);
         });
+        if (routine.length) container.appendChild(buildRoutineStripEl(routine));
         applyTranscriptClamps();
 
         if (animate) {
