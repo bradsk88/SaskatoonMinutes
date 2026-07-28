@@ -551,6 +551,12 @@ _UNKNOWN_LIMIT_ATTEMPTS = 2
 # retryDelay cannot park the run for hours.
 _MAX_RETRY_WAIT_SECONDS = 60
 
+# A 503 is the model being busy, not us being wrong.  It carries no
+# RetryInfo, so the waits are ours: a few seconds, then longer, spread
+# over about a minute.  One overloaded moment on one agenda item used to
+# fail a run that had already summarized 27 meetings.
+_UNAVAILABLE_WAITS = (5, 15, 40)
+
 
 def _error_payload(exc: Exception) -> dict:
     """The Gemini error body, whichever of its two shapes it arrived in.
@@ -596,6 +602,17 @@ def _is_rate_limited(exc: Exception) -> bool:
     """True for a 429 — either flavour."""
     return getattr(exc, "code", None) == 429 or (
         getattr(exc, "status", None) == "RESOURCE_EXHAUSTED"
+    )
+
+
+def _is_unavailable(exc: Exception) -> bool:
+    """True for a 503 — the model is overloaded, not the request wrong.
+
+    Narrow on purpose.  A 500 stays unretried: that is the server saying
+    something went wrong, and repeating the same call rarely changes it.
+    """
+    return getattr(exc, "code", None) == 503 or (
+        getattr(exc, "status", None) == "UNAVAILABLE"
     )
 
 
@@ -666,18 +683,32 @@ class GeminiExtractor:
     def _call_with_retry(
         self, prompt: str, allowed_cats: list[str], caller=None,
     ) -> str:
-        """:meth:`_call`, waiting out a rate limit but not a spent quota.
+        """:meth:`_call`, waiting out a rate limit or an overload.
 
         A per-day quota raises :class:`QuotaExhausted` on the first
-        rejection and never retries.  Anything else propagates for the
-        caller to turn into an :class:`ExtractionFailed`.
+        rejection and never retries.  A 503 is waited out on its own
+        budget.  Anything else propagates for the caller to turn into an
+        :class:`ExtractionFailed`.
         """
         caller = caller if caller is not None else self._call
         attempt = 0
+        overloads = 0
         while True:
             try:
                 return caller(prompt, allowed_cats)
             except Exception as exc:
+                if _is_unavailable(exc):
+                    if overloads >= len(_UNAVAILABLE_WAITS):
+                        raise
+                    wait = _UNAVAILABLE_WAITS[overloads]
+                    overloads += 1
+                    print(
+                        f"    Model overloaded, waiting {wait}s "
+                        f"(attempt {overloads}/{len(_UNAVAILABLE_WAITS)})",
+                        flush=True,
+                    )
+                    time.sleep(wait)
+                    continue
                 if not _is_rate_limited(exc):
                     raise
                 if _is_daily_quota(exc):

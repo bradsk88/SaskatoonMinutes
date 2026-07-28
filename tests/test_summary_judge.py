@@ -1,6 +1,9 @@
 """Tests for app.summary_judge — the LLM-as-judge quality gate."""
 
 import json
+import ssl
+
+import pytest
 
 from app.summary_judge import (
     FAITHFULNESS_CONCERN,
@@ -10,6 +13,14 @@ from app.summary_judge import (
     _sanitize_verdict,
     build_judge_prompt,
 )
+
+
+@pytest.fixture
+def no_waiting(monkeypatch):
+    """Records what the retry would have slept instead of sleeping."""
+    slept = []
+    monkeypatch.setattr("app.summary_judge.time.sleep", slept.append)
+    return slept
 
 
 def verdict(**over) -> dict:
@@ -66,6 +77,20 @@ class TestJudgePrompt:
 
     def test_no_chips_renders_as_none(self):
         assert "(none)" in build_judge_prompt("T", "src", "desc", [])
+
+    def test_the_title_counts_as_source(self):
+        """The extractor is given the title, so a claim drawn from it is
+        grounded.  Left outside the source block it read as fabrication."""
+        prompt = build_judge_prompt("Green Infrastructure Research", "rec", "d", [])
+        body = prompt.split("--- SOURCE MATERIAL ---")[1].split("--- END SOURCE ---")[0]
+        assert "Green Infrastructure Research" in body
+
+    def test_the_title_is_still_shown_on_its_own(self):
+        """non_redundancy scores the summary against the title."""
+        prompt = build_judge_prompt("Green Infrastructure Research", "rec", "d", [])
+        assert prompt.split("--- SOURCE MATERIAL ---")[0].count(
+            "Green Infrastructure Research"
+        ) == 1
 
     def test_the_generating_prompt_is_not_shown_to_the_judge(self):
         """The judge grades truthfulness, not compliance with instructions."""
@@ -132,6 +157,57 @@ class TestJudgeCall:
         judge = SummaryJudge(api_key="k", generate=generate)
         assert judge.judge("T", "src", None, [])["faithfulness"] == 1
         assert "(none)" in captured["prompt"]
+
+
+class TestTransientFailuresAreRetried:
+    """A judge that does not return fails the check, so a dropped TLS
+    record was enough to turn CI red on otherwise fine summaries."""
+
+    def _replaying(self, responses, calls):
+        def generate(prompt):
+            calls.append(prompt)
+            result = responses.pop(0) if responses else None
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        return SummaryJudge(api_key="k", generate=generate)
+
+    def test_an_ssl_error_is_retried(self, no_waiting):
+        calls = []
+        judge = self._replaying(
+            [ssl.SSLError("bad record mac"), json.dumps(verdict())], calls,
+        )
+        assert judge.judge("T", "src", "desc", [])["faithfulness"] == 5
+        assert len(calls) == 2
+
+    def test_an_overloaded_model_is_retried(self, no_waiting):
+        exc = Exception("overloaded")
+        exc.code = 503
+        calls = []
+        judge = self._replaying([exc, json.dumps(verdict())], calls)
+        assert judge.judge("T", "src", "desc", []) is not None
+
+    def test_it_gives_up_rather_than_grinding(self, no_waiting):
+        calls = []
+        judge = self._replaying([ssl.SSLError("bad record mac")] * 9, calls)
+        assert judge.judge("T", "src", "desc", []) is None
+        assert len(calls) == 3
+
+    def test_a_bad_request_is_not_retried(self, no_waiting):
+        exc = Exception("invalid argument")
+        exc.code = 400
+        calls = []
+        judge = self._replaying([exc], calls)
+        assert judge.judge("T", "src", "desc", []) is None
+        assert len(calls) == 1
+
+    def test_a_malformed_answer_is_not_retried(self):
+        """The model answered.  Asking again is a different question."""
+        calls = []
+        judge = self._replaying(["not json"], calls)
+        assert judge.judge("T", "src", "desc", []) is None
+        assert len(calls) == 1
 
 
 class TestGateThresholds:

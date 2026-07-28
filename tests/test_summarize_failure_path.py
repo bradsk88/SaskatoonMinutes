@@ -186,6 +186,42 @@ class TestUnrecognised429:
         assert len(calls) == 2
 
 
+# ── An overloaded model is waited out ──────────────────────────────────────
+
+
+class TestOverloadIsRetried:
+    """A 503 is the model being busy, not the request being wrong.
+
+    One transient overload on item 53 failed a run that had already
+    summarized 27 meetings.
+    """
+
+    def test_a_503_retries_and_succeeds(self, no_waiting):
+        ex = _extractor([FakeAPIError(code=503), _answer()])
+        desc, _ = ex.extract(ITEM, TRANSCRIPT, exclude=set())
+        assert desc
+
+    def test_it_backs_off_further_each_time(self, no_waiting):
+        ex = _extractor([FakeAPIError(code=503)] * 2 + [_answer()])
+        ex.extract(ITEM, TRANSCRIPT, exclude=set())
+        assert no_waiting == [5, 15]
+
+    def test_a_persistent_overload_still_fails_the_item(self, no_waiting):
+        calls = []
+        ex = _extractor([FakeAPIError(code=503)], calls=calls)
+        with pytest.raises(ExtractionFailed):
+            ex.extract(ITEM, TRANSCRIPT, exclude=set())
+        assert len(calls) == 4
+
+    def test_the_unavailable_status_alone_is_enough(self, no_waiting):
+        """The client does not always populate ``code``."""
+        exc = Exception("overloaded")
+        exc.status = "UNAVAILABLE"
+        ex = _extractor([exc, _answer()])
+        desc, _ = ex.extract(ITEM, TRANSCRIPT, exclude=set())
+        assert desc
+
+
 # ── Everything else that is not an answer ──────────────────────────────────
 
 

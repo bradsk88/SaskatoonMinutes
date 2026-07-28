@@ -20,8 +20,16 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
+import time
 
 GEMINI_MODEL = "gemini-2.5-flash"
+
+# The judge call fails the check when it does not return, so a dropped
+# TLS record — twice in one CI run — turned into "2 summaries could not
+# be judged" and a red build.  Waits, not attempts, so the shape of the
+# backoff is visible.
+_TRANSIENT_WAITS = (2, 8)
 
 # Scores are 1-5.  The gate is deliberately set below "excellent": the
 # judge is here to catch fabrication and vagueness, not to enforce a
@@ -113,6 +121,15 @@ def build_judge_prompt(
         # the transcript is.  Flash takes a 1M-token context; a 117k-char
         # agenda item fits with room to spare.
         "--- SOURCE MATERIAL ---",
+        # The title is inside the source block because the extractor is
+        # given it and is entitled to draw on it.  Left outside, a chip
+        # grounded in the title — "green infrastructure research" on an
+        # item whose recommendation never uses the phrase — came back as
+        # an unsupported claim and scored the item as fabrication.  It
+        # still appears above on its own, which is what non_redundancy
+        # measures against.
+        f"Agenda item title: {title}",
+        "",
         source,
         "--- END SOURCE ---",
         "",
@@ -126,6 +143,19 @@ def build_judge_prompt(
         "",
         "Return the JSON object.",
     ])
+
+
+def _is_transient(exc: Exception) -> bool:
+    """True for failures where the same call again is likely to work.
+
+    A broken TLS record or a busy model says nothing about the request; a
+    400 or a bad key says everything, and retrying only costs time.
+    """
+    if isinstance(exc, (ssl.SSLError, ConnectionError, TimeoutError)):
+        return True
+    if getattr(exc, "code", None) in (429, 503):
+        return True
+    return getattr(exc, "status", None) in ("RESOURCE_EXHAUSTED", "UNAVAILABLE")
 
 
 class SummaryJudge:
@@ -158,6 +188,18 @@ class SummaryJudge:
         )
         return response.text or "{}"
 
+    def _call_with_retry(self, prompt: str) -> str:
+        """:meth:`_call`, waiting out a transient failure."""
+        for wait in (*_TRANSIENT_WAITS, None):
+            try:
+                return self._call(prompt)
+            except Exception as exc:
+                if wait is None or not _is_transient(exc):
+                    raise
+                print(f"    judge call failed ({exc}), retrying in {wait}s", flush=True)
+                time.sleep(wait)
+        raise AssertionError("unreachable")
+
     def judge(
         self,
         title: str,
@@ -172,7 +214,7 @@ class SummaryJudge:
         """
         prompt = build_judge_prompt(title, source, description or [], chips)
         try:
-            parsed = json.loads(self._call(prompt))
+            parsed = json.loads(self._call_with_retry(prompt))
         except Exception as exc:
             print(f"    judge failed: {exc}", flush=True)
             return None
