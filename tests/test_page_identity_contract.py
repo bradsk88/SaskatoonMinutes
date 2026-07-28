@@ -121,6 +121,18 @@ class TestEveryPaletteSlotIsStyled:
         assert "background: transparent;" in stance[:400]
         assert "border: 1px solid currentColor;" in stance[:400]
 
+    def test_every_stance_badge_is_the_same_width(self):
+        """"Spoke" is five characters and "Raised concerns" is fifteen.
+
+        Ragged badge edges down a column of speaker rows read as a layout
+        fault rather than as three different words.
+        """
+        css = _read(CSS)
+        block = css[css.index(".badge-stance-support,"):]
+        block = block[: block.index("}")]
+        assert "min-width:" in block
+        assert "justify-content: center;" in block
+
     def test_both_pages_read_the_same_two_fields(self):
         """One place decides the label and the colour; neither page recomputes."""
         for page in (INDEX, MEETING):
@@ -396,3 +408,37 @@ class TestACardRowLinksToItsOwnItem:
         source = _read(MEETING)
         block = source[source.index("loadMeeting().then("):]
         assert "window.location.hash.startsWith('#item-')" in block
+
+
+class TestACardRowIsClickableForItsWholeHeight:
+    """A card exists to be opened.
+
+    The row's vertical space used to sit on the table cell, outside the
+    link, so most of a row's height did nothing when clicked and only the
+    text lit up on hover. The space belongs to the link instead; the cell
+    keeps a small gutter so two rows' hover states do not touch.
+    """
+
+    def _rule(self, css, selector):
+        """The rule for *selector* exactly.
+
+        Anchored to the start of a line: ``.topic-speaker-row
+        .topic-content`` also contains ``.topic-content``, and matching it
+        would test the wrong rule.
+        """
+        start = css.index("\n" + selector)
+        return css[start : css.index("}", start)]
+
+    def test_the_cell_no_longer_owns_the_rows_height(self):
+        rule = self._rule(_read(CSS), ".topics-table td {")
+        assert "padding: 0.9rem" not in rule
+
+    def test_the_link_owns_it_instead(self):
+        rule = self._rule(_read(CSS), ".topic-content {")
+        assert "padding:" in rule
+
+    def test_the_link_reaches_the_cells_edges(self):
+        """Negative horizontal margin, so the text does not move."""
+        rule = self._rule(_read(CSS), ".topic-content {")
+        assert "margin: 0 -" in rule
+

@@ -1121,6 +1121,12 @@ main {
     background: transparent;
     border: 1px solid currentColor;
     font-weight: 600;
+    /* One width for all three. "Spoke" is five characters and "Raised
+       concerns" is fifteen, and ragged badge edges down a column of
+       speaker rows read as a layout fault rather than as three different
+       words. Wide enough for the longest; the others centre in it. */
+    min-width: 6.5rem;
+    justify-content: center;
 }
 
 .badge-stance-support { color: #15803d; }
@@ -1179,10 +1185,14 @@ main {
 }
 
 /* A row's own parts sit closer together than two rows do, or five rows
-   read as one block of text. The vertical padding here is what separates
-   them; the gaps inside a row (below) are deliberately smaller. */
+   read as one block of text. That separation is now paid for by
+   ``.topic-content`` below rather than here, because padding on the cell
+   is height the row has and the link does not: most of a row was not
+   clickable, which on a card whose whole job is to be opened is the
+   wrong place to spend it. What is left here is the gutter that keeps
+   two rows' hover states from touching. */
 .topics-table td {
-    padding: 0.9rem 0.5rem;
+    padding: 0.15rem 0.5rem;
     border-bottom: 1px solid var(--color-border);
     vertical-align: top;
 }
@@ -1201,9 +1211,15 @@ main {
     gap: 0.5rem;
 }
 
+/* The row's vertical rhythm lives here, so the space belongs to the
+   link. Negative horizontal margin lets it reach the cell's edges
+   without moving the text, so the whole row lights up on hover and the
+   whole row is a tap target. */
 .topic-content {
     flex: 1;
     min-width: 0;
+    padding: 0.75rem 0.5rem;
+    margin: 0 -0.5rem;
 }
 
 a.topic-link {
@@ -1211,8 +1227,6 @@ a.topic-link {
     color: inherit;
     display: block;
     border-radius: 6px;
-    padding: 2px 4px;
-    margin: -2px -4px;
     transition: background 0.15s;
 }
 
