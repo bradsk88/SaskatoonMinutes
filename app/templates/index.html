@@ -287,20 +287,32 @@
                       + `</span>`
                     : `<span class="badge topic-badge badge-${oClass}">${escapeAttr(t.outcome)}</span>`;
 
-            // Link to the agenda item on the detail page, seeking the
-            // video to it. A consent item's timestamp is inherited from
-            // its parent section, so it identifies the clerk reading the
-            // block into the record and never the item — the detail page
-            // already refuses it, and offering it here sent readers to
-            // the wrong audio. Linking a consent item properly needs an
-            // anchor that does not depend on video position -- see TODO
-            // item 7.
+            // Link to the row's own agenda item, not to the top of the
+            // meeting. Two separate things travel in the href and they
+            // answer different questions:
+            //
+            //   ?t=<ms>     seek the video to this moment
+            //   #item-<id>  put the reader on this item
+            //
+            // A consent item's timestamp is inherited from its parent
+            // section, so it identifies the clerk reading the block into
+            // the record and never the item — offering it sent readers
+            // to the wrong audio. It gets the anchor and no seek, which
+            // is the first time the rows most likely to be missed have
+            // been addressable at all.
+            //
             // There is no separate play button: it pointed at this very
             // href, so it was a second tap target for the same
             // destination, taking width from the summary beside it.
             let detailHref = openHref || '';
-            if (detailHref && t.time_start_ms != null && !t.is_consent) {
-                detailHref += `?t=${t.time_start_ms}`;
+            if (detailHref) {
+                if (t.time_start_ms != null && !t.is_consent) {
+                    detailHref += `?t=${t.time_start_ms}`;
+                }
+                // Recess rows all share -1 and cannot be addressed.
+                if (t.item_id != null && t.item_id >= 0) {
+                    detailHref += `#item-${t.item_id}`;
+                }
             }
 
             // A guest speaker's row. It earns its place the same way a

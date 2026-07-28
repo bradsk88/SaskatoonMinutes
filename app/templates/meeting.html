@@ -643,7 +643,7 @@
                 ], { duration: 450, delay: i * STAGGER, fill: 'forwards', easing: 'ease-out' });
             });
         }
-        scrollToAnchoredItem();
+        scrollToAnchoredItem(false);
     }
 
     // The browser resolves #item-58 while the page is still a skeleton —
@@ -656,15 +656,18 @@
     // pinned to the top, because the sticky player owns the top of the
     // viewport, and flashed, because a page that jumps without saying
     // where looks broken.
-    function scrollToAnchoredItem() {
+    function scrollToAnchoredItem(smooth) {
         const hash = window.location.hash;
         if (!hash.startsWith('#item-')) return;
-        revealAgendaItem(document.getElementById(hash.slice(1)));
+        revealAgendaItem(document.getElementById(hash.slice(1)), smooth);
     }
 
     // Same page, different item: a hash change moves nothing on its own
-    // once the page is already drawn.
-    window.addEventListener('hashchange', scrollToAnchoredItem);
+    // once the page is already drawn. Smooth here, because the reader is
+    // already looking at the page.
+    window.addEventListener('hashchange', function() {
+        scrollToAnchoredItem(true);
+    });
 
     function applyTranscriptClamps() {
         const CLAMP_HEIGHT = 96; // ~6.2em at default font size
@@ -780,18 +783,43 @@
         observer.observe(sentinel);
     }
 
-    function revealAgendaItem(el) {
+    // *smooth* is right when the reader is already on the page and asked
+    // to move — the animation shows them where they went. It is wrong on
+    // arrival: landing from a feed entry means scrolling past seventy
+    // items they did not ask to see, and the page is still settling, so
+    // an animated scroll can be overtaken by layout and stop short.
+    function centreOn(el, smooth) {
+        const rect = el.getBoundingClientRect();
+        const offset = window.scrollY + rect.top - (window.innerHeight / 2);
+        window.scrollTo({
+            top: Math.max(0, offset),
+            behavior: smooth ? 'smooth' : 'auto',
+        });
+    }
+
+    // *smooth* is right when the reader is already on the page and asked
+    // to move — the animation shows them where they went. It is wrong on
+    // arrival: landing from a feed entry means scrolling past seventy
+    // items they did not ask to see.
+    //
+    // Arrival also scrolls twice. Scrolling activates the sticky player,
+    // which changes the height of everything above the target, so the
+    // first jump lands short — that is what the delay below was always
+    // for. Waiting for it is fine when a reader clicked something and is
+    // watching; on arrival the page would sit at the top for a beat
+    // first, and a slow browser can capture the page before it moves at
+    // all. So: put them there now, then correct.
+    function revealAgendaItem(el, smooth = true) {
         if (!el) return;
         // Expand clamped transcript so the user can read it
         const transcript = el.querySelector('.transcript-clamped');
         if (transcript) {
             transcript.classList.remove('transcript-clamped');
         }
+        if (!smooth) centreOn(el, false);
         // Use a small delay so the sticky player has time to activate
         setTimeout(function() {
-            const rect = el.getBoundingClientRect();
-            const offset = window.scrollY + rect.top - (window.innerHeight / 2);
-            window.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' });
+            centreOn(el, smooth);
             el.classList.remove('highlight');
             void el.offsetWidth;
             el.classList.add('highlight');
@@ -858,8 +886,12 @@
     });
 
     loadMeeting().then(() => {
-        const params = new URLSearchParams(window.location.search);
-        const t = params.get('t');
+        // A card row now sends both: ?t= to seek the video, #item-<id>
+        // to place the reader. The anchor already scrolled as the items
+        // were drawn, so re-running the seek's scroll would reveal the
+        // same row a second time and flash it twice.
+        if (window.location.hash.startsWith('#item-')) return;
+        const t = new URLSearchParams(window.location.search).get('t');
         if (t) {
             scrollToAgendaItem(parseInt(t, 10));
         }

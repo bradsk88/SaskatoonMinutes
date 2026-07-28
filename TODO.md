@@ -197,8 +197,21 @@ gets: centred, because the sticky player owns the top of the viewport,
 and flashed, so a page that jumps says where it went. Recess rows share
 `item_id` -1 and are excluded.
 
-Still open from the original note: the index card links to the meeting
-page, not to the item. Nothing forces that now.
+The index card links to the item too, in the same pass. A row's href now
+carries both parts, which answer different questions:
+
+- `?t=<ms>` — seek the video to this moment.
+- `#item-<id>` — put the reader on this item.
+
+A consent item gets the anchor and no seek, so for the first time the
+rows most likely to be missed can be pointed at. The detail page skips
+the seek's scroll when a hash is present, or the row was revealed twice.
+
+Verified by running the built page under jsdom rather than by eye: 36
+items drawn, 36 with ids, no `item--1` from a recess, and one instant
+scroll plus its correction on arrival against one smooth scroll for a
+`?t=` click. A browser screenshot could not settle it — the capture
+lands before the scroll.
 
 ## 8. Let the details page carry the density
 

@@ -355,6 +355,44 @@ class TestConsentItemsAreNotLinkedToTheWrongAudio:
 
     def test_no_timestamp_deep_link_for_a_consent_topic(self):
         source = _read(INDEX)
-        block = source[source.index("let detailHref = openHref"):]
-        block = block[: block.index("}")]
+        block = _href_block(source)
         assert "!t.is_consent" in block
+
+
+def _href_block(source):
+    """The card's link-building block, as source text."""
+    start = source.index("let detailHref = openHref")
+    return source[start : source.index("// A guest speaker's row", start)]
+
+
+class TestACardRowLinksToItsOwnItem:
+    """The card used to send every row to the top of the meeting page.
+
+    On a 70-row agenda that is a reader hunting for the thing they
+    clicked.  ``#item-<id>`` does not depend on video position, so it
+    works for the consent rows that ``?t=`` never could -- the ones the
+    card is most likely to be the only mention of.
+    """
+
+    def test_the_row_carries_an_anchor(self):
+        assert "#item-${t.item_id}" in _href_block(_read(INDEX))
+
+    def test_a_recess_is_not_linked(self):
+        """Every recess shares item_id -1, so it has no address."""
+        assert "t.item_id >= 0" in _href_block(_read(INDEX))
+
+    def test_a_topic_row_carries_the_id_the_link_needs(self):
+        from app.summarizer import extract_meeting_topics
+        items = [{
+            "item_id": 58, "title": "Wildwood Golf Course", "content": "",
+            "section_number": "8.1", "recommendation": "That it be approved",
+            "vote_result": "Carried (6 to 5)",
+        }]
+        rows = extract_meeting_topics(items, "City Council")
+        assert rows[0]["item_id"] == 58
+
+    def test_the_page_does_not_scroll_twice_when_both_arrive(self):
+        """A row sends ?t= and #item- together; the anchor already scrolled."""
+        source = _read(MEETING)
+        block = source[source.index("loadMeeting().then("):]
+        assert "window.location.hash.startsWith('#item-')" in block

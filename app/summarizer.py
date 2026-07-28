@@ -225,6 +225,10 @@ def _format_speaker_row(speaker: dict, topic_row: dict) -> dict:
         # with the subject they came to talk about.
         "badges": [b for b in topic_row.get("badges", []) if b["type"].startswith("cat-")],
         "time_start_ms": topic_row.get("time_start_ms"),
+        # The item they spoke to, so their row lands on it rather than
+        # at the top of the page.  A speaker has no anchor of their own
+        # -- see the open note in the handover.
+        "item_id": topic_row.get("item_id"),
         "rank": topic_row.get("rank"),
     }
 
@@ -288,6 +292,10 @@ def _format_topic(item: dict) -> dict:
         "is_consent": item.get("timestamp_inherited", False),
         "badges": _card_badges(item),
         "time_start_ms": item.get("time_start_ms"),
+        # What the card links to.  A timestamp seeks the video and a
+        # consent item has none of its own, so before this the rows most
+        # worth pointing at were the ones the card could not point at.
+        "item_id": item.get("item_id"),
     }
 
 
