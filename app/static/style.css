@@ -41,13 +41,18 @@ header {
     z-index: 100;
 }
 
+/* Two lines at every width: the name and the feed icon share the first,
+   the tagline sits under both. The icon belongs beside the name it
+   subscribes to, and putting the tagline on the same line as either one
+   left the icon floating a long way from anything it relates to. */
 nav {
     max-width: 1100px;
     margin: 0 auto;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 1rem;
-    height: 56px;
+    gap: 0.1rem 1rem;
+    padding: 0.55rem 0;
 }
 
 .logo {
@@ -57,13 +62,15 @@ nav {
     font-size: 1.1rem;
 }
 
+/* Its own line, under the two above it. */
 .tagline {
     color: rgba(255, 255, 255, 0.75);
     font-size: 0.85rem;
+    flex-basis: 100%;
 }
 
-/* Pinned to the far right of the bar at every width. The auto margin is
-   what does it, so the tagline keeps its natural width instead of being
+/* Pinned to the far right of the first line. The auto margin is what
+   does it, so the name keeps its natural width instead of being
    stretched to fill the gap. */
 .feed-icon {
     margin-left: auto;
@@ -2141,21 +2148,6 @@ footer a:hover {
         display: inline-block;
     }
 
-    /* Wrapping rather than a column: the name and the feed icon belong
-       on one line, with the icon still pinned right, and only the
-       tagline drops to a second line. A column would have put the icon
-       on a line of its own. */
-    nav {
-        flex-wrap: wrap;
-        height: auto;
-        padding: 0.75rem 0;
-        gap: 0.25rem 1rem;
-    }
-
-    .tagline {
-        flex-basis: 100%;
-    }
-
     .agenda-controls {
         flex-direction: column;
         align-items: flex-start;
@@ -2177,6 +2169,54 @@ footer a:hover {
        card. */
     .topic-name-meta {
         margin-left: 0;
+    }
+
+    /* A speaker row is the exception to the stacking above. What stacks
+       badly is a long agenda title; a person's name is short, so "In
+       support" and "Raised concerns" fit beside it and stay right-
+       aligned, as they are on a wide display.
+
+       The organization is what does not fit -- "Greater Saskatoon
+       Chamber of Commerce" is 37 characters -- so it alone drops to a
+       line of its own. Dissolving the meta group is what lets the two
+       part company at this width; they travel together everywhere else. */
+    .topic-speaker-row .topic-name {
+        display: grid;
+        /* minmax(0, …) rather than 1fr: the row sits in a table cell, so
+           a track sized to its content lets a long organization name
+           widen the whole table and push the card's right edge off the
+           screen. */
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: baseline;
+        gap: 0.3rem 0.5rem;
+    }
+
+    .topic-speaker-row .topic-name-meta {
+        display: contents;
+    }
+
+    .topic-speaker-row .topic-name > span:first-child {
+        grid-area: 1 / 1;
+    }
+
+    .topic-speaker-row .topic-name .topic-badge {
+        grid-area: 1 / 2;
+        justify-self: end;
+    }
+
+    /* Its own row, and only as wide as the name it carries -- a chip
+       stretched across the card reads as a banner, not as a label. */
+    .topic-speaker-row .topic-name .org-chip {
+        grid-area: 2 / 1 / 2 / -1;
+        justify-self: start;
+        /* The longest name in the archive is 37 characters, which does
+           not fit a 390px card on one line. The row sits in a table
+           cell, and a chip that cannot break is a column that cannot
+           narrow -- it widened the table until the card's right edge
+           left the screen. Wrapping is what keeps the whole name and
+           the card intact; the pill grows a line instead. */
+        white-space: normal;
+        max-width: 100%;
     }
 
     .item-header {
