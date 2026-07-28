@@ -13,6 +13,7 @@ from app.item_categorizer import (
     SEMANTIC_CATEGORIES,
     SEMANTIC_DEFINITIONS,
     USEFULNESS_LEVELS,
+    ZONING_DISTRICTS,
     GeminiExtractor,
     _build_prompt,
     _summary_schema,
@@ -1269,6 +1270,43 @@ class TestPublicHearingGuard:
         item["vote_result"] = "CARRIED UNANIMOUSLY"
         prompt = _build_prompt(item, "", ["Who's Affected"])
         assert "PUBLIC HEARING item" not in prompt
+
+
+class TestZoningDistrictReference:
+    """A code like "M1 District" is decoded from a sourced table, never
+    from the model's memory -- see ZONING_DISTRICTS.  The model once
+    rendered M1 as "light industrial"; M1 is actually Saskatoon's LOCAL
+    INSTITUTIONAL service district, and the judge correctly flagged the
+    guess as unsupported."""
+
+    def test_a_zoning_code_in_the_title_gets_decoded(self):
+        item = _summary_item(30, "Proposed Rezoning - From M1 District to CR2 District")
+        prompt = _build_prompt(item, "", ["Who's Affected"])
+        assert "ZONING DISTRICT REFERENCE" in prompt
+        assert f"M1: {ZONING_DISTRICTS['M1']}" in prompt
+        assert f"CR2: {ZONING_DISTRICTS['CR2']}" in prompt
+
+    def test_an_item_with_no_zoning_code_gets_no_reference(self):
+        item = _summary_item(31, "Shaw Centre Score Clock")
+        prompt = _build_prompt(item, "", ["Who's Affected"])
+        assert "(Saskatoon Zoning Bylaw No. 9990)" not in prompt
+
+    def test_a_code_named_only_in_the_transcript_still_gets_decoded(self):
+        item = _summary_item(32, "Rezoning Application")
+        prompt = _build_prompt(item, "the rezoning to RM2 to permit six units", ["Who's Affected"])
+        assert f"RM2: {ZONING_DISTRICTS['RM2']}" in prompt
+
+    def test_a_code_missing_from_the_table_is_left_undecoded(self):
+        """RA1 is deliberately not in ZONING_DISTRICTS -- exactly the case
+        the prompt's own example warns about."""
+        item = _summary_item(33, "Rezoning - RA1 District")
+        prompt = _build_prompt(item, "", ["Who's Affected"])
+        assert "(Saskatoon Zoning Bylaw No. 9990)" not in prompt
+
+    def test_the_prompt_forbids_decoding_from_memory(self):
+        item = _summary_item(34, "Rezoning - M1 District")
+        prompt = _build_prompt(item, "", ["Who's Affected"])
+        assert "Never decode a code from memory" in prompt
 
 
 class TestOneChipPerCategory:

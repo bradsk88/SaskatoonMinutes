@@ -985,6 +985,92 @@ _RECOMMENDS_TO_COUNCIL_RE = re.compile(
 )
 
 
+# Saskatoon's Zoning Bylaw No. 9990 (2024, in effect since 2025-01-03,
+# superseding Bylaw 8770) names each district with a bare code -- "M1
+# District", "RM2" -- and rezoning agendas never spell out what the code
+# means.  Left to decode one from memory, the model once rendered "M1
+# District" as "light industrial": plausible-sounding, and wrong -- M1 is
+# Saskatoon's LOCAL INSTITUTIONAL service district, nowhere near
+# industrial.  The judge correctly flagged it as unsupported by the
+# source, because it was.  This table is the only thing a translation may
+# draw on; a code missing from it is left exactly as written rather than
+# guessed at.  Source: saskatoon.ca zoning bylaw district listings,
+# cross-checked against two independent summaries.
+ZONING_DISTRICTS: dict[str, str] = {
+    "R1": "Low Density Residential District 1",
+    "R1A": "Low Density Residential District 1A",
+    "R1B": "Low Density Residential District 1B",
+    "R2": "Low Density Residential District 2",
+    "R2A": "Low Density Residential Infill District",
+    "RMHC": "Mobile Home Court District",
+    "RMHL": "Mobile Home Lot District",
+    "RMTN": "Townhouse Residential District",
+    "RMTN1": "Medium Density Townhouse Residential District 1",
+    "RM1": "Low Density Multiple-Unit Dwelling District",
+    "RM2": "Low/Medium Density Multiple-Unit Dwelling District",
+    "RM3": "Medium Density Multiple-Unit Dwelling District",
+    "RM4": "Medium/High Density Multiple-Unit Dwelling District",
+    "RM5": "High Density Multiple-Unit Dwelling District",
+    "M1": "Local Institutional Service District",
+    "M2": "Community Institutional Service District",
+    "M3": "General Institutional Service District",
+    "M4": "Core Area Institutional Service District",
+    "CR1": "Corridor Residential 1 District",
+    "CR2": "Corridor Residential 2 District",
+    "CR3": "Corridor Residential 3 District",
+    "B1A": "Limited Neighbourhood Commercial District",
+    "B1B": "Neighbourhood Commercial Mixed Use District",
+    "B1": "Neighbourhood Commercial District",
+    "B2": "District Commercial District",
+    "B3": "Medium Density Arterial Commercial District",
+    "B4": "Arterial and Suburban Commercial District",
+    "B4A": "Special Suburban Centre and Arterial Commercial District",
+    "B5": "Inner-City Commercial Corridor District",
+    "B5B": "Broadway Commercial District",
+    "B5C": "Riversdale Commercial District",
+    "B6": "Downtown Commercial District",
+    "IL1": "General Light Industrial District",
+    "IL2": "Limited Intensity Light Industrial District",
+    "IL3": "Limited Light Industrial District",
+    "IB": "Industrial Business District",
+    "IH": "Heavy Industrial District",
+    "IH2": "Limited Intensity Heavy Industrial District",
+    "MX1": "Mixed Use District 1",
+    "FUD": "Future Urban Development District",
+    "AG": "Agricultural District",
+    "AM": "Auto Mall District",
+    "APD": "Airport District",
+    "PUD": "Planned Unit Development District",
+}
+
+_ZONING_CODE_RE = re.compile(
+    r"\b(" + "|".join(sorted(ZONING_DISTRICTS, key=len, reverse=True)) + r")\b"
+)
+
+
+def _zoning_reference_lines(*texts: str) -> list[str]:
+    """Prompt lines decoding any zoning code named in ``texts``.
+
+    Only emitted when a code actually appears, so items with nothing to
+    do with zoning do not carry a table they have no use for.
+    """
+    blob = " ".join(texts)
+    found = sorted({m.group(0) for m in _ZONING_CODE_RE.finditer(blob)})
+    if not found:
+        return []
+    lines = [
+        "",
+        "ZONING DISTRICT REFERENCE (Saskatoon Zoning Bylaw No. 9990). This "
+        "item names a zoning district by code. Translate a code to plain "
+        "language ONLY using this table -- never from memory, even if you "
+        "are confident. A code not listed here must be left exactly as "
+        "written (e.g. \"the RA1 District\"), never guessed at.",
+    ]
+    for code in found:
+        lines.append(f"- {code}: {ZONING_DISTRICTS[code]}")
+    return lines
+
+
 def _field(text: str, limit: int) -> str:
     """Prepare one official-text field for the prompt.
 
@@ -1100,6 +1186,7 @@ def _build_prompt(
         ])
     if content:
         lines.extend(["", f"Item content (from agenda notes): {_field(content, 2000)}"])
+    lines.extend(_zoning_reference_lines(title, rec, motion, content, transcript_text))
 
     lines.extend([
         "",
@@ -1196,6 +1283,12 @@ def _build_prompt(
         "\"the Administration recommends that\".",
         "- State only what the source supports. If the material is thin, "
         "write a shorter description rather than inventing detail.",
+        "- A zoning district code (e.g. \"M1\", \"RM2\") may ONLY be "
+        "translated to plain language using the ZONING DISTRICT "
+        "REFERENCE above, if one is present. Never decode a code from "
+        "memory -- a plausible-sounding translation you were not given "
+        "is exactly the kind of unsupported claim this rule exists to "
+        "stop.",
         "- Do NOT append a benefit, purpose, or consequence the source "
         "does not state. \"This upgrade will benefit users of the "
         "facility\", \"aiming to improve sustainability\", \"ensuring "
