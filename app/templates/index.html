@@ -446,11 +446,37 @@
             html += takeaway;
             html += detailHref ? `</a>` : `</div>`;
             html += `</div>`;
+            // Attachment gists sit outside the row link: they carry
+            // their own links to the PDFs, and nested anchors are not
+            // a thing. Only gisted attachments render — a bare link
+            // adds nothing the detail page doesn't already have.
+            const gisted = (t.attachments || []).filter(a => a.gist);
+            if (gisted.length) {
+                html += gisted.map(a => gistBlockHtml(a)).join('');
+            }
             html += `</td>`;
             html += `</tr>`;
         });
         html += '</tbody></table>';
         return html;
+    }
+
+    // One attachment's 5-Ws gist: the PDF link, then one line per W.
+    // Always provisional — generated from the pre-meeting PDF and never
+    // revised, so the block says so rather than claiming settled fact.
+    function gistBlockHtml(a) {
+        const g = a.gist || {};
+        const rows = [
+            ['What', g.what], ['Who', g.who], ['When', g.when],
+            ['Where', g.where], ['Why', g.why],
+        ].filter(([, v]) => v && v !== '—')
+            .map(([k, v]) => `<tr><th>${k}</th><td>${escapeAttr(v)}</td></tr>`)
+            .join('');
+        return `<div class="gist-block">
+            <a class="attachment-link" href="${escapeAttr(a.url)}" target="_blank" rel="noopener">${escapeAttr(a.name)}</a>
+            <span class="gist-provisional">Provisional gist — read the full document</span>
+            <table class="gist-table">${rows}</table>
+        </div>`;
     }
 
     function formatCardTitle(title) {

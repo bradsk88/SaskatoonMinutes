@@ -353,3 +353,40 @@ class ItemSummary:
         if self.provisional:
             payload["provisional"] = True
         return payload
+
+
+@dataclass(frozen=True)
+class AttachmentGist:
+    """The "5 Ws" gist of one agenda-item attachment PDF.
+
+    Written for a citizen skimming a Scheduled Meeting to decide whether
+    they care enough to register to speak — one terse line per W, "—"
+    where a W does not apply.  Always provisional: generated from the
+    pre-meeting PDF, never revised, and discarded when the Scheduled
+    Meeting flips to a Meeting.
+    """
+
+    what: str = "—"
+    who: str = "—"
+    when: str = "—"
+    where: str = "—"
+    why: str = "—"
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AttachmentGist":
+        return cls(
+            what=data.get("what") or "—",
+            who=data.get("who") or "—",
+            when=data.get("when") or "—",
+            where=data.get("where") or "—",
+            why=data.get("why") or "—",
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "what": self.what,
+            "who": self.who,
+            "when": self.when,
+            "where": self.where,
+            "why": self.why,
+        }

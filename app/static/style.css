@@ -2442,3 +2442,34 @@ footer a:hover {
 .back-to-top:hover {
     filter: brightness(1.1);
 }
+
+/* === Attachment Gists (5 Ws, Scheduled Meetings) === */
+.gist-block {
+    margin: 0.4rem 0 0.8rem;
+    font-size: 0.85rem;
+}
+
+.gist-provisional {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--color-text-muted, #6b7280);
+    font-style: italic;
+    margin-bottom: 0.2rem;
+}
+
+.gist-table {
+    border-collapse: collapse;
+}
+
+.gist-table th {
+    text-align: left;
+    vertical-align: top;
+    font-weight: 600;
+    color: var(--color-text-muted, #6b7280);
+    padding: 0.1rem 0.5rem 0.1rem 0;
+    white-space: nowrap;
+}
+
+.gist-table td {
+    padding: 0.1rem 0;
+}

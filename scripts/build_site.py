@@ -43,6 +43,7 @@ from app.summarizer import (
 )
 from app.transcriber import correct_timestamps
 from app.transcript_cache import TranscriptCache
+from app.attachment_gists_cache import AttachmentGistsCache
 from app.item_summaries_cache import ItemSummariesCache
 
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "_site")
@@ -240,7 +241,19 @@ REGISTER_TO_SPEAK_URL = (
 )
 
 
-def _fetch_scheduled_details(source, scheduled, summaries_cache):
+def _attach_gists(items, gists):
+    """Hang each attachment's 5-Ws gist on its dict, keyed by DocumentId."""
+    if not gists:
+        return
+    for item in items:
+        for att in (item.get("attachments") or []):
+            m = re.search(r"DocumentId=(\d+)", att.get("url", ""))
+            gist = gists.get(m.group(1)) if m else None
+            if gist is not None:
+                att["gist"] = gist.to_dict()
+
+
+def _fetch_scheduled_details(source, scheduled, summaries_cache, gists_cache):
     """Detail pages and index topics for Scheduled Meetings.
 
     Unlike past meetings: no transcript correction, no badges, no speaker
@@ -258,6 +271,8 @@ def _fetch_scheduled_details(source, scheduled, summaries_cache):
             for item in items:
                 item["scheduled"] = True
 
+            _attach_gists(items, gists_cache.load(mid))
+
             item_summaries = summaries_cache.load(mid)
             if item_summaries:
                 for item in items:
@@ -273,6 +288,10 @@ def _fetch_scheduled_details(source, scheduled, summaries_cache):
                     continue
                 summary = item.get("summary") or {}
                 description = summary.get("description")
+                attachments = [
+                    {"name": a.get("name"), "url": a.get("url"), "gist": a.get("gist")}
+                    for a in (item.get("attachments") or [])
+                ]
                 topics.append({
                     "topic": titleize(plainify(item.get("title", ""))),
                     # No outcome exists yet; the row draws no badge.
@@ -283,6 +302,7 @@ def _fetch_scheduled_details(source, scheduled, summaries_cache):
                     "kind": "item",
                     "item_id": item.get("item_id"),
                     "time_start_ms": None,
+                    "attachments": attachments,
                 })
 
             topics_data[mid] = {
@@ -345,7 +365,8 @@ def fetch_all_data():
     feed_meetings: list[dict] = []
 
     with TranscriptCache.open() as transcript_cache, \
-            ItemSummariesCache.open() as summaries_cache:
+            ItemSummariesCache.open() as summaries_cache, \
+            AttachmentGistsCache.open() as gists_cache:
         # The Future tab first: Scheduled Meetings ride the same caches
         # but never the feeds.
         print("\nFetching scheduled meetings (future tab)...")
@@ -366,6 +387,7 @@ def fetch_all_data():
         }
         sched_topics, sched_details = _fetch_scheduled_details(
             source, [s for s in scheduled if s.has_agenda], summaries_cache,
+            gists_cache,
         )
         all_topics.update(sched_topics)
         all_details.update(sched_details)

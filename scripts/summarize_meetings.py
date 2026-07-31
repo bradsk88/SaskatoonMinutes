@@ -27,6 +27,7 @@ a chip call each.
 
 import argparse
 import os
+import re
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -54,6 +55,8 @@ from app.item_categorizer import (
     GeminiExtractor,
     QuotaExhausted,
 )
+from app.attachment_gist import GistGenerator
+from app.attachment_gists_cache import AttachmentGistsCache
 from app.item_summaries_cache import ItemSummariesCache
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
@@ -216,6 +219,43 @@ def summarize_scheduled_meeting(
     return summaries
 
 
+def gist_attachments(source, meeting_id: str, generator, gists_cache) -> int:
+    """5-Ws gists for a Scheduled Meeting's attachment PDFs.
+
+    Same lifecycle as provisional summaries: generated once from the
+    pre-meeting PDF, never revised, disposable at the flip to Meeting.
+    Documents already cached are skipped; failures produce no gist and
+    the attachment renders as a bare link.
+    """
+    if not generator.enabled:
+        return 0
+    detail = source.load_detail(meeting_id)
+    existing = gists_cache.load(meeting_id)
+    gists = dict(existing)
+    made = 0
+    for item in detail.agenda_items:
+        for att in (item.attachments or []):
+            url = att.get("url", "")
+            m = re.search(r"DocumentId=(\d+)", url)
+            if not m:
+                continue
+            doc_id = m.group(1)
+            if doc_id in gists:
+                continue
+            gist = generator.gist(item.title or "", url)
+            if gist is not None:
+                gists[doc_id] = gist
+                made += 1
+                print(
+                    f"      gist {doc_id}: {gist.what[:60]}",
+                    flush=True,
+                )
+    if made:
+        gists_cache.save(meeting_id, gists)
+    print(f"    {made} new attachment gists ({len(gists)} total)", flush=True)
+    return made
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -284,8 +324,11 @@ def main() -> None:
     quota_gone = False
 
     source: MeetingSource = EscribeMeetingSource(LiveEscribeTransport())
+    gist_generator = GistGenerator()
+
     with TranscriptCache.open() as transcript_cache, \
-            ItemSummariesCache.open() as summaries_cache:
+            ItemSummariesCache.open() as summaries_cache, \
+            AttachmentGistsCache.open() as gists_cache:
         for tab in tabs:
             if quota_gone:
                 break
@@ -377,12 +420,20 @@ def main() -> None:
                     continue
                 mid = s.meeting_id
                 if not args.force and is_current(summaries_cache.load(mid)):
+                    # Summaries are done, but gists may predate the
+                    # feature — backfill them independently.
+                    try:
+                        gist_attachments(source, mid, gist_generator, gists_cache)
+                    except Exception as exc:
+                        errors += 1
+                        print(f"    ERROR (gists): {exc}", flush=True)
                     continue
                 print(f"  [{s.date}] {s.body}: summarizing...", flush=True)
                 try:
                     summaries = summarize_scheduled_meeting(source, mid, extractor)
                     summaries_cache.save(mid, summaries)
                     summarized += 1
+                    gist_attachments(source, mid, gist_generator, gists_cache)
                 except QuotaExhausted as exc:
                     print(f"    STOPPING: {exc}", flush=True)
                     errors += 1
