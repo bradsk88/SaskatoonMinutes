@@ -7,8 +7,10 @@ The replacement bounds **vertical space, not rows**: a card has a budget of 15 u
 When a card exceeds its budget it spends down in a fixed order:
 
 1. Speaker rows collapse into a **digest** — one slim row per represented organization, plus a residents roll-up.
-2. Title-only rows drop from the bottom.
-3. Detailed rows demote to title-only.
+2. Detailed rows demote to title-only.
+3. Title-only rows drop from the bottom — last resort, and any slack afterwards tops back up with the next-ranked items.
+
+Demotion outranks dropping: a packed meeting should name *more* of what council did, not fewer things in more words. (The first implementation had these reversed; July 29 kept four detailed rows and buried the BRT relocation and the data-centre motion entirely.)
 
 Two rules were non-negotiable and shape the design:
 
@@ -20,5 +22,7 @@ Two rules were non-negotiable and shape the design:
 **A fixed higher row cap (e.g., 10 rows).** Rejected: ten detailed rows is a long scroll on a phone — the problem it solves on heavy meetings it recreates as a reading problem. Demotion under pressure is what keeps the card digestible.
 
 **Floors** (the #1 item always stays detailed; speaker detail always survives). Rejected: any floor can be blown past by a sufficiently packed meeting, and partial floors produce unpredictable layouts. The only protected element is the org digest, and it is protected absolutely.
+
+**Depth over breadth** (drop title-only rows before demoting detailed ones). Rejected after seeing July 29: the card's job is to get a reader into the right meeting, and naming nine decisions with one-line each does that better than detailing four and hiding five.
 
 **A bare "N guest speakers" count as the digest.** Rejected: it throws away *who* came — the one fact the speaker feature exists to report. That badge survives only as the fallback for meetings whose roster has no organization data at all.

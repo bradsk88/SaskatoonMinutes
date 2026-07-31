@@ -593,6 +593,9 @@
             if (!detailed.includes(t)) detailed.push(t);
         }
         const titleOnly = byRank.filter(t => !detailed.includes(t)).slice(0, CARD_TITLE_ONLY);
+        // Ranked past every candidate: pulled into title-only rows if the
+        // card fits with room to spare after the spend-down.
+        const rest = byRank.filter(t => !detailed.includes(t) && !titleOnly.includes(t));
 
         // Then up to three speakers, on top — and not restricted to the
         // items the card is showing. Whether a business improvement
@@ -616,24 +619,26 @@
             + speakers.length * UNITS_SPEAKER
             + digestRowCount(digest) * UNITS_ORG_ROW;
 
-        // Spend down until the card fits. Council keeps priority:
-        // speaker detail is the first saving — the rows collapse into a
-        // digest naming every organization that came, because *which
-        // orgs had a voice* is never the thing to cut. Then title-only
-        // rows drop from the bottom, and at the extreme detailed rows
-        // demote to title-only. The digest itself is never cut.
+        // Spend down until the card fits. Speaker detail is the first
+        // saving — the rows collapse into a digest naming every
+        // organization that came, because *which orgs had a voice* is
+        // never the thing to cut. Then detailed rows demote to
+        // title-only: a packed meeting should name more of what council
+        // did, not fewer things in more words. Only when no detail is
+        // left to give up do title-only rows drop from the bottom. The
+        // digest itself is never cut.
         while (space() > CARD_SPACE_BUDGET) {
             if (speakers.length) {
                 speakers = [];
                 digest = buildSpeakerDigest(roster);
-            } else if (titleOnly.length) {
-                dropped.push(titleOnly.pop());
             } else if (detailed.length) {
                 // Demotion, not removal: the item keeps its title and
                 // outcome at a fifth of the cost. Unshift, because a
                 // demoted detailed row still outranks every title-only
                 // row it joins and should be the last of them to drop.
                 titleOnly.unshift(detailed.pop());
+            } else if (titleOnly.length) {
+                dropped.push(titleOnly.pop());
             } else {
                 break;
             }
@@ -643,10 +648,15 @@
         // that collapsed a speaker or demoted a row can end a unit or
         // two short of the budget — exactly enough to name another item
         // that ranked. Restored in rank order: dropped held the
-        // lowest-ranked first.
-        while (dropped.length
-               && space() + UNITS_TITLE_ONLY <= CARD_SPACE_BUDGET) {
-            titleOnly.push(dropped.pop());
+        // lowest-ranked first, then items ranked past every candidate.
+        while (space() + UNITS_TITLE_ONLY <= CARD_SPACE_BUDGET) {
+            if (dropped.length) {
+                titleOnly.push(dropped.pop());
+            } else if (rest.length) {
+                titleOnly.push(rest.shift());
+            } else {
+                break;
+            }
         }
 
         const titleOnlySet = new Set(titleOnly);

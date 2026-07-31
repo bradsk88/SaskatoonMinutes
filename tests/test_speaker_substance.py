@@ -442,12 +442,15 @@ class TestTheCardBudget:
         assert "const CARD_SPEAKERS = 3;" in self._template()
 
     def test_speaker_detail_collapses_before_council_rows_do(self):
-        """Council keeps priority: the digest is the first saving."""
+        """The digest is the first saving; then detail gives way to
+        breadth — a packed meeting names more of what council did, not
+        fewer things in more words. Dropping a title-only row is the
+        last resort, not the second."""
         source = self._template()
         collapse = source.index("digest = buildSpeakerDigest(roster);")
-        drop = source.index("dropped.push(titleOnly.pop());")
         demote = source.index("titleOnly.unshift(detailed.pop());")
-        assert collapse < drop < demote
+        drop = source.index("dropped.push(titleOnly.pop());")
+        assert collapse < demote < drop
 
     def test_the_digest_names_every_organization(self):
         """A representative few would hide who had a voice."""
