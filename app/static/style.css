@@ -2297,17 +2297,17 @@ footer a:hover {
 
     .topic-speaker-row .topic-name-meta {
         /* Two badges travel here now -- the category and the stance --
-           so the group keeps its own cell rather than dissolving and
-           letting both badges claim the same grid area. */
-        grid-area: 1 / 2;
-        justify-self: end;
+           and beside the name they squeezed it to an ellipsis. Their
+           own line, under the name, keeps all three readable. */
+        grid-area: 2 / 1 / 2 / -1;
+        justify-self: start;
         display: flex;
         gap: 0.3rem;
         align-items: baseline;
     }
 
     .topic-speaker-row .topic-name > span:first-child {
-        grid-area: 1 / 1;
+        grid-area: 1 / 1 / 1 / -1;
     }
 
     .item-header {
