@@ -73,6 +73,13 @@ swapping values, not untangling branches.
   - **Item Entry** (`/feed-items.xml`) — one entry per qualifying agenda item.
 
   An item **qualifies** by having something to say — a Description or an interpretive chip — and qualifying items are then ranked by discussion minutes, capped at 8 per meeting. Deliberately **not** the index card's ranking: `extract_meeting_topics` saturates duration at twenty minutes and mixes Speaker rows in with items, so it drops the longest debates of the year (`TODO.md` item 15).
+- **Index Card** — a Meeting's summary block on the index page, meant to get a reader into the right Meeting, not to list it. What it may show is bounded by a **Space Budget** of 15 units (roughly one mobile screen), spent on rows of different costs:
+  - **Detailed Row** (3 units) — an agenda item's title, outcome, and summary bullets. Earned by having a recorded outcome; up to five.
+  - **Title-Only Row** (1 unit) — an agenda item's title and outcome badge, nothing else. How a ranked item past the detailed five still gets named, and what a Detailed Row demotes to under pressure.
+  - **Speaker Row** (2 units) — one Speaker's name, organization, and stance. Up to three.
+  - **Speaker Digest** (1 unit per row) — the collapsed form of a Meeting's Speakers: one slim row per **represented organization** (all of them, never a sample) plus a residents roll-up. The digest is the one thing the Space Budget never cuts — hiding which orgs had a voice is not an acceptable saving.
+
+  When a card exceeds its budget it spends down in a fixed order (ADR `0020`): Speaker Rows collapse to the digest first, then Title-Only Rows drop from the bottom, then Detailed Rows demote. Council rows keep priority over speaker detail throughout.
 - **Settled** — a Meeting Day is publishable once every Meeting on it has cached summaries, or seven days have passed. Nothing is published thin and filled in later: a reader who saw the thin version would never be shown the full one. The seven days are what stops a meeting with no video from holding a day hostage forever.
 
 ## Architecture

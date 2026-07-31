@@ -75,21 +75,32 @@
         { label: 'Environment', slug: 'cat-environment' },
     ];
 
-    // Topics shown on a card. The card exists to get a reader into the
-    // right meeting, not to list it — the rest are behind "N other items".
-    const CARD_TOPICS = 5;
+    // What a card can spend, in units of vertical space rather than
+    // rows: a packed meeting should degrade to a tighter summary, not
+    // scroll forever. Fifteen units is roughly one mobile screen.
+    const CARD_SPACE_BUDGET = 15;
+    const UNITS_DETAILED = 3;    // title + bullets + takeaway
+    const UNITS_SPEAKER = 2;     // name + org + stance
+    const UNITS_TITLE_ONLY = 1;  // title + outcome badge
+    const UNITS_ORG_ROW = 1;     // one digest row per represented org
 
-    // A row earns a slot by having a recorded outcome. "Discussed" is
-    // what an item with no vote and no recommendation falls back to, so
-    // it is the one label that records nothing.
-    const CARD_TOPICS_MIN = 3;
+    // A row earns a detailed slot by having a recorded outcome.
+    // "Discussed" is what an item with no vote and no recommendation
+    // falls back to, so it is the one label that records nothing.
+    const CARD_DETAILED = 5;
+    const CARD_DETAILED_MIN = 3;
 
-    // Guest speakers get slots of their own, on top of the five above,
-    // rather than competing for them. The five are what council did; a
-    // speaker is a different question — who had a voice — and letting
-    // the two share a budget meant a meeting with speakers reported less
-    // of council's business than one without. Eight rows on a heavy
-    // meeting is acceptable.
+    // Past the detailed five, an item that ranked still earns its title
+    // and outcome — one line, one unit — so a heavy meeting names the
+    // rest of what council did instead of burying it whole under
+    // "N other items".
+    const CARD_TITLE_ONLY = 5;
+
+    // Guest speakers get rows of their own while the budget holds: the
+    // five above are what council did; a speaker is a different
+    // question — who had a voice. Under pressure the rows collapse into
+    // a digest naming every organization that came; the digest is the
+    // one thing the budget never cuts.
     const CARD_SPEAKERS = 3;
 
     const selectedCategories = new Set();
@@ -323,6 +334,9 @@
             // Commerce" is a person and every other row is a decision.
             const isSpeaker = t.kind === 'speaker';
             if (isSpeaker) rowClass += ' topic-speaker-row';
+            // A title-only row: the item earned its name and outcome on
+            // the card, but not the vertical space a summary costs.
+            if (t.title_only) rowClass += ' topic-title-only';
 
             html += `<tr class="${rowClass}" data-categories="${escapeAttr(catSlugs.join(' '))}">`;
             html += `<td class="topic-cell">`;
@@ -375,10 +389,12 @@
             // height does not grow. A hook cut mid-sentence is worse
             // than a description cut short, and chip text runs to 122
             // characters -- three lines at this width.
-            const takeaway = takeawayHtml(t);
-            const summaryLines = Array.isArray(t.summary)
-                ? t.summary
-                : (t.summary ? [t.summary] : []);
+            const takeaway = t.title_only ? '' : takeawayHtml(t);
+            const summaryLines = t.title_only
+                ? []
+                : Array.isArray(t.summary)
+                    ? t.summary
+                    : (t.summary ? [t.summary] : []);
             if (summaryLines.length && t.summary_is_description) {
                 // Bullets, one per fact, because a card row is scanned
                 // and not read. The row's height budget is unchanged,
@@ -454,13 +470,42 @@
     // Both producers hand over {topics, total_items}; older preloaded
     // blobs are a bare list. Normalized here so the renderer sees one shape.
     function normalizeTopicsPayload(payload) {
-        if (Array.isArray(payload)) return { topics: payload, total_items: null, speaker_count: 0 };
-        if (!payload) return { topics: [], total_items: null, speaker_count: 0 };
+        if (Array.isArray(payload)) return { topics: payload, total_items: null, speaker_count: 0, roster: null };
+        if (!payload) return { topics: [], total_items: null, speaker_count: 0, roster: null };
         return {
             topics: payload.topics || [],
             total_items: payload.total_items != null ? payload.total_items : null,
             speaker_count: payload.speaker_count || 0,
+            roster: payload.roster || null,
         };
+    }
+
+    // The collapsed form of a meeting's speakers, for a card whose
+    // budget ran out before speaker detail: every organization that
+    // came, one slim row each, plus a roll-up for the residents. Which
+    // orgs had a voice is the thing a resident scans for, so the digest
+    // lists all of them rather than a representative few.
+    function digestHtml(digest, openHref) {
+        if (digestRowCount(digest) === 0) return '';
+        const rows = [];
+        for (const org of digest.orgs) {
+            let href = openHref || '';
+            if (href) {
+                if (org.time_start_ms != null) href += `?t=${org.time_start_ms}`;
+                if (org.item_id != null) href += `#item-${org.item_id}`;
+            }
+            const color = org.color == null ? 'none' : org.color;
+            const chip = `<span class="org-chip org-chip-${color}">${escapeAttr(org.label)}</span>`;
+            rows.push(href
+                ? `<a class="org-digest-row" href="${escapeAttr(href)}">${chip}</a>`
+                : `<div class="org-digest-row">${chip}</div>`);
+        }
+        if (digest.residents > 0) {
+            rows.push(`<div class="org-digest-row org-digest-residents">`
+                + `${digest.residents} Resident${digest.residents === 1 ? '' : 's'}</div>`);
+        }
+        return `<div class="org-digest">`
+            + `<span class="org-digest-label">Guest speakers</span>${rows.join('')}</div>`;
     }
 
     // The fallback for a meeting whose speakers we can only count.
@@ -504,19 +549,32 @@
     // card stops looking like a summary at all, so the best of the rest
     // fill in. Agenda order is preserved, because that is the order the
     // meeting happened in.
-    function chooseCardTopics(topics) {
-        // Council's rows are chosen from council's rows only. A speaker
-        // never displaces an agenda item, so a well-attended meeting
-        // still reports as much of what council did as a quiet one.
+    function buildSpeakerDigest(roster) {
+        if (!roster) return { orgs: [], residents: 0 };
+        return {
+            orgs: roster.organizations || [],
+            residents: roster.resident_count || 0,
+        };
+    }
+
+    function digestRowCount(digest) {
+        if (!digest) return 0;
+        return digest.orgs.length + (digest.residents > 0 ? 1 : 0);
+    }
+
+    function chooseCardTopics(topics, roster) {
+        // Council's rows are chosen from council's rows only: a speaker
+        // never displaces an agenda item.
         const council = topics.filter(t => t.kind !== 'speaker');
         const rank = t => (t.rank != null ? t.rank : council.indexOf(t));
         const byRank = council.slice().sort((a, b) => rank(a) - rank(b));
         const earned = byRank.filter(t => t.outcome && t.outcome !== 'Discussed');
-        const chosen = earned.slice(0, CARD_TOPICS);
+        const detailed = earned.slice(0, CARD_DETAILED);
         for (const t of byRank) {
-            if (chosen.length >= CARD_TOPICS_MIN) break;
-            if (!chosen.includes(t)) chosen.push(t);
+            if (detailed.length >= CARD_DETAILED_MIN) break;
+            if (!detailed.includes(t)) detailed.push(t);
         }
+        const titleOnly = byRank.filter(t => !detailed.includes(t)).slice(0, CARD_TITLE_ONLY);
 
         // Then up to three speakers, on top — and not restricted to the
         // items the card is showing. Whether a business improvement
@@ -527,20 +585,54 @@
         // Ranked, not agenda order: otherwise the earliest item on the
         // agenda spends every speaker slot and the biggest debate of the
         // meeting shows none of the people who came to it.
-        const speakers = topics
+        let speakers = topics
             .filter(t => t.kind === 'speaker')
             .sort((a, b) => rank(a) - rank(b))
             .slice(0, CARD_SPEAKERS);
+        let digest = null;
 
-        const keep = new Set([...chosen, ...speakers]);
-        return topics.filter(t => keep.has(t));
+        const space = () =>
+            detailed.length * UNITS_DETAILED
+            + titleOnly.length * UNITS_TITLE_ONLY
+            + speakers.length * UNITS_SPEAKER
+            + digestRowCount(digest) * UNITS_ORG_ROW;
+
+        // Spend down until the card fits. Council keeps priority:
+        // speaker detail is the first saving — the rows collapse into a
+        // digest naming every organization that came, because *which
+        // orgs had a voice* is never the thing to cut. Then title-only
+        // rows drop from the bottom, and at the extreme detailed rows
+        // demote to title-only. The digest itself is never cut.
+        while (space() > CARD_SPACE_BUDGET) {
+            if (speakers.length) {
+                speakers = [];
+                digest = buildSpeakerDigest(roster);
+            } else if (titleOnly.length) {
+                titleOnly.pop();
+            } else if (detailed.length) {
+                // Demotion, not removal: the item keeps its title and
+                // outcome at a fifth of the cost. Unshift, because a
+                // demoted detailed row still outranks every title-only
+                // row it joins and should be the last of them to drop.
+                titleOnly.unshift(detailed.pop());
+            } else {
+                break;
+            }
+        }
+
+        const titleOnlySet = new Set(titleOnly);
+        const keep = new Set([...detailed, ...titleOnly, ...speakers]);
+        const rows = topics
+            .filter(t => keep.has(t))
+            .map(t => titleOnlySet.has(t) ? { ...t, title_only: true } : t);
+        return { rows, digest };
     }
 
     function renderTopicsInContainer(meetingId, payload, openHref) {
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
 
-        const { topics, total_items, speaker_count } = normalizeTopicsPayload(payload);
+        const { topics, total_items, speaker_count, roster } = normalizeTopicsPayload(payload);
 
         if (topics.length === 0) {
             renderTopicsMessage(
@@ -549,16 +641,25 @@
             return;
         }
 
-        const shown = chooseCardTopics(topics);
-        const badge = speakerBadgeHtml(speaker_count, shown);
+        const { rows, digest } = chooseCardTopics(topics, roster);
+        // The count badge is the fallback for a meeting whose roster we
+        // can only count; a rendered digest replaces it.
+        const badge = digestRowCount(digest) > 0
+            ? ''
+            : speakerBadgeHtml(speaker_count, rows);
         // "N other items" is only shown when the meeting's item count is
         // known. Guessing it from the topic list would undercount every
         // meeting, since topics are the ranked few, not the agenda.
+        // Counted against council rows only — a speaker or an org digest
+        // row is not one of the agenda items the number refers to.
+        const councilShown = rows.filter(t => t.kind !== 'speaker').length;
         const remaining = total_items != null
-            ? total_items - shown.length
+            ? total_items - councilShown
             : null;
         container.innerHTML =
-            badge + renderTopicsTable(shown, openHref) + cardFooterHtml(openHref, remaining);
+            badge + renderTopicsTable(rows, openHref)
+            + digestHtml(digest, openHref)
+            + cardFooterHtml(openHref, remaining);
     }
 
     function meetingOpenHref(meetingId) {

@@ -403,11 +403,17 @@ class TestSpeakersGetTheirOwnCardRow:
 
 
 class TestTheCardBudget:
-    """Five rows for what council did, plus up to three for who spoke.
+    """A card spends vertical space, not rows: fifteen units, roughly
+    one mobile screen.
 
-    Brad's rule: a speaker never displaces an agenda item, so a
-    well-attended meeting still reports as much of council's business as
-    a quiet one. Eight rows on a heavy meeting is acceptable.
+    A quiet meeting looks like the old card — five detailed council
+    rows and up to three speaker rows. A packed meeting spends down:
+    speaker detail collapses into a digest naming every organization
+    that came, title-only rows drop from the bottom, and at the extreme
+    detailed rows demote to title-only. The digest itself is never cut:
+    hiding which orgs had a voice is not an acceptable saving.
+
+    Brad's rule stands: a speaker never displaces an agenda item.
 
     The selection itself runs in the browser, so these pin the constants
     the template declares — the same approach as
@@ -423,11 +429,49 @@ class TestTheCardBudget:
     def _template(self) -> str:
         return open(self.TEMPLATE, encoding="utf-8").read()
 
-    def test_council_keeps_five_slots(self):
-        assert "const CARD_TOPICS = 5;" in self._template()
+    def test_the_budget_is_fifteen_units(self):
+        assert "const CARD_SPACE_BUDGET = 15;" in self._template()
+
+    def test_council_keeps_five_detailed_slots(self):
+        assert "const CARD_DETAILED = 5;" in self._template()
+
+    def test_ranked_items_past_the_five_earn_a_title(self):
+        assert "const CARD_TITLE_ONLY = 5;" in self._template()
 
     def test_speakers_get_three_slots_of_their_own(self):
         assert "const CARD_SPEAKERS = 3;" in self._template()
+
+    def test_speaker_detail_collapses_before_council_rows_do(self):
+        """Council keeps priority: the digest is the first saving."""
+        source = self._template()
+        collapse = source.index("digest = buildSpeakerDigest(roster);")
+        drop = source.index("titleOnly.pop();")
+        demote = source.index("titleOnly.unshift(detailed.pop());")
+        assert collapse < drop < demote
+
+    def test_the_digest_names_every_organization(self):
+        """A representative few would hide who had a voice."""
+        assert "orgs: roster.organizations || []" in self._template()
+
+    def test_the_payload_carries_the_full_roster(self):
+        """The card cannot digest what it is never told about."""
+        from app.summarizer import speaker_roster
+        out = speaker_roster([
+            {"item_id": 1, "speakers": [
+                {"name": "Robert Clipperton",
+                 "organization": "Bus Riders of Saskatoon"},
+                {"name": "A B", "organization": ""},
+                {"name": "C D"},
+            ]},
+            {"item_id": 2, "speakers": [
+                {"name": "Robert Clipperton",
+                 "organization": "Bus Riders of Saskatoon"},
+            ]},
+        ])
+        assert [o["label"] for o in out["organizations"]] == [
+            "Bus Riders of Saskatoon"]
+        assert out["resident_count"] == 2
+        assert out["speaker_count"] == 3
 
     def test_council_rows_are_chosen_without_the_speakers(self):
         """The filter that stops a delegate taking an agenda item's place."""

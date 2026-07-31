@@ -34,7 +34,9 @@ from app.agenda_items import (
 from app.agenda_text import readable_date, titleize
 from app.feeds import build_feeds
 from app.speakers import merge_remarks
-from app.summarizer import extract_meeting_topics, extract_badges
+from app.summarizer import (
+    extract_meeting_topics, extract_badges, speaker_roster,
+)
 from app.transcriber import correct_timestamps
 from app.transcript_cache import TranscriptCache
 from app.item_summaries_cache import ItemSummariesCache
@@ -139,18 +141,20 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
 
             mark_row_weights(items)
 
-            topics = extract_meeting_topics(items, m.title, max_topics=8)
+            # Twelve, not the card's ten — see api_meeting_topics.
+            topics = extract_meeting_topics(items, m.title, max_topics=12)
+            roster = speaker_roster(items)
             topics_data[mid] = {
                 "topics": topics,
                 "total_items": count_agenda_items(items),
                 # People, not filings: one delegate who spoke to two
                 # items is one guest speaker, and counting rows said 11
                 # where 10 came.
-                "speaker_count": len({
-                    p.get("name")
-                    for i in items for p in (i.get("speakers") or [])
-                    if p.get("name")
-                }),
+                "speaker_count": roster["speaker_count"],
+                # Every organization that spoke, so a packed meeting can
+                # collapse speaker rows into an org digest without hiding
+                # who had a voice.
+                "roster": roster,
             }
             details_data[mid] = {
                 "agenda_items": items,

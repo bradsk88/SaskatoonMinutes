@@ -146,6 +146,50 @@ def extract_meeting_topics(
     return _with_speaker_rows(rows, ordered, rank_by_item)
 
 
+def speaker_roster(agenda_items: list[dict]) -> dict:
+    """Every organization that spoke at the meeting, plus the resident count.
+
+    The card's budget logic can collapse individual speaker rows into an
+    org digest when a meeting is packed — but hiding *which* organizations
+    had a voice is not an acceptable saving, so the digest lists every one
+    of them and needs the full roster, not the ranked few the topic rows
+    carry.  Residents (speakers with no organization) roll up into a count:
+    their names are on the detail page, and "3 Residents" is the fact a
+    skimmer is after.
+
+    Agenda order, which is the order council heard them in.
+    """
+    organizations: list[dict] = []
+    seen_orgs: set[str] = set()
+    residents: set[str] = set()
+    speakers: set[str] = set()
+    for item in agenda_items:
+        for speaker in item.get("speakers") or []:
+            if not isinstance(speaker, dict):
+                continue
+            name = speaker.get("name") or ""
+            if name:
+                speakers.add(name)
+            org = (speaker.get("organization") or "").strip()
+            if org:
+                label = organization_label(org)
+                if label not in seen_orgs:
+                    seen_orgs.add(label)
+                    organizations.append({
+                        "label": label,
+                        "color": organization_color(org),
+                        "item_id": item.get("item_id"),
+                        "time_start_ms": item.get("time_start_ms"),
+                    })
+            elif name:
+                residents.add(name)
+    return {
+        "organizations": organizations,
+        "resident_count": len(residents),
+        "speaker_count": len(speakers),
+    }
+
+
 # How many speaker rows the payload carries.  The card shows at most
 # three of them (``CARD_SPEAKERS`` in the template) and can only use
 # speakers whose item it is already showing, so the payload holds enough

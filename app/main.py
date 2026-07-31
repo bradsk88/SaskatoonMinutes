@@ -18,7 +18,10 @@ from app.agenda_items import (
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS, _SLUG_TO_TYPE
-from app.summarizer import summarize_agenda_items, extract_meeting_topics, extract_badges
+from app.summarizer import (
+    summarize_agenda_items, extract_meeting_topics, extract_badges,
+    speaker_roster,
+)
 
 _CONNECTION_ERROR_MSG = (
     "Could not connect to the City of Saskatoon eSCRIBE server. "
@@ -121,7 +124,11 @@ def api_meeting_topics(meeting_id: str):
         title = request.args.get("title", "City Council Meeting")
         detail = _source().load_detail(meeting_id)
         items = [item.to_dict() for item in detail.agenda_items]
-        topics = extract_meeting_topics(items, title, max_topics=8)
+        # Twelve, not the card's ten: the card spends at most ten council
+        # rows (five detailed, five title-only), and the payload holds a
+        # margin so demotion never runs out of candidates.
+        topics = extract_meeting_topics(items, title, max_topics=12)
+        roster = speaker_roster(items)
         return jsonify({
             "meeting_id": meeting_id,
             "topics": topics,
@@ -130,11 +137,11 @@ def api_meeting_topics(meeting_id: str):
             # topics are the ranked few rather than the whole meeting.
             "total_items": count_agenda_items(items),
             # People, not filings — see build_site.
-            "speaker_count": len({
-                p.get("name")
-                for i in items for p in (i.get("speakers") or [])
-                if p.get("name")
-            }),
+            "speaker_count": roster["speaker_count"],
+            # Every organization that spoke, so a packed meeting can
+            # collapse speaker rows into an org digest without hiding
+            # who had a voice.
+            "roster": roster,
         })
     except (ConnectionError, SSLError):
         return jsonify({"error": _CONNECTION_ERROR_MSG}), 502

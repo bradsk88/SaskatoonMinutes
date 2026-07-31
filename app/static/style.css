@@ -1182,6 +1182,42 @@ main {
     border-radius: 999px;
 }
 
+/* The collapsed speaker roster on a packed card: every organization
+   that came, one slim row each, plus a residents roll-up. Which orgs
+   had a voice is never the thing the card's space budget cuts. */
+.org-digest {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+    font-size: 0.78rem;
+}
+
+.org-digest-label {
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-right: 0.15rem;
+}
+
+.org-digest-row {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.org-digest-residents {
+    color: var(--color-text-muted);
+    font-weight: 500;
+}
+
+/* A title-only row spends one unit of the card's space budget: name
+   and outcome, no summary, so the padding tightens to match. */
+.topics-table tr.topic-title-only td {
+    padding-top: 0.05rem;
+    padding-bottom: 0.05rem;
+}
+
 /* === Meeting Topics (index page) === */
 .meeting-topics {
     margin-top: 0.75rem;
