@@ -1112,22 +1112,46 @@ main {
     color: var(--color-text-muted);
 }
 
-/* A guest speaker's row on the index card. Indented and rule-marked so a
-   person is visibly not a decision, while still sitting in the same
-   table as the topics rather than in a section of their own. */
-.topic-speaker-row .topic-content {
-    border-left: 2px solid var(--color-primary-light);
-    padding-left: 0.6rem;
+/* A guest speaker's row on the index card: the title-only row's shape,
+   coloured by the organization they came for. Speakers are rows, never
+   chips -- the row itself carries the org's identity, so a person is
+   visibly not a decision while still sitting in the same table as the
+   topics (ADR 0022). The ten-slot palette is org-chip's; the comments
+   there explain the collisions. */
+.topic-speaker-row .topic-content,
+.org-digest-row .topic-content {
+    border-radius: 6px;
 }
 
-.topic-speaker-mark {
-    display: block;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--color-primary);
-    margin-bottom: 0.1rem;
+.org-row-0 .topic-content { background: #dbeafe; color: #1e40af; }
+.org-row-1 .topic-content { background: #dcfce7; color: #166534; }
+.org-row-2 .topic-content { background: #f3e8ff; color: #6b21a8; }
+.org-row-3 .topic-content { background: #ffedd5; color: #9a3412; }
+.org-row-4 .topic-content { background: #ccfbf1; color: #115e59; }
+.org-row-5 .topic-content { background: #ffe4e6; color: #9f1239; }
+.org-row-6 .topic-content { background: #fef3c7; color: #92400e; }
+.org-row-7 .topic-content { background: #cffafe; color: #155e75; }
+.org-row-8 .topic-content { background: #e0e7ff; color: #3730a3; }
+.org-row-9 .topic-content { background: #ecfccb; color: #3f6212; }
+
+/* A speaker who came for nobody, and the residents roll-up. Deliberately
+   the quietest row on the card: a fact about them, not an organization
+   competing for recognition with the ones that have a name. */
+.org-row-none .topic-content {
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+}
+
+/* The "+N more speakers" row under a capped item. Quiet, like the
+   roll-up: it is a pointer to the detail page, not a voice of its own. */
+.speaker-more-row .topic-content {
+    background: var(--color-bg);
+}
+
+.speaker-more {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    font-style: italic;
 }
 
 /* A speaker's stance, outlined where an outcome badge is filled.
@@ -2134,6 +2158,18 @@ footer a:hover {
     .org-chip-8 { background: #1b1d3a; color: #a5b4fc; }
     .org-chip-9 { background: #1c2a10; color: #bef264; }
 
+    .org-row-0 .topic-content { background: #1e293b; color: #93c5fd; }
+    .org-row-1 .topic-content { background: #14281c; color: #86efac; }
+    .org-row-2 .topic-content { background: #2a1f3b; color: #d8b4fe; }
+    .org-row-3 .topic-content { background: #2a1a10; color: #fdba74; }
+    .org-row-4 .topic-content { background: #0f2e2b; color: #5eead4; }
+    .org-row-5 .topic-content { background: #2e1116; color: #fda4af; }
+    .org-row-6 .topic-content { background: #2b1f08; color: #fcd34d; }
+    .org-row-7 .topic-content { background: #0c2830; color: #67e8f9; }
+    .org-row-8 .topic-content { background: #1b1d3a; color: #a5b4fc; }
+    .org-row-9 .topic-content { background: #1c2a10; color: #bef264; }
+    .org-row-none .topic-content { background: #1f2430; }
+
     .item-view-toggle {
         background: #1f2430;
         border-color: #2d3140;
@@ -2245,12 +2281,9 @@ footer a:hover {
     /* A speaker row is the exception to the stacking above. What stacks
        badly is a long agenda title; a person's name is short, so "In
        support" and "Raised concerns" fit beside it and stay right-
-       aligned, as they are on a wide display.
-
-       The organization is what does not fit -- "Greater Saskatoon
-       Chamber of Commerce" is 37 characters -- so it alone drops to a
-       line of its own. Dissolving the meta group is what lets the two
-       part company at this width; they travel together everywhere else. */
+       aligned, as they are on a wide display. The organization travels
+       in the name line and wraps with it; the row's own colour is what
+       carries the org, so nothing needs a line of its own. */
     .topic-speaker-row .topic-name {
         display: grid;
         /* minmax(0, …) rather than 1fr: the row sits in a table cell, so
@@ -2273,21 +2306,6 @@ footer a:hover {
     .topic-speaker-row .topic-name .topic-badge {
         grid-area: 1 / 2;
         justify-self: end;
-    }
-
-    /* Its own row, and only as wide as the name it carries -- a chip
-       stretched across the card reads as a banner, not as a label. */
-    .topic-speaker-row .topic-name .org-chip {
-        grid-area: 2 / 1 / 2 / -1;
-        justify-self: start;
-        /* The longest name in the archive is 37 characters, which does
-           not fit a 390px card on one line. The row sits in a table
-           cell, and a chip that cannot break is a column that cannot
-           narrow -- it widened the table until the card's right edge
-           left the screen. Wrapping is what keeps the whole name and
-           the card intact; the pill grows a line instead. */
-        white-space: normal;
-        max-width: 100%;
     }
 
     .item-header {

@@ -309,7 +309,7 @@ class TestMergeSubstanceIntoTheRoster:
 
 
 class TestSpeakersGetTheirOwnCardRow:
-    """Brad's brief: a delegation competes with the topics, not a count."""
+    """A speaker sits beneath the item they answered, as a row."""
 
     def _items(self, said=None):
         speaker = {"name": "Jason Aebig", "organization": "Chamber of Commerce",
@@ -379,8 +379,10 @@ class TestSpeakersGetTheirOwnCardRow:
         speaker = [r for r in rows if r.get("kind") == "speaker"][0]
         assert speaker["stance"] == "support"
 
-    def test_the_payload_carries_every_speaker_for_the_card_to_choose_from(self):
-        """The card picks three; the payload must offer it the candidates."""
+    def test_the_payload_caps_the_rows_but_carries_the_full_count(self):
+        """The card shows at most three speakers per item and says
+        \"+N more\" for the rest -- so the payload hands it three and
+        tells it how many there were."""
         from app.summarizer import extract_meeting_topics
         items = self._items(["Cited a study."])
         items[0]["speakers"] = [
@@ -392,7 +394,9 @@ class TestSpeakersGetTheirOwnCardRow:
             for i in range(5)
         ]
         rows = extract_meeting_topics(items, "City Council")
-        assert len([r for r in rows if r.get("kind") == "speaker"]) == 5
+        speaker_rows = [r for r in rows if r.get("kind") == "speaker"]
+        assert len(speaker_rows) == 3
+        assert all(r["item_speaker_count"] == 5 for r in speaker_rows)
 
     def test_a_speaker_row_keeps_the_items_categories_for_the_filter(self):
         rows = self._rows(["Cited an economic impact study."])
@@ -407,11 +411,13 @@ class TestTheCardBudget:
     one mobile screen.
 
     A quiet meeting looks like the old card — five detailed council
-    rows and up to three speaker rows. A packed meeting spends down:
-    speaker detail collapses into a digest naming every organization
-    that came, title-only rows drop from the bottom, and at the extreme
-    detailed rows demote to title-only. The digest itself is never cut:
-    hiding which orgs had a voice is not an acceptable saving.
+    rows, each with its speakers beneath it. A packed meeting spends
+    down (ADR 0022): the least-attended items demote to title-only
+    first, then the most-attended item gives up its speaker rows one
+    at a time, then it demotes too, and dropping a title-only row is
+    the last resort. The digest names whatever organizations are not
+    shown inline and is never cut: hiding which orgs had a voice is
+    not an acceptable saving.
 
     Brad's rule stands: a speaker never displaces an agenda item.
 
@@ -438,19 +444,22 @@ class TestTheCardBudget:
     def test_ranked_items_past_the_five_earn_a_title(self):
         assert "const CARD_TITLE_ONLY = 5;" in self._template()
 
-    def test_speakers_get_three_slots_of_their_own(self):
-        assert "const CARD_SPEAKERS = 3;" in self._template()
+    def test_speakers_get_up_to_three_rows_per_item(self):
+        assert "const CARD_SPEAKERS_PER_ITEM = 3;" in self._template()
 
-    def test_speaker_detail_collapses_before_council_rows_do(self):
-        """The digest is the first saving; then detail gives way to
-        breadth — a packed meeting names more of what council did, not
-        fewer things in more words. Dropping a title-only row is the
-        last resort, not the second."""
+    def test_engagement_is_the_last_thing_cut(self):
+        """An item that drew a crowd keeps its detail and its speakers,
+        paid for by the other items: the least-attended detailed rows
+        demote first, then the most-attended item's speaker rows trim
+        one at a time (only where a trim actually saves space), then
+        title-only rows drop. Demoting the most-attended item itself is
+        the last resort, and the digest is never cut (ADR 0022)."""
         source = self._template()
-        collapse = source.index("digest = buildSpeakerDigest(roster);")
-        demote = source.index("titleOnly.unshift(detailed.pop());")
+        demote = source.index("demote(demotable[0]);")
+        trim = source.index("shownSpeakers.get(protectedItem).pop();")
         drop = source.index("dropped.push(titleOnly.pop());")
-        assert collapse < demote < drop
+        last = source.index("demote(detailed[detailed.length - 1]);")
+        assert demote < trim < drop < last
 
     def test_a_consent_item_never_becomes_a_row(self):
         """Approved in one block vote without debate: nothing to
@@ -467,9 +476,11 @@ class TestTheCardBudget:
         help_fn = source[source.index("function consentRollupHtml"):]
         assert help_fn.index("</a>") < help_fn.index("+ help")
 
-    def test_the_digest_names_every_organization(self):
-        """A representative few would hide who had a voice."""
-        assert "orgs: roster.organizations || []" in self._template()
+    def test_the_digest_names_every_organization_not_shown_inline(self):
+        """Inline speaker rows name the orgs they show; the digest names
+        the rest. The union is always the full roster -- a representative
+        few would hide who had a voice."""
+        assert ".filter(o => !shownOrgs.has(o.label))" in self._template()
 
     def test_the_payload_carries_the_full_roster(self):
         """The card cannot digest what it is never told about."""
@@ -550,13 +561,16 @@ class TestTheCardBudget:
         """The filter that stops a delegate taking an agenda item's place."""
         assert "topics.filter(t => t.kind !== 'speaker' && !t.is_consent)" in self._template()
 
-    def test_a_speaker_whose_item_is_absent_names_it(self):
-        """Otherwise the row is a person reacting to nothing."""
-        assert "Spoke on ${escapeAttr(t.spoke_to)}" in self._template()
+    def test_a_speaker_appears_only_beneath_their_item(self):
+        """Speakers sit with the item they answered (ADR 0022). A
+        speaker whose item is not on the card has no floating row --
+        their organization is still named in the digest."""
+        assert "spoke_to" not in self._template()
 
-    def test_the_payload_offers_more_speakers_than_the_card_shows(self):
-        from app.summarizer import MAX_SPEAKER_ROWS
-        assert MAX_SPEAKER_ROWS > 3
+    def test_the_card_shows_up_to_three_speakers_per_item(self):
+        from app.summarizer import CARD_SPEAKERS_PER_ITEM
+        assert CARD_SPEAKERS_PER_ITEM == 3
+        assert "const CARD_SPEAKERS_PER_ITEM = 3;" in self._template()
 
 
 class TestOrganizationIsCarried:
@@ -613,10 +627,13 @@ class TestOrganizationIsCarried:
             {"name": "Jason Aebig", "organization": organization,
              "said": ["Cited a study."], "stance": "support"},
             {"badges": [], "time_start_ms": 0, "rank": 0},
+            1,
         )
 
-    def test_the_organization_is_a_chip_beside_the_name(self):
-        """The name is the row; the organization is a chip of its own."""
+    def test_the_organization_travels_on_the_row(self):
+        """The name is the row's text; the organization rides with it
+        and the row's colour carries who they came for. Speakers are
+        rows, never chips (ADR 0022)."""
         row = self._row("Greater Saskatoon Chamber of Commerce")
         assert row["topic"] == "Jason Aebig"
         assert row["organization"] == "Greater Saskatoon Chamber of Commerce"

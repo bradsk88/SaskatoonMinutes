@@ -200,45 +200,36 @@ def speaker_roster(agenda_items: list[dict]) -> dict:
     }
 
 
-# How many speaker rows the payload carries.  The card shows at most
-# three of them (``CARD_SPEAKERS`` in the template) and can only use
-# speakers whose item it is already showing, so the payload holds enough
-# candidates for that choice rather than pre-empting it.  The cap is a
-# bound on a pathological meeting, not a design limit.
-MAX_SPEAKER_ROWS = 8
+# How many of one item's speakers the card can show beneath it.  The
+# payload carries up to this many per item so the card never wants a
+# speaker it was not handed, and each row carries the item's full count
+# so the card can say "+N more" for the rest (ADR ``0022``).
+CARD_SPEAKERS_PER_ITEM = 3
 
 
 def _with_speaker_rows(
     rows: list[dict], ordered: list[dict], rank_by_item: dict,
 ) -> list[dict]:
-    """Give the best guest speakers a row of their own, beside the topics.
+    """Put an item's guest speakers directly beneath it.
 
     A resident listening to a meeting often finds the substance came from
     the people who came to speak, not from the report in front of council
-    — so a speaker competes for the card on the same terms as an
-    agenda item rather than being reduced to a count.
+    — so a speaker sits with the item they answered rather than being
+    reduced to a count at the bottom of the card (ADR ``0022``).
 
     Only a speaker whose remarks we actually have is eligible.  A row
     carrying a name and a filename ("Registered to speak on: DEED") is
     not worth a topic's place, and the roster is still on the detail
     page for anyone who opens it.
     """
-    candidates: list[tuple[int, dict, dict]] = []
-    for item in ordered:
-        for speaker in merge_remarks(item):
-            if speaker.get("said"):
-                candidates.append((rank_by_item[id(item)], item, speaker))
-    if not candidates:
-        return rows
-
-    # Best-ranked item first, and a speaker's position within the item
-    # breaks the tie — that is the order council heard them in.
-    candidates.sort(key=lambda c: c[0])
-    chosen = candidates[:MAX_SPEAKER_ROWS]
-
     by_item: dict[int, list[dict]] = {}
-    for _, item, speaker in chosen:
-        by_item.setdefault(id(item), []).append(speaker)
+    counts: dict[int, int] = {}
+    for item in ordered:
+        eligible = [s for s in merge_remarks(item) if s.get("said")]
+        if not eligible:
+            continue
+        counts[id(item)] = len(eligible)
+        by_item[id(item)] = eligible[:CARD_SPEAKERS_PER_ITEM]
 
     out: list[dict] = []
     for row, item in zip(rows, ordered):
@@ -247,29 +238,30 @@ def _with_speaker_rows(
         # reaction to something, and a speaker row floating free of the
         # item it answers reads as a second meeting.
         for speaker in by_item.get(id(item), []):
-            out.append(_format_speaker_row(speaker, row))
+            out.append(_format_speaker_row(speaker, row, counts[id(item)]))
     return out
 
 
-def _format_speaker_row(speaker: dict, topic_row: dict) -> dict:
+def _format_speaker_row(
+    speaker: dict, topic_row: dict, item_speaker_count: int,
+) -> dict:
     """One guest speaker as a card row, in the shape the topics table reads."""
     name = speaker.get("name") or "A speaker"
     org = speaker.get("organization") or ""
     stance = speaker.get("stance") or ""
     return {
         "kind": "speaker",
-        # The name alone. Who they came for is a chip beside it, coloured
+        # The name alone. Who they came for is the row's own colour,
         # so that Saskatoon Police Service is recognisable across cards
-        # before the name is read.
+        # before the name is read. Speakers are rows, never chips
+        # (ADR ``0022``).
         "topic": name,
         "organization": organization_label(org),
         "org_color": organization_color(org),
-        # The item they came to speak to. The card shows this only when
-        # that item is not itself on the card — a speaker whose item
-        # did not rank still tells a resident that their business
-        # improvement district or First Nation had a voice, which is the
-        # question the row exists to answer.
-        "spoke_to": topic_row.get("topic") or "",
+        # Every eligible speaker on this item, shown or not, so the card
+        # can cap the rows it draws and still say "+N more speakers"
+        # for the rest.  The digest names their organizations either way.
+        "item_speaker_count": item_speaker_count,
         # The stance takes the outcome badge's place: a speaker has no
         # outcome of its own, and how they came down on the item is the
         # one thing a reader wants before the words.

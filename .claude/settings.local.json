@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:pine64.org)",
+      "WebFetch(domain:gadgetbridge.org)",
+      "WebFetch(domain:www.mi.com)",
+      "WebFetch(domain:pine64.com)",
+      "WebFetch(domain:us.amazfit.com)",
+      "WebFetch(domain:www.polar.com)",
+      "WebFetch(domain:www.androidcentral.com)",
+      "WebFetch(domain:community.home-assistant.io)",
+      "WebFetch(domain:www.bentasker.co.uk)",
+      "WebFetch(domain:discuss.techlore.tech)"
+    ]
+  }
+}

@@ -159,11 +159,12 @@ class TestASpeakerRowIsOneLine:
         assert "'Spoke to council'" not in source
         assert "`Spoke to council`" not in source
 
-    def test_an_orphaned_speaker_still_names_their_item(self):
-        """Their item may not have made the card. Then the row needs it."""
+    def test_a_speaker_row_only_ever_sits_beneath_its_item(self):
+        """There is no orphan case: a speaker whose item did not make
+        the card has no floating row to explain. Their organization is
+        still named -- in the digest (ADR 0022)."""
         source = _read(INDEX)
-        assert "Spoke on ${escapeAttr(t.spoke_to)}" in source
-        assert "if (orphan) {" in source
+        assert "spoke_to" not in source
 
 
 class TestIndexCardStaysThin:

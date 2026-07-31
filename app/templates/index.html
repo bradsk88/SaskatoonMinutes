@@ -79,10 +79,10 @@
     // rows: a packed meeting should degrade to a tighter summary, not
     // scroll forever. Fifteen units is roughly one mobile screen.
     const CARD_SPACE_BUDGET = 15;
-    const UNITS_DETAILED = 3;    // title + bullets + takeaway
-    const UNITS_SPEAKER = 2;     // name + org + stance
-    const UNITS_TITLE_ONLY = 1;  // title + outcome badge
-    const UNITS_ORG_ROW = 1;     // one digest row per represented org
+    const UNITS_DETAILED = 3;      // title + bullets + takeaway
+    const UNITS_SPEAKER_ROW = 1;   // a speaker under their item: name + stance
+    const UNITS_TITLE_ONLY = 1;    // title + outcome badge
+    const UNITS_ORG_ROW = 1;       // one digest row per represented org
 
     // A row earns a detailed slot by having a recorded outcome.
     // "Discussed" is what an item with no vote and no recommendation
@@ -96,12 +96,14 @@
     // "N other items".
     const CARD_TITLE_ONLY = 5;
 
-    // Guest speakers get rows of their own while the budget holds: the
-    // five above are what council did; a speaker is a different
-    // question — who had a voice. Under pressure the rows collapse into
-    // a digest naming every organization that came; the digest is the
-    // one thing the budget never cuts.
-    const CARD_SPEAKERS = 3;
+    // Guest speakers sit beneath the item they answered, up to three
+    // rows per item, each costing what a title-only row costs. An item
+    // with heavy engagement keeps its speakers by taking space from the
+    // other items: the least-attended items demote first. The digest at
+    // the foot of the card names every organization not already shown
+    // inline, and is the one thing the budget never cuts -- which orgs
+    // had a voice is never hidden (ADR 0022).
+    const CARD_SPEAKERS_PER_ITEM = 3;
 
     const selectedCategories = new Set();
 
@@ -266,9 +268,6 @@
         // read to decide what to open, and a badge whose claim only
         // appears on hover says nothing at all on a phone.
         let html = '<table class="topics-table"><tbody>';
-        // What the last council row on the card was, so a speaker row can
-        // tell whether the item it answers is above it or absent.
-        let lastTopic = null;
         topics.forEach(t => {
             let rowClass = '';
             if (t.is_consent) rowClass += ' topic-consent';
@@ -326,14 +325,19 @@
                 }
             }
 
-            // A guest speaker's row. It earns its place the same way a
-            // topic does — a resident who listens to a meeting often
-            // finds the substance came from the people who came to
-            // speak, not from the report in front of council — but it is
-            // marked, because "Jason Aebig, Greater Saskatoon Chamber of
-            // Commerce" is a person and every other row is a decision.
+            // A guest speaker's row, sitting directly beneath the item
+            // they answered. It takes the title-only row's shape — one
+            // line, name and stance — coloured by the organization's own
+            // colours, so a person is visibly not a decision and an org
+            // is recognisable before it is read. Speakers are rows,
+            // never chips (ADR 0022).
             const isSpeaker = t.kind === 'speaker';
-            if (isSpeaker) rowClass += ' topic-speaker-row';
+            const isMore = t.kind === 'speaker-more';
+            if (isSpeaker) {
+                rowClass += ' topic-speaker-row topic-title-only'
+                    + ` org-row-${t.org_color == null ? 'none' : t.org_color}`;
+            }
+            if (isMore) rowClass += ' topic-speaker-row topic-title-only speaker-more-row';
             // A title-only row: the item earned its name and outcome on
             // the card, but not the vertical space a summary costs.
             if (t.title_only) rowClass += ' topic-title-only';
@@ -346,44 +350,26 @@
             } else {
                 html += `<div class="topic-content">`;
             }
-            // Its own line, above the flex row: dropping it inside
-            // .topic-name made the speaker's name the second child, which
-            // lost it the two-line clamp and let space-between centre it.
-            if (isSpeaker) {
-                // Only when the item they answered is not the row above.
-                // "Spoke to council" sitting directly under the item they
-                // spoke to said nothing the position did not already say,
-                // and it cost the card a line on every speaker row.
-                const orphan = t.spoke_to && t.spoke_to !== lastTopic;
-                if (orphan) {
-                    html += `<div class="topic-speaker-mark">Spoke on ${escapeAttr(t.spoke_to)}</div>`;
-                }
-            } else {
-                lastTopic = t.topic;
-            }
-            // Who the speaker came for, coloured by the organization's
-            // name so a reader recognises it across cards before reading
-            // it. A speaker who came for nobody says so -- a blank where
-            // every other speaker has a chip reads as missing data.
-            //
-            // It sits with the stance rather than after the name: the two
-            // answer one question -- who came, and how they came down --
-            // and reading them together beats reading one at each end of
-            // the row.
-            const orgHtml = isSpeaker && t.organization
-                ? `<span class="org-chip org-chip-${t.org_color == null ? 'none' : t.org_color}">`
-                  + `${escapeAttr(t.organization)}</span>`
-                : '';
             // Every row ends in a badge, including a speaker who did not
             // come down either way. "Spoke" says little on its own, but a
             // row that alone has no badge where every row above it has
             // one reads as a rendering fault rather than as a fact about
             // the speaker. Layout consistency is the reason; the muted
             // colour is what keeps it from claiming more than it knows.
-            const metaHtml = orgHtml || outcomeHtml
-                ? `<span class="topic-name-meta">${orgHtml}${outcomeHtml}</span>`
+            const metaHtml = (!isMore && outcomeHtml)
+                ? `<span class="topic-name-meta">${outcomeHtml}</span>`
                 : '';
-            html += `<div class="topic-name"><span>${escapeAttr(t.topic)}</span>${metaHtml}</div>`;
+            if (isMore) {
+                html += `<div class="topic-name"><span class="speaker-more">`
+                    + `+${t.more} more speaker${t.more === 1 ? '' : 's'}</span></div>`;
+            } else {
+                // A speaker's organization travels in the name line —
+                // the row's colour already says they came for someone.
+                const nameText = isSpeaker && t.organization
+                    ? `${t.topic} · ${t.organization}`
+                    : t.topic;
+                html += `<div class="topic-name"><span>${escapeAttr(nameText)}</span>${metaHtml}</div>`;
+            }
             // The takeaway is decided before the summary is drawn: when
             // a row has one, the summary gives up a line so the row's
             // height does not grow. A hook cut mid-sentence is worse
@@ -508,14 +494,13 @@
             + `</div></td></tr></tbody></table>`;
     }
 
-    // The collapsed form of a meeting's speakers, for a card whose
-    // budget ran out before speaker detail: every organization that
-    // came, one row each, plus a roll-up for the residents. Which orgs
-    // had a voice is the thing a resident scans for, so the digest
-    // lists all of them rather than a representative few. Each row
-    // takes the title-only row's shape — one line, one tap target —
-    // but keeps the org's own colours, so Saskatoon Police Service is
-    // recognisable before the words are read.
+    // The digest names the organizations a card did not show inline,
+    // one row each, plus a roll-up for the residents. Which orgs had a
+    // voice is the thing a resident scans for, and the union of inline
+    // speaker rows and this digest is always the full roster. Each row
+    // takes the title-only row's shape coloured by the org's own
+    // colours, so Saskatoon Police Service is recognisable before the
+    // words are read. Speakers are rows, never chips (ADR 0022).
     function digestHtml(digest, openHref) {
         if (digestRowCount(digest) === 0) return '';
         let rows = '';
@@ -526,27 +511,25 @@
                 if (org.item_id != null) href += `#item-${org.item_id}`;
             }
             const color = org.color == null ? 'none' : org.color;
-            const chip = `<span class="org-chip org-chip-${color}">${escapeAttr(org.label)}</span>`;
-            rows += `<tr class="topic-title-only org-digest-row"><td class="topic-cell">`
+            rows += `<tr class="topic-title-only org-digest-row org-row-${color}"><td class="topic-cell">`
                 + `<div class="topic-row">`
                 + (href
                     ? `<a href="${escapeAttr(href)}" class="topic-content topic-link">`
                     : `<div class="topic-content">`)
-                + `<div class="topic-name">${chip}</div>`
+                + `<div class="topic-name"><span>${escapeAttr(org.label)}</span></div>`
                 + (href ? `</a>` : `</div>`)
                 + `</div></td></tr>`;
         }
         if (digest.residents > 0) {
-            // The same row as an org, chip and all — residents are a
-            // group that came, not a footnote to the groups that did.
-            const chip = `<span class="org-chip org-chip-none">`
-                + `${digest.residents} Resident${digest.residents === 1 ? '' : 's'}</span>`;
-            rows += `<tr class="topic-title-only org-digest-row"><td class="topic-cell">`
+            // The same row as an org — residents are a group that came,
+            // not a footnote to the groups that did.
+            const label = `${digest.residents} Resident${digest.residents === 1 ? '' : 's'}`;
+            rows += `<tr class="topic-title-only org-digest-row org-row-none"><td class="topic-cell">`
                 + `<div class="topic-row">`
                 + (openHref
                     ? `<a href="${escapeAttr(openHref)}" class="topic-content topic-link">`
                     : `<div class="topic-content">`)
-                + `<div class="topic-name">${chip}</div>`
+                + `<div class="topic-name"><span>${escapeAttr(label)}</span></div>`
                 + (openHref ? `</a>` : `</div>`)
                 + `</div></td></tr>`;
         }
@@ -588,6 +571,11 @@
             (badge || '') + `<div class="${cssClass}">${message}</div>` + cardFooterHtml(openHref, null);
     }
 
+    function digestRowCount(digest) {
+        if (!digest) return 0;
+        return digest.orgs.length + (digest.residents > 0 ? 1 : 0);
+    }
+
     // Which topics the card draws. A row with a recorded outcome earns
     // its slot; standing business — "Report of the Chair", "Work Plan
     // Consideration" — does not, and a thin agenda gets a short card
@@ -595,19 +583,6 @@
     // card stops looking like a summary at all, so the best of the rest
     // fill in. Agenda order is preserved, because that is the order the
     // meeting happened in.
-    function buildSpeakerDigest(roster) {
-        if (!roster) return { orgs: [], residents: 0 };
-        return {
-            orgs: roster.organizations || [],
-            residents: roster.resident_count || 0,
-        };
-    }
-
-    function digestRowCount(digest) {
-        if (!digest) return 0;
-        return digest.orgs.length + (digest.residents > 0 ? 1 : 0);
-    }
-
     function chooseCardTopics(topics, roster, consentCount) {
         // Council's rows are chosen from council's rows only: a speaker
         // never displaces an agenda item. And a consent item never
@@ -628,77 +603,168 @@
         // card fits with room to spare after the spend-down.
         const rest = byRank.filter(t => !detailed.includes(t) && !titleOnly.includes(t));
 
-        // Then up to three speakers, on top — and not restricted to the
-        // items the card is showing. Whether a business improvement
-        // district or a First Nation had a voice is worth knowing even
-        // when the item they came for did not rank; such a row names the
-        // item instead of sitting mute under an unrelated one.
-        //
-        // Ranked, not agenda order: otherwise the earliest item on the
-        // agenda spends every speaker slot and the biggest debate of the
-        // meeting shows none of the people who came to it.
-        let speakers = topics
-            .filter(t => t.kind === 'speaker')
-            .sort((a, b) => rank(a) - rank(b))
-            .slice(0, CARD_SPEAKERS);
-        let digest = null;
-        const dropped = [];
+        // Speakers arrive in the payload directly beneath the item they
+        // answered. Gather them per item, in the order council heard
+        // them.
+        const speakersOf = new Map();
+        let current = null;
+        for (const t of topics) {
+            if (t.kind === 'speaker') {
+                if (current) {
+                    if (!speakersOf.has(current)) speakersOf.set(current, []);
+                    speakersOf.get(current).push(t);
+                }
+            } else if (!t.is_consent) {
+                current = t;
+            }
+        }
+        const attendance = t => (speakersOf.get(t) || []).length;
 
+        // A detailed item shows up to CARD_SPEAKERS_PER_ITEM of its
+        // speakers beneath it. A title-only item shows none -- demotion
+        // is what sends an item's speakers back to the digest.
+        const shownSpeakers = new Map();
+        const capFor = t => Math.min(CARD_SPEAKERS_PER_ITEM, attendance(t));
+        for (const t of detailed) {
+            shownSpeakers.set(t, (speakersOf.get(t) || []).slice(0, capFor(t)));
+        }
+
+        // The digest names every organization not already shown inline,
+        // plus the residents who were not. Recomputed whenever the shown
+        // set moves: the union of inline rows and the digest is always
+        // the full roster.
+        const computeDigest = () => {
+            const shownOrgs = new Set();
+            let shownResidents = 0;
+            for (const arr of shownSpeakers.values()) {
+                for (const s of arr) {
+                    if (s.organization) shownOrgs.add(s.organization);
+                    else shownResidents++;
+                }
+            }
+            return {
+                orgs: (roster && roster.organizations || [])
+                    .filter(o => !shownOrgs.has(o.label)),
+                residents: Math.max(0, (roster && roster.resident_count || 0) - shownResidents),
+            };
+        };
+        let digest = computeDigest();
+
+        const speakerRowCount = () =>
+            [...shownSpeakers.values()].reduce((n, arr) => n + arr.length, 0);
         const space = () =>
             detailed.length * UNITS_DETAILED
             + titleOnly.length * UNITS_TITLE_ONLY
-            + speakers.length * UNITS_SPEAKER
+            + speakerRowCount() * UNITS_SPEAKER_ROW
             + digestRowCount(digest) * UNITS_ORG_ROW
             // The roll-up is one unit and, like the digest, never cut —
             // but it still counts, or a consent-heavy meeting would
             // overflow its budget by exactly one.
             + (consentCount ? UNITS_ORG_ROW : 0);
 
-        // Spend down until the card fits. Speaker detail is the first
-        // saving — the rows collapse into a digest naming every
-        // organization that came, because *which orgs had a voice* is
-        // never the thing to cut. Then detailed rows demote to
-        // title-only: a packed meeting should name more of what council
-        // did, not fewer things in more words. Only when no detail is
-        // left to give up do title-only rows drop from the bottom. The
-        // digest itself is never cut.
+        // The most-attended detailed item: the one whose speakers the
+        // card sacrifices last. Ties go to the higher-ranked item.
+        const mostAttended = () => detailed.slice().sort(
+            (a, b) => attendance(b) - attendance(a) || rank(a) - rank(b)
+        )[0];
+
+        // Spend down until the card fits. Engagement is the last thing
+        // to give: demote the *least-attended* items first (their
+        // speakers return to the digest), then trim speaker rows off
+        // the most-attended item one at a time -- but only while a
+        // trim actually saves space. A speaker whose organization goes
+        // straight back to the never-cut digest saves nothing, so such
+        // a speaker keeps their row. Title-only rows drop next, and
+        // demoting the most-attended item itself is the last resort.
+        // The digest is never cut (ADR 0022).
+        const dropped = [];
+        const demote = t => {
+            detailed.splice(detailed.indexOf(t), 1);
+            shownSpeakers.delete(t);
+            // Unshift, because a demoted detailed row still outranks
+            // every title-only row it joins and should be the last of
+            // them to drop.
+            titleOnly.unshift(t);
+        };
+        // Would dropping this item's last shown speaker shrink the
+        // card? Not when the digest would grow a row to replace it --
+        // the resident count shrinking from two to one is still one
+        // row, and an org no longer shown inline rejoins the digest.
+        const trimSaves = t => {
+            const arr = shownSpeakers.get(t) || [];
+            if (!arr.length) return false;
+            const s = arr[arr.length - 1];
+            const rowsBefore = digestRowCount(digest);
+            arr.pop();
+            const rowsAfter = digestRowCount(computeDigest());
+            arr.push(s);
+            return rowsAfter <= rowsBefore;
+        };
         while (space() > CARD_SPACE_BUDGET) {
-            if (speakers.length) {
-                speakers = [];
-                digest = buildSpeakerDigest(roster);
-            } else if (detailed.length) {
-                // Demotion, not removal: the item keeps its title and
-                // outcome at a fifth of the cost. Unshift, because a
-                // demoted detailed row still outranks every title-only
-                // row it joins and should be the last of them to drop.
-                titleOnly.unshift(detailed.pop());
+            const protectedItem = mostAttended();
+            const demotable = detailed
+                .filter(t => t !== protectedItem)
+                .sort((a, b) => attendance(a) - attendance(b) || rank(b) - rank(a));
+            if (demotable.length) {
+                demote(demotable[0]);
+            } else if (protectedItem && trimSaves(protectedItem)) {
+                shownSpeakers.get(protectedItem).pop();
             } else if (titleOnly.length) {
                 dropped.push(titleOnly.pop());
+            } else if (detailed.length) {
+                demote(detailed[detailed.length - 1]);
             } else {
                 break;
             }
+            digest = computeDigest();
         }
 
         // Then top back up. A spend-down only ever removes, so a card
-        // that collapsed a speaker or demoted a row can end a unit or
-        // two short of the budget — exactly enough to name another item
-        // that ranked. Restored in rank order: dropped held the
-        // lowest-ranked first, then items ranked past every candidate.
+        // can end a unit or two short of the budget. A trimmed speaker
+        // is restored before another item is named: who had a voice on
+        // an item the card already shows outranks naming one more item.
         while (space() + UNITS_TITLE_ONLY <= CARD_SPACE_BUDGET) {
-            if (dropped.length) {
+            const restorable = detailed
+                .filter(t => (shownSpeakers.get(t) || []).length < capFor(t))
+                .sort((a, b) => attendance(b) - attendance(a) || rank(a) - rank(b))[0];
+            if (restorable) {
+                const arr = shownSpeakers.get(restorable) || [];
+                arr.push(speakersOf.get(restorable)[arr.length]);
+                shownSpeakers.set(restorable, arr);
+            } else if (dropped.length) {
                 titleOnly.push(dropped.pop());
             } else if (rest.length) {
                 titleOnly.push(rest.shift());
             } else {
                 break;
             }
+            digest = computeDigest();
         }
 
+        // Flatten in payload order: each kept item followed by its
+        // speakers and, when the per-item cap hid some, a "+N more"
+        // row pointing at the detail page, which lists everyone.
         const titleOnlySet = new Set(titleOnly);
-        const keep = new Set([...detailed, ...titleOnly, ...speakers]);
-        const rows = topics
-            .filter(t => keep.has(t))
-            .map(t => titleOnlySet.has(t) ? { ...t, title_only: true } : t);
+        const keep = new Set([...detailed, ...titleOnly]);
+        const rows = [];
+        for (const t of topics) {
+            if (t.kind === 'speaker' || !keep.has(t)) continue;
+            rows.push(titleOnlySet.has(t) ? { ...t, title_only: true } : t);
+            const speakers = titleOnlySet.has(t) ? [] : (shownSpeakers.get(t) || []);
+            rows.push(...speakers);
+            const total = speakers.length
+                ? (speakers[0].item_speaker_count || speakers.length)
+                : 0;
+            if (total > speakers.length) {
+                rows.push({
+                    kind: 'speaker-more',
+                    more: total - speakers.length,
+                    item_id: t.item_id,
+                    time_start_ms: t.time_start_ms,
+                    badges: t.badges,
+                });
+            }
+        }
         return { rows, digest };
     }
 
@@ -726,7 +792,7 @@
         // meeting, since topics are the ranked few, not the agenda.
         // Counted against council rows only — a speaker or an org digest
         // row is not one of the agenda items the number refers to.
-        const councilShown = rows.filter(t => t.kind !== 'speaker').length;
+        const councilShown = rows.filter(t => !t.kind).length;
         // The roll-up accounts for the consent block, so "N other items"
         // counts neither the rows shown nor the items rolled up.
         const accounted = councilShown + (consent_count || 0);

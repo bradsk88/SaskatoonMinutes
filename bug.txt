@@ -1,0 +1,48 @@
+I'm working with another agent to improve https://github.com/bradsk88/SaskatoonMinutes/ but they don't have repo acces to github. The github actions have been failing. Compile the information they need.
+
+I'll check the repository's GitHub Actions workflows and recent failure details.
+
+Now let me pull the actual failure logs for both jobs.
+
+Here's what I found. Two workflows are currently failing on main, and I've traced both down to the actual root cause (not just "it failed").
+1. Summarize Meeting Items (.github/workflows/summarize.yml)
+
+Latest failure: run 30340465446, 2026-07-28 07:58 UTC — job log
+
+    Command: python scripts/summarize_meetings.py ...
+    Exact error (item 53, "The Home Energy Loan Program Amendment Bylaw, 2025 [EUCS2024...]"):
+
+    Gemini extract failed: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand...'}}
+    ERROR: not saved — item 53 (...): Gemini call failed: 503 UNAVAILABLE...
+    Finished: 27 summarized, 113 already cached, 1 errors
+    ##[error]Process completed with exit code 1.
+
+    Root cause: app/item_categorizer.py:666 (_call_with_retry) only retries on rate-limit errors (_is_rate_limited(exc), i.e. 429s). A transient 503 UNAVAILABLE from Gemini is not a rate limit, so it propagates immediately as ExtractionFailed (line 745). scripts/summarize_meetings.py:279-298 counts any such error and calls sys.exit(1) if errors > 0 — so one transient overload on one agenda item fails the entire job, even though 27 other meetings summarized fine.
+    Not a code bug in the strict sense — it's a missing-retry gap for 503s specifically.
+
+2. Chip Quality Eval (.github/workflows/eval-chips.yml)
+
+Latest failure: run 30328244443, 2026-07-28 04:15 UTC — job log
+
+    Command: python scripts/eval_chips.py --diff --judge --check
+    Unit tests passed (821 passed), chip generation succeeded. Failure is in the --judge --check gate:
+
+    judge failed: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2590)
+    judge failed: [SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:2590)
+    FAILED:
+      - 2 summaries could not be judged
+      - 3 summaries scored <= 2 on faithfulness: 314006fe.../11, b71ff753.../43, b71ff753.../44
+    Faithfulness: 4.27 (gate 4.0)   ← aggregate passes
+    Specificity: 4.95 (gate 3.0)
+    Scored: 22/24
+
+    Root cause, part A: app/summary_judge.py:143-181 (SummaryJudge._call/.judge) has a bare except Exception with no retry — any transient network/SSL error while calling the judge model returns None, and scripts/eval_chips.py:565-573 (judge_failures) treats any unscored item as an automatic failure ("a judge that did not return is not a pass").
+    Root cause, part B: even when judged, 3 specific fixture summaries score faithfulness ≤2 (flagged as making unsupported claims, e.g. 314006fe-3c46-4d0d-b1d5-0961d795e858/11, b71ff753-0016-4ae9-95e4-4c598ae42d06/43, .../44) — this is a real content-quality issue in the extractor's output for those fixtures, separate from the SSL flakiness. The overall mean (4.27) clears the gate (4.0) but per-item failures still fail the check (scripts/eval_chips.py:707-711).
+
+Summary for the other agent
+Workflow	File:line	Issue	Fix direction
+Summarize Meeting Items	app/item_categorizer.py:666 _call_with_retry	Doesn't retry Gemini 503s	Extend retry condition to include 503/UNAVAILABLE, not just rate-limit 429s
+Chip Quality Eval	app/summary_judge.py:143-181 SummaryJudge._call	No retry on transient SSL/network errors to the judge model	Add a small retry (e.g. 2-3 attempts) around the judge call
+Chip Quality Eval	fixtures 314006fe.../11, b71ff753.../43, b71ff753.../44	Extractor produces unsupported claims for these specific fixture items	Needs prompt/extraction review for those 3 items — the SSL fix above won't resolve this part
+
+Both workflows are otherwise healthy (unit tests pass, most items succeed) — these are narrow, well-understood failure points, not systemic breakage. I didn't make any code changes since this was a research/compile-info request.

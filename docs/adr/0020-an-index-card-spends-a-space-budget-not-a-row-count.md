@@ -1,5 +1,7 @@
 # An index card spends a space budget, not a row count
 
+*Speaker placement, speaker-row cost, and the spend-down order are superseded by ADR 0022; the budget mechanism itself stands.*
+
 The index card used to show a fixed five council topics plus up to three speaker rows. The July 29, 2026 regular meeting exposed the flaw: roughly ten items of clear public interest (transit bylaw, homelessness plan, BRT relocation, $31.7M borrowing, fire stations, the $281.6M surplus) competed for five slots, and significant decisions vanished behind "15 other items."
 
 The replacement bounds **vertical space, not rows**: a card has a budget of 15 units (roughly one mobile screen), where a detailed row costs 3, a speaker row 2, a title-only row 1, and an org digest row 1. Ranked items past the detailed five now earn a title-only row — title plus outcome badge — so a heavy meeting names the rest of what council did instead of burying it whole.
