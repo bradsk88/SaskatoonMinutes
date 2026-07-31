@@ -10,6 +10,7 @@ Usage:
     python scripts/build_site.py
 """
 
+import hashlib
 import json
 import os
 import re
@@ -44,6 +45,16 @@ from app.item_summaries_cache import ItemSummariesCache
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "_site")
 TEMPLATE_DIR = os.path.join(PROJECT_ROOT, "app", "templates")
 STATIC_DIR = os.path.join(PROJECT_ROOT, "app", "static")
+
+
+# The stylesheet is linked with a content version (``style.css?v=<hash>``)
+# so a deploy with new CSS is not read through a cached old copy — an
+# unstyled span renders its tooltip as plain inline text, which is
+# exactly the bug that made this necessary.
+def _style_href() -> str:
+    with open(os.path.join(STATIC_DIR, "style.css"), "rb") as f:
+        version = hashlib.sha1(f.read()).hexdigest()[:8]
+    return f"style.css?v={version}"
 
 ESCRIBEMEETINGS_BASE = "https://pub-saskatoon.escribemeetings.com"
 
@@ -339,7 +350,7 @@ def render_index_html(all_tabs_meetings, topics_data):
     )
     output = output.replace(
         "{{ url_for('static', filename='style.css') }}",
-        "style.css",
+        _style_href(),
     )
     output = output.replace(
         "{% block content %}{% endblock %}",
@@ -407,7 +418,7 @@ def render_meeting_html(meeting_id, detail_data):
     )
     output = output.replace(
         "{{ url_for('static', filename='style.css') }}",
-        "../style.css",
+        f"../{_style_href()}",
     )
     # Fix logo link for sub-page
     output = output.replace('href="/" class="logo"', 'href="../" class="logo"')
