@@ -166,6 +166,14 @@ class TestASpeakerRowIsOneLine:
         source = _read(INDEX)
         assert "spoke_to" not in source
 
+    def test_a_speaker_row_does_not_repeat_the_items_takeaway(self):
+        """Speaker rows and the \"+N more\" row carry the item's badges
+        for the filter, and the takeaway logic read them too -- the
+        DEED item's Debate line rendered once under the item and again
+        under \"+3 more speakers\"."""
+        source = _read(INDEX)
+        assert "(t.title_only || t.kind) ? '' : takeawayHtml(t)" in source
+
 
 class TestIndexCardStaysThin:
     """The index skims; the detail page proves."""

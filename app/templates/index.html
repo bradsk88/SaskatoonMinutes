@@ -374,8 +374,11 @@
             // a row has one, the summary gives up a line so the row's
             // height does not grow. A hook cut mid-sentence is worse
             // than a description cut short, and chip text runs to 122
-            // characters -- three lines at this width.
-            const takeaway = t.title_only ? '' : takeawayHtml(t);
+            // characters -- three lines at this width. Speaker rows and
+            // the "+N more" row carry the item's badges for the filter,
+            // and without the kind check the item's takeaway rendered a
+            // second time beneath them.
+            const takeaway = (t.title_only || t.kind) ? '' : takeawayHtml(t);
             const summaryLines = t.title_only
                 ? []
                 : Array.isArray(t.summary)
