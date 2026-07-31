@@ -158,6 +158,12 @@ def speaker_roster(agenda_items: list[dict]) -> dict:
     skimmer is after.
 
     Agenda order, which is the order council heard them in.
+
+    Registered-only names are excluded: an RTS filing proves intent, not
+    attendance, and listing someone who never reached the podium puts a
+    voice in the room that was not there. The filing survives if the
+    transcript captured remarks for them — then they did speak, and the
+    minutes simply missed them.
     """
     organizations: list[dict] = []
     seen_orgs: set[str] = set()
@@ -166,6 +172,8 @@ def speaker_roster(agenda_items: list[dict]) -> dict:
     for item in agenda_items:
         for speaker in item.get("speakers") or []:
             if not isinstance(speaker, dict):
+                continue
+            if speaker.get("source") == "registered" and not speaker.get("said"):
                 continue
             name = speaker.get("name") or ""
             if name:

@@ -482,12 +482,15 @@
 
     // The collapsed form of a meeting's speakers, for a card whose
     // budget ran out before speaker detail: every organization that
-    // came, one slim row each, plus a roll-up for the residents. Which
-    // orgs had a voice is the thing a resident scans for, so the digest
-    // lists all of them rather than a representative few.
+    // came, one row each, plus a roll-up for the residents. Which orgs
+    // had a voice is the thing a resident scans for, so the digest
+    // lists all of them rather than a representative few. Each row
+    // takes the title-only row's shape — one line, one tap target —
+    // but keeps the org's own colours, so Saskatoon Police Service is
+    // recognisable before the words are read.
     function digestHtml(digest, openHref) {
         if (digestRowCount(digest) === 0) return '';
-        const rows = [];
+        let rows = '';
         for (const org of digest.orgs) {
             let href = openHref || '';
             if (href) {
@@ -496,16 +499,24 @@
             }
             const color = org.color == null ? 'none' : org.color;
             const chip = `<span class="org-chip org-chip-${color}">${escapeAttr(org.label)}</span>`;
-            rows.push(href
-                ? `<a class="org-digest-row" href="${escapeAttr(href)}">${chip}</a>`
-                : `<div class="org-digest-row">${chip}</div>`);
+            rows += `<tr class="topic-title-only org-digest-row"><td class="topic-cell">`
+                + `<div class="topic-row">`
+                + (href
+                    ? `<a href="${escapeAttr(href)}" class="topic-content topic-link">`
+                    : `<div class="topic-content">`)
+                + `<div class="topic-name">${chip}</div>`
+                + (href ? `</a>` : `</div>`)
+                + `</div></td></tr>`;
         }
         if (digest.residents > 0) {
-            rows.push(`<div class="org-digest-row org-digest-residents">`
-                + `${digest.residents} Resident${digest.residents === 1 ? '' : 's'}</div>`);
+            rows += `<tr class="topic-title-only org-digest-row"><td class="topic-cell">`
+                + `<div class="topic-row"><div class="topic-content">`
+                + `<div class="topic-name org-digest-residents">`
+                + `${digest.residents} Resident${digest.residents === 1 ? '' : 's'}`
+                + `</div></div></div></td></tr>`;
         }
-        return `<div class="org-digest">`
-            + `<span class="org-digest-label">Guest speakers</span>${rows.join('')}</div>`;
+        return `<div class="org-digest-label">Guest speakers</div>`
+            + `<table class="topics-table org-digest"><tbody>${rows}</tbody></table>`;
     }
 
     // The fallback for a meeting whose speakers we can only count.
@@ -590,6 +601,7 @@
             .sort((a, b) => rank(a) - rank(b))
             .slice(0, CARD_SPEAKERS);
         let digest = null;
+        const dropped = [];
 
         const space = () =>
             detailed.length * UNITS_DETAILED
@@ -608,7 +620,7 @@
                 speakers = [];
                 digest = buildSpeakerDigest(roster);
             } else if (titleOnly.length) {
-                titleOnly.pop();
+                dropped.push(titleOnly.pop());
             } else if (detailed.length) {
                 // Demotion, not removal: the item keeps its title and
                 // outcome at a fifth of the cost. Unshift, because a
@@ -618,6 +630,16 @@
             } else {
                 break;
             }
+        }
+
+        // Then top back up. A spend-down only ever removes, so a card
+        // that collapsed a speaker or demoted a row can end a unit or
+        // two short of the budget — exactly enough to name another item
+        // that ranked. Restored in rank order: dropped held the
+        // lowest-ranked first.
+        while (dropped.length
+               && space() + UNITS_TITLE_ONLY <= CARD_SPACE_BUDGET) {
+            titleOnly.push(dropped.pop());
         }
 
         const titleOnlySet = new Set(titleOnly);

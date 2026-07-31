@@ -1183,27 +1183,18 @@ main {
 }
 
 /* The collapsed speaker roster on a packed card: every organization
-   that came, one slim row each, plus a residents roll-up. Which orgs
-   had a voice is never the thing the card's space budget cuts. */
-.org-digest {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.35rem;
-    margin-top: 0.5rem;
-    font-size: 0.78rem;
-}
-
+   that came, one row each, plus a residents roll-up. Which orgs had a
+   voice is never the thing the card's space budget cuts. The rows take
+   the title-only row's shape; the org's own colours stay on the chip. */
 .org-digest-label {
+    margin-top: 0.6rem;
+    font-size: 0.78rem;
     font-weight: 600;
     color: var(--color-text-muted);
-    margin-right: 0.15rem;
 }
 
-.org-digest-row {
-    display: inline-flex;
-    align-items: center;
-    text-decoration: none;
+.org-digest {
+    margin-top: 0.15rem;
 }
 
 .org-digest-residents {

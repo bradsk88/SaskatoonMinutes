@@ -445,7 +445,7 @@ class TestTheCardBudget:
         """Council keeps priority: the digest is the first saving."""
         source = self._template()
         collapse = source.index("digest = buildSpeakerDigest(roster);")
-        drop = source.index("titleOnly.pop();")
+        drop = source.index("dropped.push(titleOnly.pop());")
         demote = source.index("titleOnly.unshift(detailed.pop());")
         assert collapse < drop < demote
 
@@ -472,6 +472,23 @@ class TestTheCardBudget:
             "Bus Riders of Saskatoon"]
         assert out["resident_count"] == 2
         assert out["speaker_count"] == 3
+
+    def test_a_filing_without_a_podium_is_not_a_voice(self):
+        """An RTS filing proves intent, not attendance. The filing
+        survives only if the transcript captured the remarks."""
+        from app.summarizer import speaker_roster
+        out = speaker_roster([
+            {"item_id": 1, "speakers": [
+                {"name": "Was There", "organization": "",
+                 "source": "minutes"},
+                {"name": "No Show", "organization": "Tron Group",
+                 "source": "registered"},
+                {"name": "Missed By Minutes", "organization": "",
+                 "source": "registered", "said": ["Spoke."]},
+            ]},
+        ])
+        assert out["speaker_count"] == 2
+        assert [o["label"] for o in out["organizations"]] == []
 
     def test_council_rows_are_chosen_without_the_speakers(self):
         """The filter that stops a delegate taking an agenda item's place."""
