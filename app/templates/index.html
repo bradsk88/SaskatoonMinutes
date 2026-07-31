@@ -470,14 +470,42 @@
     // Both producers hand over {topics, total_items}; older preloaded
     // blobs are a bare list. Normalized here so the renderer sees one shape.
     function normalizeTopicsPayload(payload) {
-        if (Array.isArray(payload)) return { topics: payload, total_items: null, speaker_count: 0, roster: null };
-        if (!payload) return { topics: [], total_items: null, speaker_count: 0, roster: null };
+        if (Array.isArray(payload)) return { topics: payload, total_items: null, speaker_count: 0, roster: null, consent_count: 0 };
+        if (!payload) return { topics: [], total_items: null, speaker_count: 0, roster: null, consent_count: 0 };
         return {
             topics: payload.topics || [],
             total_items: payload.total_items != null ? payload.total_items : null,
             speaker_count: payload.speaker_count || 0,
             roster: payload.roster || null,
+            consent_count: payload.consent_count || 0,
         };
+    }
+
+    // The consent block, one row no matter its size. Consent items were
+    // approved in a single vote without debate, so naming each would
+    // spend the card's budget on the least interesting rows it has —
+    // but a resident still deserves to know the block existed and how
+    // big it was. The help icon carries the jargon: "consent" is
+    // council's word, not a resident's.
+    function consentRollupHtml(count, openHref) {
+        if (!count) return '';
+        // The icon sits outside the link: tapping it must explain, not
+        // navigate. tabindex and focus make the same tooltip open on a
+        // phone, where there is no hover.
+        const help = `<span class="consent-help" tabindex="0" role="button" `
+            + `aria-label="What does approved in consent mean?">?`
+            + `<span class="consent-help-text">Council approved these `
+            + `items as a group, in a single vote, without debating any `
+            + `of them. Routine business usually passes this way.</span></span>`;
+        const label = `<div class="topic-name"><span class="consent-rollup-label">`
+            + `${count} item${count === 1 ? '' : 's'} approved in consent</span></div>`;
+        return `<table class="topics-table consent-rollup"><tbody>`
+            + `<tr class="topic-title-only"><td class="topic-cell"><div class="topic-row">`
+            + (openHref
+                ? `<a href="${escapeAttr(openHref)}" class="topic-content topic-link">${label}</a>`
+                : `<div class="topic-content">${label}</div>`)
+            + help
+            + `</div></td></tr></tbody></table>`;
     }
 
     // The collapsed form of a meeting's speakers, for a card whose
@@ -580,10 +608,13 @@
         return digest.orgs.length + (digest.residents > 0 ? 1 : 0);
     }
 
-    function chooseCardTopics(topics, roster) {
+    function chooseCardTopics(topics, roster, consentCount) {
         // Council's rows are chosen from council's rows only: a speaker
-        // never displaces an agenda item.
-        const council = topics.filter(t => t.kind !== 'speaker');
+        // never displaces an agenda item. And a consent item never
+        // becomes a row at all — it was approved in one block vote,
+        // without debate, so there is nothing to summarize and nothing
+        // to name; the roll-up accounts for them.
+        const council = topics.filter(t => t.kind !== 'speaker' && !t.is_consent);
         const rank = t => (t.rank != null ? t.rank : council.indexOf(t));
         const byRank = council.slice().sort((a, b) => rank(a) - rank(b));
         const earned = byRank.filter(t => t.outcome && t.outcome !== 'Discussed');
@@ -617,7 +648,11 @@
             detailed.length * UNITS_DETAILED
             + titleOnly.length * UNITS_TITLE_ONLY
             + speakers.length * UNITS_SPEAKER
-            + digestRowCount(digest) * UNITS_ORG_ROW;
+            + digestRowCount(digest) * UNITS_ORG_ROW
+            // The roll-up is one unit and, like the digest, never cut —
+            // but it still counts, or a consent-heavy meeting would
+            // overflow its budget by exactly one.
+            + (consentCount ? UNITS_ORG_ROW : 0);
 
         // Spend down until the card fits. Speaker detail is the first
         // saving — the rows collapse into a digest naming every
@@ -671,7 +706,7 @@
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
 
-        const { topics, total_items, speaker_count, roster } = normalizeTopicsPayload(payload);
+        const { topics, total_items, speaker_count, roster, consent_count } = normalizeTopicsPayload(payload);
 
         if (topics.length === 0) {
             renderTopicsMessage(
@@ -680,7 +715,7 @@
             return;
         }
 
-        const { rows, digest } = chooseCardTopics(topics, roster);
+        const { rows, digest } = chooseCardTopics(topics, roster, consent_count);
         // The count badge is the fallback for a meeting whose roster we
         // can only count; a rendered digest replaces it.
         const badge = digestRowCount(digest) > 0
@@ -692,12 +727,16 @@
         // Counted against council rows only — a speaker or an org digest
         // row is not one of the agenda items the number refers to.
         const councilShown = rows.filter(t => t.kind !== 'speaker').length;
+        // The roll-up accounts for the consent block, so "N other items"
+        // counts neither the rows shown nor the items rolled up.
+        const accounted = councilShown + (consent_count || 0);
         const remaining = total_items != null
-            ? total_items - councilShown
+            ? total_items - accounted
             : null;
         container.innerHTML =
             badge + renderTopicsTable(rows, openHref)
             + digestHtml(digest, openHref)
+            + consentRollupHtml(consent_count, openHref)
             + cardFooterHtml(openHref, remaining);
     }
 

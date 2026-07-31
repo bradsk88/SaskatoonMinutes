@@ -138,6 +138,9 @@ def api_meeting_topics(meeting_id: str):
             "total_items": count_agenda_items(items),
             # People, not filings — see build_site.
             "speaker_count": roster["speaker_count"],
+            # Consent items roll up into one row on the card — approved
+            # without debate, they earn no slot of their own.
+            "consent_count": count_consent_items(items),
             # Every organization that spoke, so a packed meeting can
             # collapse speaker rows into an org digest without hiding
             # who had a voice.

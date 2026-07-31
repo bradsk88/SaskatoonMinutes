@@ -25,4 +25,6 @@ Two rules were non-negotiable and shape the design:
 
 **Depth over breadth** (drop title-only rows before demoting detailed ones). Rejected after seeing July 29: the card's job is to get a reader into the right meeting, and naming nine decisions with one-line each does that better than detailing four and hiding five.
 
+**Rows for consent items.** Rejected: an item approved in one block vote without debate has nothing to summarize, yet consent items rank well (recorded outcome, recommendation text) and were spending title-only slots that debated items needed. They collapse into a one-unit **consent roll-up** ("N items approved in consent"), never cut, with a help icon carrying the jargon — "consent" is council's word, not a resident's. This is what lets detail and breadth coexist: July 29 fits two detailed rows, six title-only rows, the roll-up, and the speaker digest in the same 15 units.
+
 **A bare "N guest speakers" count as the digest.** Rejected: it throws away *who* came — the one fact the speaker feature exists to report. That badge survives only as the fallback for meetings whose roster has no organization data at all.

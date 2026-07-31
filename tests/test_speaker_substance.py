@@ -452,6 +452,21 @@ class TestTheCardBudget:
         drop = source.index("dropped.push(titleOnly.pop());")
         assert collapse < demote < drop
 
+    def test_a_consent_item_never_becomes_a_row(self):
+        """Approved in one block vote without debate: nothing to
+        summarize, nothing to name. The roll-up accounts for them."""
+        assert "t.kind !== 'speaker' && !t.is_consent" in self._template()
+        assert "consentRollupHtml" in self._template()
+
+    def test_the_rollup_explains_itself_without_navigating(self):
+        """\"Approved in consent\" is council's jargon, so the row carries
+        a help icon — and the icon sits outside the link, because tapping
+        it must explain, not open the meeting."""
+        source = self._template()
+        assert "consent-help-text" in source
+        help_fn = source[source.index("function consentRollupHtml"):]
+        assert help_fn.index("</a>") < help_fn.index("+ help")
+
     def test_the_digest_names_every_organization(self):
         """A representative few would hide who had a voice."""
         assert "orgs: roster.organizations || []" in self._template()
@@ -533,7 +548,7 @@ class TestTheCardBudget:
 
     def test_council_rows_are_chosen_without_the_speakers(self):
         """The filter that stops a delegate taking an agenda item's place."""
-        assert "topics.filter(t => t.kind !== 'speaker')" in self._template()
+        assert "topics.filter(t => t.kind !== 'speaker' && !t.is_consent)" in self._template()
 
     def test_a_speaker_whose_item_is_absent_names_it(self):
         """Otherwise the row is a person reacting to nothing."""

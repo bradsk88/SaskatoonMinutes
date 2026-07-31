@@ -157,6 +157,9 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 # items is one guest speaker, and counting rows said 11
                 # where 10 came.
                 "speaker_count": roster["speaker_count"],
+                # Consent items roll up into one row on the card —
+                # approved without debate, they earn no slot of their own.
+                "consent_count": count_consent_items(items),
                 # Every organization that spoke, so a packed meeting can
                 # collapse speaker rows into an org digest without hiding
                 # who had a voice.
