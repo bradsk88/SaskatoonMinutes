@@ -1315,18 +1315,18 @@ main {
 
 /* The register-to-speak call-to-action on Scheduled Meetings. */
 .speak-blurb {
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     color: var(--color-text);
-    padding: 0.5rem 0.75rem;
+    padding: 0.6rem 0.85rem;
     margin: 0.5rem 0;
-    background: #eff6ff;
-    border-left: 3px solid #2563eb;
+    background: var(--color-primary-light);
+    border-left: 3px solid var(--color-primary);
     border-radius: 4px;
 }
 
 .speak-blurb a {
-    color: #1d4ed8;
-    font-weight: 600;
+    color: var(--color-primary);
+    font-weight: 700;
 }
 
 /* Topics table */
