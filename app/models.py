@@ -118,6 +118,48 @@ class Meeting:
 
 
 @dataclass
+class ScheduledMeeting:
+    """A Meeting that has not happened yet (see CONTEXT.md).
+
+    Announced on the upstream calendar with a ``meeting_id`` already
+    assigned, but no video, minutes, or votes.  Shown only on the
+    Future tab.  ``body`` is the tab label for the meeting's body
+    (e.g. "Transportation") — the Future tab mixes bodies, so each
+    row has to name its own.
+    """
+
+    meeting_id: str
+    title: str  # the body, e.g. "SPC-Transportation - Public", titleized
+    body: str  # tab label, e.g. "Transportation"
+    date: str  # ISO date string
+    start_time: str  # upstream formatted start, e.g. "Tuesday, 4 August 2026 @ 2:00 PM"
+    location: str
+    has_agenda: bool
+
+    @property
+    def request_to_speak_deadline(self) -> str:
+        """5:00 p.m. on the Monday of the meeting week, ISO date.
+
+        The City's deadline for submissions about an item already on the
+        agenda — unchanged even when the Monday is a holiday.
+        """
+        from datetime import date as _date, timedelta
+
+        d = _date.fromisoformat(self.date)
+        monday = d - timedelta(days=d.weekday())
+        return monday.isoformat()
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["request_to_speak_deadline"] = self.request_to_speak_deadline
+        d["scheduled"] = True
+        # Card renderer compatibility with Meeting.to_dict() output.
+        d["has_video"] = False
+        d["is_cancelled"] = False
+        return d
+
+
+@dataclass
 class MeetingDetail:
     """The full per-meeting payload: agenda items, video URL, and identity.
 
@@ -264,6 +306,11 @@ class ItemSummary:
 
     description: list[str] | None
     chips: list[Chip] = field(default_factory=list)
+    # True for a **provisional** summary: written before the meeting, from
+    # official text alone, and disposable — the flip to Meeting regenerates
+    # everything with the transcript (ADR ``0021``).  Absent from every
+    # entry cached before Scheduled Meetings existed; loads as False.
+    provisional: bool = False
     # What each guest speaker argued, keyed by the roster the agenda
     # yields deterministically.  Absent from every entry cached before
     # speakers existed, which loads as an empty list — the roster
@@ -287,6 +334,7 @@ class ItemSummary:
             speakers=[
                 Speaker.from_dict(p) for p in data.get("speakers") or []
             ],
+            provisional=bool(data.get("provisional")),
         )
 
     def to_dict(self) -> dict:
@@ -300,4 +348,8 @@ class ItemSummary:
         # record that nothing happened.
         if self.speakers:
             payload["speakers"] = [p.to_dict() for p in self.speakers]
+        # Same reasoning as speakers: most entries are post-meeting, so
+        # the flag is written only when it distinguishes this one.
+        if self.provisional:
+            payload["provisional"] = True
         return payload

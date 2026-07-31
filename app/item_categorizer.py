@@ -45,6 +45,7 @@ from app.agenda_items import (
     format_outcome,
     is_consent_item,
     is_procedural,
+    is_scheduled_item,
     is_section_header,
 )
 from app.agenda_text import (
@@ -763,7 +764,7 @@ class GeminiExtractor:
         """
         if not transcript_text.strip() and not self._has_metadata(item):
             return None, []
-        if is_consent_item(item):
+        if is_consent_item(item) or item.get("scheduled"):
             exclude = set(exclude) | DISCUSSION_ONLY_CATEGORIES
         allowed = [c for c in SEMANTIC_CATEGORIES if c not in exclude]
         prompt = _build_prompt(item, transcript_text, allowed)
@@ -1015,8 +1016,32 @@ def _build_prompt(
     content = (item.get("content") or "").strip()
 
     consent = is_consent_item(item)
+    scheduled = item.get("scheduled", False)
 
-    if consent:
+    if scheduled:
+        lines = [
+            "You are summarizing one item from the PUBLISHED AGENDA of an "
+            "upcoming Saskatoon city council or committee meeting. The "
+            "meeting has NOT happened yet.",
+            "",
+            "This matters for what you can say:",
+            "- There is no transcript, because nothing has been said yet. "
+            "That is expected, not missing data.",
+            "- Do NOT describe, infer, or imply any debate, questions, "
+            "concerns, speakers, public input, votes, or outcomes. None "
+            "have occurred.",
+            "- Write in future or conditional voice: the body \"will "
+            "consider\", \"is asked to\" — never \"approved\", "
+            "\"decided\", or \"agreed\".",
+            "- Work only from the official recommendation and agenda notes "
+            "below. They are clean and reliable.",
+            "- A resident reading this wants to know what is being "
+            "proposed, so they can decide whether to submit comments or "
+            "ask to speak before the meeting.",
+            "",
+            f"Agenda item title: {title}",
+        ]
+    elif consent:
         lines = [
             "You are summarizing one item from a Saskatoon city council "
             "meeting's CONSENT AGENDA. Council approved it as part of a "
@@ -1064,7 +1089,11 @@ def _build_prompt(
     # Approved" — which is how the baseline came to assert that City
     # Council reaffirmed a plan it had never seen.
     outcome = format_outcome(vote, rec)
-    if outcome.startswith("Recommended") or _RECOMMENDS_TO_COUNCIL_RE.search(rec):
+    if scheduled:
+        # Nothing has been decided; the outcome wording below asserts a
+        # vote that has not happened.
+        pass
+    elif outcome.startswith("Recommended") or _RECOMMENDS_TO_COUNCIL_RE.search(rec):
         lines.extend([
             "",
             "IMPORTANT: this is a COMMITTEE item. The committee voted to "
@@ -1548,6 +1577,11 @@ def is_eligible_for_summary(item: dict) -> bool:
     if is_section_header(item):
         return False
 
+    # A Scheduled Meeting's items: nothing has been discussed, so the
+    # timestamp rules below cannot apply.  Same bar as a Consent Item.
+    if item.get("scheduled"):
+        return is_scheduled_item(item)
+
     # Checked before the inherited-timestamp rejection below, because an
     # inherited timestamp is exactly what identifies a Consent Item.
     if is_consent_item(item):
@@ -1595,8 +1629,12 @@ def extract_item_summaries(
     # Metadata-based deterministic extractors — always run because they
     # operate on clean structured data, not raw transcript.
     results: list[dict] = []
-    results.extend(_extract_outcome(item))
-    results.extend(_extract_vote_breakdown(item))
+    # Outcome and vote chips assert something was decided.  A Scheduled
+    # Meeting has decided nothing, so its items skip those two — the
+    # Outcome vocabulary does not apply pre-meeting (CONTEXT.md).
+    if not item.get("scheduled"):
+        results.extend(_extract_outcome(item))
+        results.extend(_extract_vote_breakdown(item))
     results.extend(_extract_amendment(item))
     results.extend(_extract_cost_funding(item))
     results.extend(_extract_procedural_note(item))

@@ -160,6 +160,28 @@ def count_agenda_items(items: list[dict]) -> int:
     )
 
 
+def is_scheduled_item(item: dict) -> bool:
+    """True when the item belongs to a Scheduled Meeting (not yet held).
+
+    The pipeline marks item dicts with ``"scheduled": True``; nothing is
+    inferred from missing timestamps, because plenty of *past* items
+    legitimately have none.  Like a Consent Item, a scheduled item is
+    summarizable from official text alone when its recommendation is
+    substantive — and a boilerplate one is not, because council has
+    proposed nothing specific yet either.
+    """
+    if not item.get("scheduled"):
+        return False
+    if item.get("is_recess"):
+        return False
+    if is_procedural(item.get("title") or ""):
+        return False
+    if is_section_header(item):
+        return False
+    rec = (item.get("recommendation") or "").strip()
+    return bool(rec) and not is_boilerplate_recommendation(rec)
+
+
 def is_consent_item(item: dict) -> bool:
     """True when the item passed in the consent block without individual debate.
 

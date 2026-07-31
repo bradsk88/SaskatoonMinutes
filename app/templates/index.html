@@ -133,6 +133,7 @@
     }
 
     function checkRecentForMeetings(slug, meetings) {
+        if (slug === 'future') return; // future dates are not "recent activity"
         if (meetings && meetings.length > 0 && isRecent(meetings[0].date)) {
             markTabRecent(slug, meetings[0].has_video);
         }
@@ -147,6 +148,10 @@
         const container = document.querySelector('.tabs-inner');
         const tabs = Array.from(container.querySelectorAll('.meeting-tab'));
         tabs.sort((a, b) => {
+            // The Future tab is pinned left-most: its meetings are dated
+            // in the future, and recency sorting would scatter it.
+            if (a.dataset.slug === 'future') return -1;
+            if (b.dataset.slug === 'future') return 1;
             const dateA = tabDateMap[a.dataset.slug] || '';
             const dateB = tabDateMap[b.dataset.slug] || '';
             return dateB.localeCompare(dateA); // descending – most recent first
@@ -298,7 +303,9 @@
             // consent row it is simply false, so the row says only that
             // the item was not debated.
             const consentIsBare = t.is_consent && t.outcome === 'Discussed';
-            const outcomeHtml = consentIsBare
+            const outcomeHtml = !t.outcome
+                ? ''
+                : consentIsBare
                 ? `<span class="badge topic-badge badge-consent">Not discussed</span>`
                 : t.is_consent
                     ? `<span class="topic-outcome-group">`
@@ -468,7 +475,7 @@
         const cancelledBadge = m.is_cancelled
             ? ' <span class="badge badge-cancelled">Cancelled</span>'
             : '';
-        const noVideoBadge = (!m.is_cancelled && !m.has_video)
+        const noVideoBadge = (!m.is_cancelled && !m.has_video && !m.scheduled)
             ? ' <span class="badge badge-no-video">No recording</span>'
             : '';
         const topicsHtml = m.is_cancelled
@@ -826,9 +833,46 @@
         return { rows, digest };
     }
 
+    // A Scheduled Meeting's card: every agenda item in agenda order, no
+    // outcomes, no Space Budget — the tab exists so a resident can see
+    // everything coming and decide whether to speak (CONTEXT.md).
+    const REGISTER_TO_SPEAK_URL = 'https://www.saskatoon.ca/submit-letterrequest-speak-council-and-committees';
+
+    function readableDeadline(isoDate) {
+        if (!isoDate) return '';
+        const d = new Date(isoDate + 'T00:00:00');
+        return d.toLocaleDateString('en-CA', {
+            weekday: 'long', month: 'long', day: 'numeric'
+        });
+    }
+
+    function renderScheduledInContainer(meetingId, payload, openHref) {
+        const container = document.getElementById(`topics-${meetingId}`);
+        if (!container) return;
+        const deadline = readableDeadline(payload.request_to_speak_deadline);
+        const blurb = `<div class="speak-blurb">Want to speak at this meeting? `
+            + `<a href="${REGISTER_TO_SPEAK_URL}" target="_blank" rel="noopener">Send a letter or request to speak</a>`
+            + (deadline ? ` by ${escapeAttr(deadline)}, 5:00 p.m.` : '')
+            + `</div>`;
+        const topics = payload.topics || [];
+        if (topics.length === 0) {
+            container.innerHTML = blurb
+                + `<div class="topics-empty">Agenda not posted yet.</div>`
+                + cardFooterHtml(openHref, null);
+            return;
+        }
+        container.innerHTML = blurb + renderTopicsTable(topics, openHref)
+            + cardFooterHtml(openHref, null);
+    }
+
     function renderTopicsInContainer(meetingId, payload, openHref) {
         const container = document.getElementById(`topics-${meetingId}`);
         if (!container) return;
+
+        if (payload && payload.scheduled) {
+            renderScheduledInContainer(meetingId, payload, openHref);
+            return;
+        }
 
         const { topics, total_items, speaker_count, roster, consent_count } = normalizeTopicsPayload(payload);
 
