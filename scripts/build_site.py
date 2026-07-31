@@ -571,6 +571,33 @@ def render_meeting_html(meeting_id, detail_data):
     return output
 
 
+def render_about_html():
+    """Render the static about/disclaimer page."""
+    with open(os.path.join(TEMPLATE_DIR, "base.html")) as f:
+        base = f.read()
+    with open(os.path.join(TEMPLATE_DIR, "about.html")) as f:
+        about = f.read()
+
+    title_block = _extract_block("title", about) or "About - YXEMinutes"
+    content_block = _extract_block("content", about)
+
+    output = base
+    output = output.replace(
+        "{% block title %}YXEMinutes{% endblock %}",
+        title_block,
+    )
+    output = output.replace(
+        "{{ url_for('static', filename='style.css') }}",
+        _style_href(),
+    )
+    output = output.replace(
+        "{% block content %}{% endblock %}",
+        content_block,
+    )
+    output = output.replace("{% block scripts %}{% endblock %}", "")
+    return output
+
+
 def main():
     if os.path.exists(OUTPUT_DIR):
         shutil.rmtree(OUTPUT_DIR)
@@ -594,6 +621,12 @@ def main():
         meeting_path = os.path.join(meeting_dir, f"{mid}.html")
         with open(meeting_path, "w") as f:
             f.write(meeting_html)
+
+    # /about/ is a directory so the deployed URL matches the Flask route
+    about_dir = os.path.join(OUTPUT_DIR, "about")
+    os.makedirs(about_dir, exist_ok=True)
+    with open(os.path.join(about_dir, "index.html"), "w") as f:
+        f.write(render_about_html())
 
     shutil.copy2(
         os.path.join(STATIC_DIR, "style.css"),

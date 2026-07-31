@@ -45,6 +45,12 @@ def index():
     return render_template("index.html", meeting_tabs=MEETING_TABS)
 
 
+@app.route("/about")
+def about():
+    """About, disclaimer, and contact page."""
+    return render_template("about.html")
+
+
 @app.route("/api/meetings")
 def api_meetings():
     """API endpoint to fetch paginated list of past meetings.
