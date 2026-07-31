@@ -1308,7 +1308,7 @@ main {
 
 .topics-empty {
     font-size: 0.8rem;
-    color: var(--color-text-muted);
+    color: #374151;
     font-style: italic;
     padding: 0.25rem 0;
 }
@@ -1316,6 +1316,7 @@ main {
 /* The register-to-speak call-to-action on Scheduled Meetings. */
 .speak-blurb {
     font-size: 0.85rem;
+    color: var(--color-text);
     padding: 0.5rem 0.75rem;
     margin: 0.5rem 0;
     background: #eff6ff;
