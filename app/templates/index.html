@@ -199,6 +199,16 @@
                   .replace(/>/g, '&gt;');
     }
 
+    // A category chip on a speaker row: one word naming what the speaker
+    // came about, drawn from the same set the filter uses. An org's name
+    // alone -- "Discover Saskatoon" -- does not say whether it was
+    // transit or the entertainment district.
+    const CAT_LABEL = Object.fromEntries(ALL_CATEGORIES.map(c => [c.slug, c.label]));
+    function catChipHtml(slug) {
+        if (!slug || !CAT_LABEL[slug]) return '';
+        return `<span class="badge topic-badge badge-${slug}">${CAT_LABEL[slug]}</span>`;
+    }
+
     function outcomeClass(topic) {
         // A speaker's badge carries their stance, not a verdict, so it is
         // outlined where an outcome badge is filled. That is what keeps
@@ -356,8 +366,13 @@
             // one reads as a rendering fault rather than as a fact about
             // the speaker. Layout consistency is the reason; the muted
             // colour is what keeps it from claiming more than it knows.
-            const metaHtml = (!isMore && outcomeHtml)
-                ? `<span class="topic-name-meta">${outcomeHtml}</span>`
+            // A speaker's row also carries the item's first category, so
+            // the row says what they came about, not just who came.
+            const catChip = isSpeaker
+                ? catChipHtml(((t.badges || []).find(b => b.type.startsWith('cat-')) || {}).type)
+                : '';
+            const metaHtml = (!isMore && (catChip || outcomeHtml))
+                ? `<span class="topic-name-meta">${catChip}${outcomeHtml}</span>`
                 : '';
             if (isMore) {
                 html += `<div class="topic-name"><span class="speaker-more">`
@@ -514,12 +529,15 @@
                 if (org.item_id != null) href += `#item-${org.item_id}`;
             }
             const color = org.color == null ? 'none' : org.color;
-            rows += `<tr class="topic-title-only org-digest-row org-row-${color}"><td class="topic-cell">`
+            const cats = (org.categories || []);
+            rows += `<tr class="topic-title-only org-digest-row org-row-${color}" data-categories="${escapeAttr(cats.join(' '))}"><td class="topic-cell">`
                 + `<div class="topic-row">`
                 + (href
                     ? `<a href="${escapeAttr(href)}" class="topic-content topic-link">`
                     : `<div class="topic-content">`)
-                + `<div class="topic-name"><span>${escapeAttr(org.label)}</span></div>`
+                + `<div class="topic-name"><span>${escapeAttr(org.label)}</span>`
+                + (cats[0] ? `<span class="topic-name-meta">${catChipHtml(cats[0])}</span>` : '')
+                + `</div>`
                 + (href ? `</a>` : `</div>`)
                 + `</div></td></tr>`;
         }

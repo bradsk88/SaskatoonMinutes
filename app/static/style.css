@@ -2296,16 +2296,18 @@ footer a:hover {
     }
 
     .topic-speaker-row .topic-name-meta {
-        display: contents;
+        /* Two badges travel here now -- the category and the stance --
+           so the group keeps its own cell rather than dissolving and
+           letting both badges claim the same grid area. */
+        grid-area: 1 / 2;
+        justify-self: end;
+        display: flex;
+        gap: 0.3rem;
+        align-items: baseline;
     }
 
     .topic-speaker-row .topic-name > span:first-child {
         grid-area: 1 / 1;
-    }
-
-    .topic-speaker-row .topic-name .topic-badge {
-        grid-area: 1 / 2;
-        justify-self: end;
     }
 
     .item-header {

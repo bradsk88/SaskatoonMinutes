@@ -190,6 +190,14 @@ def speaker_roster(agenda_items: list[dict]) -> dict:
                         "color": organization_color(org),
                         "item_id": item.get("item_id"),
                         "time_start_ms": item.get("time_start_ms"),
+                        # The item's category slugs, so the digest row
+                        # can say what the organization came about —
+                        # "Discover Saskatoon" alone does not say whether
+                        # it was transit or the entertainment district.
+                        "categories": [
+                            b["type"] for b in item.get("badges", [])
+                            if b["type"].startswith("cat-")
+                        ],
                     })
             elif name:
                 residents.add(name)

@@ -476,6 +476,23 @@ class TestTheCardBudget:
         assert UNAFFILIATED_LABEL == "Resident"
         assert "s.organization !== 'Resident'" in self._template()
 
+    def test_the_digest_orgs_carry_their_items_categories(self):
+        """\"Discover Saskatoon\" alone does not say whether it came
+        about transit or the entertainment district; the digest row
+        carries the item's category slugs so it can say."""
+        from app.summarizer import speaker_roster
+        out = speaker_roster([
+            {"item_id": 1, "badges": [{"type": "cat-transit"}],
+             "speakers": [{"name": "Robert Clipperton",
+                           "organization": "Bus Riders of Saskatoon"}]},
+        ])
+        assert out["organizations"][0]["categories"] == ["cat-transit"]
+
+    def test_a_speaker_row_names_the_category(self):
+        """One word from the filter's own category set, beside the
+        stance."""
+        assert "catChipHtml" in self._template()
+
     def test_a_consent_item_never_becomes_a_row(self):
         """Approved in one block vote without debate: nothing to
         summarize, nothing to name. The roll-up accounts for them."""
