@@ -461,6 +461,21 @@ class TestTheCardBudget:
         last = source.index("demote(detailed[detailed.length - 1]);")
         assert demote < trim < drop < last
 
+    def test_a_crowded_item_earns_detail_even_past_the_rank_cut(self):
+        """June 24: the DEED item drew five speakers but ranked sixth,
+        so it was title-only and its speakers never appeared inline.
+        Engagement now promotes an item into the detailed five,
+        displacing the least-attended one (ADR 0022)."""
+        assert "const drawCard = byRank.slice().sort(" in self._template()
+
+    def test_a_resident_shown_inline_leaves_the_residents_rollup(self):
+        """The payload labels an unaffiliated speaker \"Resident\", which
+        is not an organization: a resident shown inline must shrink the
+        residents roll-up, not leave it counting them twice."""
+        from app.speakers import UNAFFILIATED_LABEL
+        assert UNAFFILIATED_LABEL == "Resident"
+        assert "s.organization !== 'Resident'" in self._template()
+
     def test_a_consent_item_never_becomes_a_row(self):
         """Approved in one block vote without debate: nothing to
         summarize, nothing to name. The roll-up accounts for them."""

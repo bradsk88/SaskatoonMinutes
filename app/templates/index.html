@@ -592,16 +592,6 @@
         const council = topics.filter(t => t.kind !== 'speaker' && !t.is_consent);
         const rank = t => (t.rank != null ? t.rank : council.indexOf(t));
         const byRank = council.slice().sort((a, b) => rank(a) - rank(b));
-        const earned = byRank.filter(t => t.outcome && t.outcome !== 'Discussed');
-        const detailed = earned.slice(0, CARD_DETAILED);
-        for (const t of byRank) {
-            if (detailed.length >= CARD_DETAILED_MIN) break;
-            if (!detailed.includes(t)) detailed.push(t);
-        }
-        const titleOnly = byRank.filter(t => !detailed.includes(t)).slice(0, CARD_TITLE_ONLY);
-        // Ranked past every candidate: pulled into title-only rows if the
-        // card fits with room to spare after the spend-down.
-        const rest = byRank.filter(t => !detailed.includes(t) && !titleOnly.includes(t));
 
         // Speakers arrive in the payload directly beneath the item they
         // answered. Gather them per item, in the order council heard
@@ -619,6 +609,36 @@
             }
         }
         const attendance = t => (speakersOf.get(t) || []).length;
+
+        const earned = byRank.filter(t => t.outcome && t.outcome !== 'Discussed');
+        const detailed = earned.slice(0, CARD_DETAILED);
+        for (const t of byRank) {
+            if (detailed.length >= CARD_DETAILED_MIN) break;
+            if (!detailed.includes(t)) detailed.push(t);
+        }
+        const titleOnly = byRank.filter(t => !detailed.includes(t)).slice(0, CARD_TITLE_ONLY);
+        // Ranked past every candidate: pulled into title-only rows if the
+        // card fits with room to spare after the spend-down.
+        const rest = byRank.filter(t => !detailed.includes(t) && !titleOnly.includes(t));
+
+        // An item that drew a crowd earns detail even when its rank
+        // would not give it any: engagement is the strongest signal the
+        // meeting offers that an item mattered, and a title-only row
+        // cannot show speakers at all (ADR 0022). It displaces the
+        // least-attended detailed item, which demotes to title-only.
+        const drawCard = byRank.slice().sort(
+            (a, b) => attendance(b) - attendance(a) || rank(a) - rank(b))[0];
+        const leastAttended = detailed.slice().sort(
+            (a, b) => attendance(a) - attendance(b) || rank(b) - rank(a))[0];
+        if (drawCard && !detailed.includes(drawCard)
+                && leastAttended && attendance(drawCard) > attendance(leastAttended)) {
+            detailed.splice(detailed.indexOf(leastAttended), 1);
+            titleOnly.unshift(leastAttended);
+            const from = titleOnly.indexOf(drawCard);
+            if (from >= 0) titleOnly.splice(from, 1);
+            else rest.splice(rest.indexOf(drawCard), 1);
+            detailed.push(drawCard);
+        }
 
         // A detailed item shows up to CARD_SPEAKERS_PER_ITEM of its
         // speakers beneath it. A title-only item shows none -- demotion
@@ -638,8 +658,13 @@
             let shownResidents = 0;
             for (const arr of shownSpeakers.values()) {
                 for (const s of arr) {
-                    if (s.organization) shownOrgs.add(s.organization);
-                    else shownResidents++;
+                    // "Resident" is the payload's label for a speaker who
+                    // came for nobody -- a resident, not an organization.
+                    if (s.organization && s.organization !== 'Resident') {
+                        shownOrgs.add(s.organization);
+                    } else {
+                        shownResidents++;
+                    }
                 }
             }
             return {
