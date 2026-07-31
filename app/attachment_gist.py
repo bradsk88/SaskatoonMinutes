@@ -113,17 +113,31 @@ class GistGenerator:
         return self._client is not None
 
     def gist(self, title: str, url: str) -> AttachmentGist | None:
-        """Fetch *url*, extract text, and gist it.  None on any failure."""
+        """Fetch *url*, extract text, and gist it.  None on any failure.
+
+        Failures are silent in the UI but logged here — a CI run that
+        produced zero gists must say why.
+        """
         if not self._client:
+            print("      gist: skipped (no GEMINI_API_KEY)", flush=True)
             return None
         text = fetch_text(url)
         if not text:
+            print(f"      gist: no extractable text — {url[:80]}", flush=True)
             return None
         try:
             response = self._client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=PROMPT.format(title=title, text=text),
             )
-        except Exception:
+        except Exception as exc:
+            print(f"      gist: model call failed — {exc}", flush=True)
             return None
-        return parse_gist(response.text or "")
+        gist = parse_gist(response.text or "")
+        if gist is None:
+            print(
+                f"      gist: model declined/unparseable — "
+                f"{(response.text or '')[:80]!r}",
+                flush=True,
+            )
+        return gist
