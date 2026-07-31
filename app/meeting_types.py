@@ -30,3 +30,8 @@ MEETING_TABS: list[dict] = [
 
 # Quick lookup from slug → eSCRIBE type string.
 _SLUG_TO_TYPE = {tab["slug"]: tab["type"] for tab in MEETING_TABS}
+
+# Quick lookup from eSCRIBE type string → tab.  The calendar endpoint
+# returns every civic body; the app only covers the bodies above, so this
+# is how a Scheduled Meeting finds its tab (or is dropped).
+TYPE_TO_TAB = {tab["type"]: tab for tab in MEETING_TABS}

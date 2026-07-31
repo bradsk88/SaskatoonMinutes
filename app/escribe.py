@@ -25,7 +25,7 @@ import urllib3
 import requests
 
 from app.agenda_text import clean_entities, titleize
-from app.models import AgendaItem, Meeting, MeetingDetail
+from app.models import AgendaItem, Meeting, MeetingDetail, ScheduledMeeting
 from app.speakers import extract_speakers
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -69,6 +69,13 @@ class EscribeTransport(Protocol):
     def fetch_past_meetings_json(self, page: int, meeting_type: str) -> dict:
         """POST PastMeetings; return the raw envelope (caller unwraps ``"d"``)."""
 
+    def fetch_calendar_meetings_json(self, start_date: str, end_date: str) -> list:
+        """POST GetCalendarMeetings for a date range; return the ``"d"`` list.
+
+        Dates are ISO (``YYYY-MM-DD``).  Unlike PastMeetings this endpoint
+        returns a bare list, not a paged envelope.
+        """
+
     def fetch_agenda_html(self, meeting_id: str) -> str:
         """GET the Agenda view of the meeting page; return HTML."""
 
@@ -85,6 +92,16 @@ class LiveEscribeTransport:
         resp = requests.post(url, json=payload, headers=_AJAX_HEADERS, timeout=30, verify=False)
         resp.raise_for_status()
         return resp.json()
+
+    def fetch_calendar_meetings_json(self, start_date: str, end_date: str) -> list:
+        url = f"{BASE_URL}/MeetingsCalendarView.aspx/GetCalendarMeetings"
+        payload = {
+            "calendarStartDate": start_date,
+            "calendarEndDate": end_date,
+        }
+        resp = requests.post(url, json=payload, headers=_AJAX_HEADERS, timeout=30, verify=False)
+        resp.raise_for_status()
+        return resp.json().get("d", [])
 
     def fetch_agenda_html(self, meeting_id: str) -> str:
         url = f"{BASE_URL}/Meeting.aspx?Id={meeting_id}&Agenda=Agenda&lang=English"
@@ -107,6 +124,8 @@ class FixtureEscribeTransport:
     * ``past_meetings_{slug}_{page}.json`` — the JSON envelope for a
       past-meetings call. The slug is derived by lowercasing the meeting
       type and replacing non-alphanumerics with underscores.
+    * ``calendar_meetings_{start}_{end}.json`` — the raw GetCalendarMeetings
+      envelope for a date range.
     * ``agenda_{meeting_id}.html``
     * ``postminutes_{meeting_id}.html``
 
@@ -125,6 +144,10 @@ class FixtureEscribeTransport:
     def fetch_past_meetings_json(self, page: int, meeting_type: str) -> dict:
         path = self._dir / f"past_meetings_{self._slugify(meeting_type)}_{page}.json"
         return json.loads(path.read_text(encoding="utf-8"))
+
+    def fetch_calendar_meetings_json(self, start_date: str, end_date: str) -> list:
+        path = self._dir / f"calendar_meetings_{start_date}_{end_date}.json"
+        return json.loads(path.read_text(encoding="utf-8")).get("d", [])
 
     def fetch_agenda_html(self, meeting_id: str) -> str:
         return (self._dir / f"agenda_{meeting_id}.html").read_text(encoding="utf-8")
@@ -681,6 +704,37 @@ class EscribeMeetingSource:
             ))
 
         return meetings, total_count
+
+    def list_scheduled(self, start_date: str, end_date: str) -> list[ScheduledMeeting]:
+        """Scheduled Meetings in ``[start_date, end_date]``, soonest first.
+
+        Scoped to the bodies the app's tabs cover — the calendar also
+        carries quasi-judicial boards residents cannot speak at, and
+        those are dropped here.  Meetings the upstream marks as passed
+        are dropped too: within the window they are Meetings, not
+        Scheduled Meetings.
+        """
+        from app.meeting_types import TYPE_TO_TAB  # local import to avoid cycle
+        raw = self._transport.fetch_calendar_meetings_json(start_date, end_date)
+
+        scheduled: list[ScheduledMeeting] = []
+        for m in raw:
+            if m.get("MeetingPassed"):
+                continue
+            tab = TYPE_TO_TAB.get((m.get("MeetingType") or "").strip())
+            if tab is None:
+                continue
+            scheduled.append(ScheduledMeeting(
+                meeting_id=m.get("ID", ""),
+                title=titleize((m.get("MeetingType") or "").strip()),
+                body=tab["label"],
+                date=(m.get("StartDate") or "").replace("/", "-").split(" ")[0],
+                start_time=m.get("FormattedStart", ""),
+                location=(m.get("Location") or "").strip(),
+                has_agenda=bool(m.get("HasAgenda")),
+            ))
+        scheduled.sort(key=lambda s: (s.date, s.start_time))
+        return scheduled
 
     def load_detail(self, meeting_id: str) -> MeetingDetail:
         html = self._transport.fetch_agenda_html(meeting_id)

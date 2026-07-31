@@ -152,7 +152,9 @@
         // excluded section headers and the page drew them anyway.
         const discussed = data.discussed_count;
         const consent = data.consent_count;
-        const counts = discussed != null
+        const counts = data.scheduled
+            ? (data.item_count != null ? `${data.item_count} agenda items` : '')
+            : discussed != null
             ? [
                 `${discussed} discussed`,
                 consent ? `${consent} approved without debate` : '',
@@ -168,10 +170,24 @@
         return `
             <h1>${escapeHtml(name)}</h1>
             ${when ? `<p class="meeting-when">${when}</p>` : ''}
+            ${data.scheduled ? speakBlurbHtml(data) : ''}
             <p class="meeting-meta-detail">
                 ${meta}${meta ? ' &middot; ' : ''}${escribeLink}
             </p>
         `;
+    }
+
+    // A Scheduled Meeting (not yet held) offers the "register to speak"
+    // call-to-action where the meeting's own page can answer it: one
+    // static blurb, one City form, and the computed Monday-5pm deadline.
+    function speakBlurbHtml(data) {
+        const url = data.register_to_speak_url
+            || 'https://www.saskatoon.ca/submit-letterrequest-speak-council-and-committees';
+        const deadline = readableDate(data.request_to_speak_deadline);
+        return `<div class="speak-blurb">This meeting hasn't happened yet. `
+            + `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">Send a letter or request to speak</a>`
+            + (deadline ? ` by ${escapeHtml(deadline)}, 5:00 p.m.` : '')
+            + `</div>`;
     }
 
     function setPageIdentity(data) {

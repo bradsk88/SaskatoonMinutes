@@ -16,7 +16,7 @@ import re
 import shutil
 import sys
 import time
-from datetime import date
+from datetime import date, timedelta
 
 # Ensure the project root is on the path so we can import app.*
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,13 +25,16 @@ sys.path.insert(0, PROJECT_ROOT)
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
+from app.models import ScheduledMeeting
 from app.agenda_items import (
     count_agenda_items,
     count_consent_items,
     count_discussed_items,
+    is_procedural,
+    is_section_header,
     mark_row_weights,
 )
-from app.agenda_text import readable_date, titleize
+from app.agenda_text import plainify, readable_date, titleize
 from app.feeds import build_feeds
 from app.speakers import merge_remarks, mark_heard
 from app.summarizer import (
@@ -211,6 +214,109 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
     return topics_data, details_data
 
 
+# The Future tab: Scheduled Meetings, always the left-most tab.
+FUTURE_TAB = {"slug": "future", "label": "Future"}
+SCHEDULED_DAYS_AHEAD = 60
+
+# One static blurb for every Scheduled Meeting: the City runs a single
+# form for written comments and requests to speak, and the deadline is
+# always 5:00 p.m. on the Monday of the meeting week.
+REGISTER_TO_SPEAK_URL = (
+    "https://www.saskatoon.ca/submit-letterrequest-speak-council-and-committees"
+)
+
+
+def _fetch_scheduled_details(source, scheduled, summaries_cache):
+    """Detail pages and index topics for Scheduled Meetings.
+
+    Unlike past meetings: no transcript correction, no badges, no speaker
+    roster, no ranking — every agenda item in agenda order, each carrying
+    its provisional Description when a summarize run has produced one.
+    """
+    topics_data: dict[str, dict] = {}
+    details_data: dict[str, dict] = {}
+    for i, s in enumerate(scheduled):
+        mid = s.meeting_id
+        print(f"  [{i + 1}/{len(scheduled)}] Fetching agenda for {mid[:8]}...")
+        try:
+            detail = fetch_with_retry(source.load_detail, mid)
+            items = [item.to_dict() for item in detail.agenda_items]
+            for item in items:
+                item["scheduled"] = True
+
+            item_summaries = summaries_cache.load(mid)
+            if item_summaries:
+                for item in items:
+                    summary = item_summaries.get(str(item.get("item_id")))
+                    if summary is None:
+                        continue
+                    item["summary"] = summary.to_dict()
+
+            topics = []
+            for item in items:
+                if is_procedural(item.get("title", "")) \
+                        or is_section_header(item) or item.get("is_recess"):
+                    continue
+                summary = item.get("summary") or {}
+                description = summary.get("description")
+                topics.append({
+                    "topic": titleize(plainify(item.get("title", ""))),
+                    # No outcome exists yet; the row draws no badge.
+                    "outcome": "",
+                    "summary": description or [],
+                    "summary_is_description": bool(description),
+                    "badges": [],
+                    "kind": "item",
+                    "item_id": item.get("item_id"),
+                    "time_start_ms": None,
+                })
+
+            topics_data[mid] = {
+                "scheduled": True,
+                "topics": topics,
+                "total_items": count_agenda_items(items),
+                "speaker_count": 0,
+                "roster": None,
+                "request_to_speak_deadline": s.request_to_speak_deadline,
+            }
+            details_data[mid] = {
+                "scheduled": True,
+                "agenda_items": items,
+                "video_url": None,
+                "title": detail.title or titleize(s.title),
+                "date": detail.date or s.date,
+                "start_time": detail.start_time or _start_time_24h(s.start_time),
+                "item_count": count_agenda_items(items),
+                "discussed_count": 0,
+                "consent_count": 0,
+                "has_summaries": True,  # irrelevant; never feeds the feeds
+                "request_to_speak_deadline": s.request_to_speak_deadline,
+                "register_to_speak_url": REGISTER_TO_SPEAK_URL,
+            }
+        except Exception as exc:
+            print(f"    WARNING: Failed to get agenda: {exc}")
+            topics_data[mid] = {
+                "scheduled": True, "topics": [], "total_items": 0,
+                "speaker_count": 0, "roster": None,
+                "request_to_speak_deadline": s.request_to_speak_deadline,
+            }
+            details_data[mid] = {
+                "scheduled": True,
+                "agenda_items": [],
+                "video_url": None,
+                "title": titleize(s.title),
+                "date": s.date,
+                "start_time": _start_time_24h(s.start_time),
+                "item_count": 0,
+                "discussed_count": 0,
+                "consent_count": 0,
+                "has_summaries": True,
+                "request_to_speak_deadline": s.request_to_speak_deadline,
+                "register_to_speak_url": REGISTER_TO_SPEAK_URL,
+            }
+    return topics_data, details_data
+
+
 def fetch_all_data():
     """Fetch meetings list and per-meeting topics from eSCRIBE for all tabs."""
     source: MeetingSource = EscribeMeetingSource(LiveEscribeTransport())
@@ -226,6 +332,30 @@ def fetch_all_data():
 
     with TranscriptCache.open() as transcript_cache, \
             ItemSummariesCache.open() as summaries_cache:
+        # The Future tab first: Scheduled Meetings ride the same caches
+        # but never the feeds.
+        print("\nFetching scheduled meetings (future tab)...")
+        try:
+            today = date.today()
+            scheduled = fetch_with_retry(
+                source.list_scheduled,
+                today.isoformat(),
+                (today + timedelta(days=SCHEDULED_DAYS_AHEAD)).isoformat(),
+            )
+        except Exception as exc:
+            print(f"  WARNING: scheduled meetings unavailable: {exc}")
+            scheduled = []
+        print(f"  Got {len(scheduled)} scheduled meetings")
+        all_tabs_meetings[FUTURE_TAB["slug"]] = {
+            "meetings": [s.to_dict() for s in scheduled],
+            "total_count": len(scheduled),
+        }
+        sched_topics, sched_details = _fetch_scheduled_details(
+            source, [s for s in scheduled if s.has_agenda], summaries_cache,
+        )
+        all_topics.update(sched_topics)
+        all_details.update(sched_details)
+
         for tab in MEETING_TABS:
             slug = tab["slug"]
             meeting_type = tab["type"]
@@ -278,12 +408,14 @@ def render_index_html(all_tabs_meetings, topics_data):
     title_block = _extract_block("title", index) or "YXEMinutes"
     content_block = _extract_block("content", index)
 
-    # Expand Jinja2 {% for tab in meeting_tabs %} loop into static HTML
-    tab_buttons = []
-    for i, tab in enumerate(MEETING_TABS):
-        active = " meeting-tab-active" if i == 0 else ""
+    # Expand Jinja2 {% for tab in meeting_tabs %} loop into static HTML.
+    # The Future tab is always left-most; JS keeps it pinned there.
+    tab_buttons = [
+        f'<button class="meeting-tab meeting-tab-active" data-slug="future">Future</button>'
+    ]
+    for tab in MEETING_TABS:
         tab_buttons.append(
-            f'<button class="meeting-tab{active}" '
+            f'<button class="meeting-tab" '
             f'data-slug="{tab["slug"]}">{tab["label"]}</button>'
         )
     tab_html = "\n        ".join(tab_buttons)
@@ -303,9 +435,14 @@ def render_index_html(all_tabs_meetings, topics_data):
     scripts_block = index[scripts_start + len("{% block scripts %}"):scripts_end].strip() if scripts_start != -1 else ""
 
     # --- Build preloaded data script tags ---
-    # Default tab is the first one ("council")
-    default_slug = MEETING_TABS[0]["slug"]
-    default_data = all_tabs_meetings.get(default_slug, {"meetings": [], "total_count": 0})
+    # Default tab is the Future tab when it has meetings, else council.
+    future_data = all_tabs_meetings.get("future", {"meetings": [], "total_count": 0})
+    if future_data["meetings"]:
+        default_slug = "future"
+        default_data = future_data
+    else:
+        default_slug = MEETING_TABS[0]["slug"]
+        default_data = all_tabs_meetings.get(default_slug, {"meetings": [], "total_count": 0})
 
     preloaded_meetings = json.dumps({
         "meetings": default_data["meetings"],

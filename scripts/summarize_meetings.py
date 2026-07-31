@@ -78,7 +78,14 @@ def is_current(cached: dict[str, ItemSummary] | None) -> bool:
     """
     if not cached:
         return False
-    return any(not summary.is_legacy for summary in cached.values())
+    # A provisional summary was written before the meeting, from official
+    # text alone.  Once the meeting has happened it is disposable: the
+    # flip to Meeting regenerates everything with the transcript
+    # (ADR 0021), so provisional coverage does not count as current.
+    return any(
+        not summary.is_legacy and not summary.provisional
+        for summary in cached.values()
+    )
 
 
 def summarize_meeting(
@@ -148,6 +155,67 @@ def summarize_meeting(
     return summaries
 
 
+def summarize_scheduled_meeting(
+    source: MeetingSource,
+    meeting_id: str,
+    extractor,
+) -> dict[str, ItemSummary]:
+    """Provisional summaries for a Scheduled Meeting: official text only.
+
+    No transcript exists, so every item is summarized Consent-Item-style
+    — the ``scheduled`` flag on the item dicts is what routes the
+    extractor to the future-meeting prompt and withholds the
+    discussion-only categories.  Every entry is marked provisional so the
+    flip to Meeting regenerates it (ADR 0021).
+    """
+    detail = source.load_detail(meeting_id)
+    items = [it.to_dict() for it in detail.agenda_items]
+    for item in items:
+        item["scheduled"] = True
+
+    summaries: dict[str, ItemSummary] = {
+        str(i["item_id"]): ItemSummary(description=None, chips=[], provisional=True)
+        for i in items if not is_eligible_for_summary(i)
+    }
+
+    def run(item: dict) -> tuple[dict, dict]:
+        try:
+            return item, extract_item_summaries(
+                item, [],
+                gemini_extractor=extractor,
+                transcript_text="",
+            )
+        except ExtractionFailed as exc:
+            raise ExtractionFailed(
+                f"item {item.get('item_id')} "
+                f"({(item.get('title') or '')[:60]!r}): {exc}"
+            ) from exc
+
+    eligible = [i for i in items if is_eligible_for_summary(i)]
+    with ThreadPoolExecutor(max_workers=EXTRACT_WORKERS) as pool:
+        for item, payload in pool.map(run, eligible):
+            summary = ItemSummary.from_dict(payload)
+            summary = ItemSummary(
+                description=summary.description,
+                chips=summary.chips,
+                provisional=True,
+            )
+            title = (item.get("title") or "")[:60]
+            print(
+                f"    Item {item['item_id']}: {title} → "
+                f"{'description' if summary.description else 'NO DESCRIPTION'}, "
+                f"{len(summary.chips)} chips",
+                flush=True,
+            )
+            summaries[str(item["item_id"])] = summary
+
+    print(
+        f"    {len(eligible)}/{len(items)} items eligible for provisional summary",
+        flush=True,
+    )
+    return summaries
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -174,6 +242,14 @@ def main() -> None:
     parser.add_argument(
         "--pages", type=int, default=1,
         help="How many pages of past meetings to walk per tab (default: 1).",
+    )
+    parser.add_argument(
+        "--no-scheduled", action="store_true",
+        help=(
+            "Skip Scheduled Meetings.  By default, once post-meeting "
+            "summaries are caught up, remaining quota goes to provisional "
+            "summaries for upcoming meetings (lower priority — ADR 0021)."
+        ),
     )
     args = parser.parse_args()
 
@@ -276,6 +352,43 @@ def main() -> None:
                     # Not saved on purpose: a meeting with an unknown item
                     # is not a summarized meeting.  is_current rejects the
                     # absent file, so the next run redoes it.
+                    errors += 1
+                    print(f"    ERROR: not saved — {exc}", flush=True)
+                except Exception as exc:
+                    errors += 1
+                    print(f"    ERROR: {exc}", flush=True)
+                    traceback.print_exc()
+
+        # Provisional summaries for Scheduled Meetings — lower priority
+        # than everything above: only run when post-meeting work finished
+        # without exhausting the quota (ADR 0021).
+        if not args.no_scheduled and not quota_gone:
+            from datetime import date, timedelta
+            start = date.today().isoformat()
+            end = (date.today() + timedelta(days=60)).isoformat()
+            print("\n--- Scheduled Meetings (provisional) ---")
+            try:
+                scheduled = source.list_scheduled(start, end)
+            except Exception as exc:
+                print(f"  Failed to fetch scheduled meetings: {exc}")
+                scheduled = []
+            for s in scheduled:
+                if not s.has_agenda:
+                    continue
+                mid = s.meeting_id
+                if not args.force and is_current(summaries_cache.load(mid)):
+                    continue
+                print(f"  [{s.date}] {s.body}: summarizing...", flush=True)
+                try:
+                    summaries = summarize_scheduled_meeting(source, mid, extractor)
+                    summaries_cache.save(mid, summaries)
+                    summarized += 1
+                except QuotaExhausted as exc:
+                    print(f"    STOPPING: {exc}", flush=True)
+                    errors += 1
+                    quota_gone = True
+                    break
+                except ExtractionFailed as exc:
                     errors += 1
                     print(f"    ERROR: not saved — {exc}", flush=True)
                 except Exception as exc:
