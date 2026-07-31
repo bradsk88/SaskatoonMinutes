@@ -1123,6 +1123,22 @@ main {
     border-radius: 6px;
 }
 
+/* The speakers under one item nest as a group: indented on both sides
+   (overriding .topic-content's full-bleed negative margins), with a gap
+   above the first row and below the last, so the eye reads them as
+   belonging to the item above rather than as rows of their own. */
+.topic-speaker-row .topic-content {
+    margin: 0 0.4rem 0 1rem;
+}
+
+.speaker-group-start td {
+    padding-top: 0.3rem;
+}
+
+.speaker-group-end td {
+    padding-bottom: 0.4rem;
+}
+
 .org-row-0 .topic-content { background: #dbeafe; color: #1e40af; }
 .org-row-1 .topic-content { background: #dcfce7; color: #166534; }
 .org-row-2 .topic-content { background: #f3e8ff; color: #6b21a8; }

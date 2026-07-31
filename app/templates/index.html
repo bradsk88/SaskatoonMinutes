@@ -278,7 +278,7 @@
         // read to decide what to open, and a badge whose claim only
         // appears on hover says nothing at all on a phone.
         let html = '<table class="topics-table"><tbody>';
-        topics.forEach(t => {
+        topics.forEach((t, i) => {
             let rowClass = '';
             if (t.is_consent) rowClass += ' topic-consent';
             const oClass = outcomeClass(t);
@@ -348,6 +348,18 @@
                     + ` org-row-${t.org_color == null ? 'none' : t.org_color}`;
             }
             if (isMore) rowClass += ' topic-speaker-row topic-title-only speaker-more-row';
+            // The group of speakers under one item is visually nested:
+            // the first and last rows of a run are marked so the group
+            // gets a gap above and below it.
+            if (isSpeaker || isMore) {
+                const prev = topics[i - 1], next = topics[i + 1];
+                if (!prev || (prev.kind !== 'speaker' && prev.kind !== 'speaker-more')) {
+                    rowClass += ' speaker-group-start';
+                }
+                if (!next || (next.kind !== 'speaker' && next.kind !== 'speaker-more')) {
+                    rowClass += ' speaker-group-end';
+                }
+            }
             // A title-only row: the item earned its name and outcome on
             // the card, but not the vertical space a summary costs.
             if (t.title_only) rowClass += ' topic-title-only';
