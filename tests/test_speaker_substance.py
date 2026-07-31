@@ -490,6 +490,43 @@ class TestTheCardBudget:
         assert out["speaker_count"] == 2
         assert [o["label"] for o in out["organizations"]] == []
 
+    def test_the_chair_introducing_a_filing_speaker_vouches_for_them(self):
+        """mark_heard: a registered name the chair said during the item
+        did speak, whatever the substance pass produced."""
+        from app.speakers import mark_heard
+        item = {
+            "time_start_ms": 2_760_000, "time_end_ms": 3_600_000,
+            "speakers": [
+                {"name": "Robert Clipperton", "source": "registered",
+                 "organization": "Bus Riders of Saskatoon"},
+                {"name": "No Show", "source": "registered",
+                 "organization": ""},
+            ],
+        }
+        segments = [
+            {"start_ms": 2_800_000, "end_ms": 2_900_000,
+             "text": "We'll go now to the first speaker Robert Clipperton "
+                     "with Bus Riders of Saskatoon."},
+            {"start_ms": 100, "end_ms": 200, "text": "outside the item"},
+        ]
+        mark_heard(item, segments)
+        assert item["speakers"][0]["heard"] is True
+        assert "heard" not in item["speakers"][1]
+
+    def test_a_short_surname_needs_the_full_name(self):
+        """Otherwise Taylor Street attends every meeting on 25th."""
+        from app.speakers import mark_heard
+        item = {
+            "time_start_ms": 0, "time_end_ms": 1000,
+            "speakers": [
+                {"name": "Gordon Taylor", "source": "registered",
+                 "organization": ""},
+            ],
+        }
+        mark_heard(item, [{"start_ms": 0, "end_ms": 1000,
+                           "text": "the brt station at taylor street"}])
+        assert "heard" not in item["speakers"][0]
+
     def test_council_rows_are_chosen_without_the_speakers(self):
         """The filter that stops a delegate taking an agenda item's place."""
         assert "topics.filter(t => t.kind !== 'speaker')" in self._template()

@@ -33,7 +33,7 @@ from app.agenda_items import (
 )
 from app.agenda_text import readable_date, titleize
 from app.feeds import build_feeds
-from app.speakers import merge_remarks
+from app.speakers import merge_remarks, mark_heard
 from app.summarizer import (
     extract_meeting_topics, extract_badges, speaker_roster,
 )
@@ -135,9 +135,15 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
 
             # The roster is rebuilt from the agenda every build; what each
             # speaker argued is cached with the summary.  Merged here so
-            # both pages read one list.
+            # both pages read one list. Then the transcript vouches for
+            # registered speakers the chair introduced by name — a filing
+            # alone never puts anyone in the digest.
             for item in items:
                 item["speakers"] = merge_remarks(item)
+            if transcript and transcript.segments:
+                segments = transcript.to_dict()
+                for item in items:
+                    mark_heard(item, segments)
 
             mark_row_weights(items)
 

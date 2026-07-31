@@ -170,6 +170,51 @@ def organization_color(organization: str) -> int | None:
     return zlib.crc32(name.encode("utf-8")) % ORGANIZATION_COLOURS
 
 
+# A surname this long is distinctive enough to stand alone as evidence
+# the chair introduced its owner. Shorter ones need the full name, or
+# "Taylor Street" puts a resident at a podium they never reached.
+_HEARD_MIN_SURNAME = 7
+
+
+def mark_heard(item: dict, segments: list[dict]) -> None:
+    """Flag registered speakers the transcript actually captured.
+
+    An RTS filing proves intent, not attendance, and the substance pass
+    only produces remarks for the speakers it is handed — so \"no
+    remarks\" cannot tell a no-show from a speaker the pipeline missed.
+    The chair, however, introduces every speaker by name during their
+    item, a deterministic check that needs no model.
+
+    Whisper mangles names (\"Wilgenhof\" became \"Wilgunhof\"), so a full
+    name match is not required: a distinctive surname standing alone is
+    enough. Mutates ``item[\"speakers\"]``; call after ``merge_remarks``.
+    """
+    start = item.get("time_start_ms")
+    end = item.get("time_end_ms")
+    if start is None or end is None:
+        return
+    heard_text = " ".join(
+        s.get("text", "")
+        for s in segments
+        if s.get("end_ms", 0) > start and s.get("start_ms", 0) < end
+    ).lower()
+    if not heard_text:
+        return
+    for speaker in item.get("speakers") or []:
+        if not isinstance(speaker, dict):
+            continue
+        if speaker.get("source") != "registered" or speaker.get("said"):
+            continue
+        name = " ".join((speaker.get("name") or "").lower().split())
+        if not name:
+            continue
+        surname = name.split()[-1]
+        if name in heard_text or (
+            len(surname) >= _HEARD_MIN_SURNAME and surname in heard_text
+        ):
+            speaker["heard"] = True
+
+
 def merge_remarks(item: dict) -> list[dict]:
     """The item's speaker roster with cached remarks folded in.
 

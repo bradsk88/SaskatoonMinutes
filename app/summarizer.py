@@ -161,9 +161,9 @@ def speaker_roster(agenda_items: list[dict]) -> dict:
 
     Registered-only names are excluded: an RTS filing proves intent, not
     attendance, and listing someone who never reached the podium puts a
-    voice in the room that was not there. The filing survives if the
-    transcript captured remarks for them — then they did speak, and the
-    minutes simply missed them.
+    voice in the room that was not there. The filing survives when the
+    transcript says they did speak — remarks captured for them, or the
+    chair heard introducing them by name (``mark_heard``).
     """
     organizations: list[dict] = []
     seen_orgs: set[str] = set()
@@ -173,7 +173,9 @@ def speaker_roster(agenda_items: list[dict]) -> dict:
         for speaker in item.get("speakers") or []:
             if not isinstance(speaker, dict):
                 continue
-            if speaker.get("source") == "registered" and not speaker.get("said"):
+            if speaker.get("source") == "registered" and not (
+                speaker.get("said") or speaker.get("heard")
+            ):
                 continue
             name = speaker.get("name") or ""
             if name:
