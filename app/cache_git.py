@@ -31,6 +31,29 @@ def _git(*args: str, cwd: str | None = None) -> str:
     return result.stdout.strip()
 
 
+class _SharedWorktree:
+    """Refcounted worktree checkout, keyed by (repo, branch).
+
+    Git refuses to check out the same branch into two worktrees at once,
+    but callers like ``summarize_meetings.py`` open several typed caches
+    that all sit on the ``summaries`` branch in one ``with`` statement.
+    Sharing the checkout — rather than each cache doing its own
+    ``git worktree add`` — is what lets that coexist.
+    """
+
+    def __init__(self, tmpdir: tempfile.TemporaryDirectory, path: str) -> None:
+        self.tmpdir = tmpdir
+        self.path = path
+        self.refcount = 0
+
+
+_shared_worktrees: dict[tuple[str, str], _SharedWorktree] = {}
+
+
+def _worktree_key(branch: str) -> tuple[str, str]:
+    return (os.path.realpath(os.getcwd()), branch)
+
+
 class PushAccessError(RuntimeError):
     """Raised when the remote will not accept a push from this environment."""
 
@@ -89,6 +112,7 @@ class GitBranchCache:
         self.dir_name = dir_name
         self._tmpdir: tempfile.TemporaryDirectory | None = None
         self._worktree: str | None = None
+        self._worktree_key: tuple[str, str] | None = None
         self._saved = False
 
     # ------------------------------------------------------------------
@@ -180,14 +204,22 @@ class GitBranchCache:
             pass
 
     def _open_worktree(self) -> None:
+        key = _worktree_key(self.branch)
+        shared = _shared_worktrees.get(key)
+        if shared is not None:
+            shared.refcount += 1
+            self._worktree = shared.path
+            self._worktree_key = key
+            return
+
         branch_exists = True
         try:
             _git("rev-parse", "--verify", self.branch)
         except RuntimeError:
             branch_exists = False
 
-        self._tmpdir = tempfile.TemporaryDirectory()
-        wt = os.path.join(self._tmpdir.name, "wt")
+        tmpdir = tempfile.TemporaryDirectory()
+        wt = os.path.join(tmpdir.name, "wt")
 
         if branch_exists:
             _git("worktree", "add", wt, self.branch)
@@ -199,7 +231,13 @@ class GitBranchCache:
             except RuntimeError:
                 # Empty index (fresh repo) — nothing to clear.
                 pass
+
+        shared = _SharedWorktree(tmpdir, wt)
+        shared.refcount = 1
+        _shared_worktrees[key] = shared
+        self._tmpdir = tmpdir
         self._worktree = wt
+        self._worktree_key = key
 
     def _has_staged_changes(self) -> bool:
         """True when the index holds something a commit would record.
@@ -226,12 +264,26 @@ class GitBranchCache:
         _git("push", "origin", self.branch)
 
     def _cleanup_worktree(self) -> None:
-        if self._worktree is not None:
-            try:
-                _git("worktree", "remove", "--force", self._worktree)
-            except RuntimeError:
-                pass
-            self._worktree = None
+        if self._worktree is None:
+            return
+        key = self._worktree_key
+        shared = _shared_worktrees.get(key) if key is not None else None
+        if shared is not None:
+            shared.refcount -= 1
+            if shared.refcount > 0:
+                # Another cache on the same branch is still using this
+                # checkout — only the last one out tears it down.
+                self._worktree = None
+                self._worktree_key = None
+                return
+            del _shared_worktrees[key]
+            self._tmpdir = shared.tmpdir
+        try:
+            _git("worktree", "remove", "--force", self._worktree)
+        except RuntimeError:
+            pass
+        self._worktree = None
+        self._worktree_key = None
         if self._tmpdir is not None:
             try:
                 self._tmpdir.cleanup()
