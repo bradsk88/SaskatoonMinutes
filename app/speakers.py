@@ -73,8 +73,13 @@ _ROLE_WORDS = {
 #  "_Redacted" on documents with personal information removed, and a
 #  re-upload adds "(1)".  Published verbatim this read "Registered to
 #  speak on: Fixed-term Loan to TCU Place_Redacted(1)".
+# eSCRIBE is not consistent about the prefix: most filings are
+# "RTS - Name - Topic.pdf", but some clerks write the words out —
+# "Request to Speak - Robert Clipperton - Bus Riders of Saskatoon.pdf".
+# Matching only the acronym lost every speaker on the July 29 transit
+# bylaw: they filed, they spoke, and no list of them existed anywhere.
 _RTS_ATTACHMENT_RE = re.compile(
-    r"RTS\s+-\s+(?P<name>.+?)\s+-\s+(?P<topic>.+?)"
+    r"(?:RTS|Request to Speak)\s+-\s+(?P<name>.+?)\s+-\s+(?P<topic>.+?)"
     r"(?:_Redacted)?(?:\s*\(\d+\))?\.pdf$",
     re.IGNORECASE,
 )
@@ -209,10 +214,42 @@ def mark_heard(item: dict, segments: list[dict]) -> None:
         if not name:
             continue
         surname = name.split()[-1]
-        if name in heard_text or (
+        heard = name in heard_text or (
             len(surname) >= _HEARD_MIN_SURNAME and surname in heard_text
-        ):
-            speaker["heard"] = True
+        )
+        if not heard:
+            continue
+        speaker["heard"] = True
+        # The introduction often names who they came for — "the first
+        # speaker Robert Clipperton with Bus Riders of Saskatoon" — and
+        # a filing never does. An org that attended belongs in the
+        # digest as itself, not rolled up into "N Residents".
+        if not (speaker.get("organization") or "").strip():
+            m = re.search(
+                re.escape(name)
+                + r"\s+(?:with|from|of|representing)\s+([a-z][a-z &'\-]{2,60})",
+                heard_text,
+            )
+            if m:
+                org = m.group(1)
+                # Whisper runs on past the name: "with bus riders of
+                # saskatoon and you are well familiar". An org name is
+                # short; the first discourse marker ends it.
+                for stop in (" and ", " you ", " we ", " i ", " thank ",
+                             " members ", " your ", " Mr ".lower(), " Ms ".lower(),
+                             ",", "."):
+                    org = org.split(stop)[0]
+                org = org.strip()
+                if org:
+                    # Whisper lowercases freely; an org chip reads wrong
+                    # in all-lowercase. Small words stay small unless
+                    # they lead.
+                    small = {"of", "and", "the", "for", "on", "in"}
+                    cased = [
+                        w if w in small and i else w.capitalize()
+                        for i, w in enumerate(org.split())
+                    ]
+                    speaker["organization"] = " ".join(cased)
 
 
 def merge_remarks(item: dict) -> list[dict]:

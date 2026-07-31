@@ -57,6 +57,26 @@ def _homelessness_item() -> AgendaItem:
 
 
 class TestExtractSpeakers:
+    def test_the_words_written_out_count_as_much_as_the_acronym(self):
+        """Some clerks file \"Request to Speak - Name - Topic.pdf\" with
+        no \"RTS\" anywhere. Matching only the acronym lost every transit
+        speaker on July 29, 2026 — they filed, they spoke, and no list
+        of them existed."""
+        item = AgendaItem(
+            item_id=41,
+            title="Saskatoon Transit",
+            content="",
+            section_number="11.2.1",
+            attachments=[{
+                "name": "5. 11.2.1 - Request to Speak - Robert Clipperton "
+                        "- Bus Riders of Saskatoon_Redacted(1).pdf",
+                "url": "https://example.com/5",
+            }],
+        )
+        speakers = extract_speakers(item)
+        assert [s.name for s in speakers] == ["Robert Clipperton"]
+        assert speakers[0].source == "registered"
+
     def test_finds_multiple_named_delegates(self):
         names = {p.name for p in extract_speakers(_homelessness_item())}
         assert {

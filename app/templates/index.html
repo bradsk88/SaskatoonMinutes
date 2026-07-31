@@ -509,11 +509,18 @@
                 + `</div></td></tr>`;
         }
         if (digest.residents > 0) {
+            // The same row as an org, chip and all — residents are a
+            // group that came, not a footnote to the groups that did.
+            const chip = `<span class="org-chip org-chip-none">`
+                + `${digest.residents} Resident${digest.residents === 1 ? '' : 's'}</span>`;
             rows += `<tr class="topic-title-only org-digest-row"><td class="topic-cell">`
-                + `<div class="topic-row"><div class="topic-content">`
-                + `<div class="topic-name org-digest-residents">`
-                + `${digest.residents} Resident${digest.residents === 1 ? '' : 's'}`
-                + `</div></div></div></td></tr>`;
+                + `<div class="topic-row">`
+                + (openHref
+                    ? `<a href="${escapeAttr(openHref)}" class="topic-content topic-link">`
+                    : `<div class="topic-content">`)
+                + `<div class="topic-name">${chip}</div>`
+                + (openHref ? `</a>` : `</div>`)
+                + `</div></td></tr>`;
         }
         return `<div class="org-digest-label">Guest speakers</div>`
             + `<table class="topics-table org-digest"><tbody>${rows}</tbody></table>`;

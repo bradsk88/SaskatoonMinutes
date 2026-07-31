@@ -511,6 +511,7 @@ class TestTheCardBudget:
         ]
         mark_heard(item, segments)
         assert item["speakers"][0]["heard"] is True
+        assert item["speakers"][0]["organization"] == "Bus Riders of Saskatoon"
         assert "heard" not in item["speakers"][1]
 
     def test_a_short_surname_needs_the_full_name(self):

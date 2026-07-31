@@ -1197,10 +1197,6 @@ main {
     margin-top: 0.15rem;
 }
 
-.org-digest-residents {
-    color: var(--color-text-muted);
-    font-weight: 500;
-}
 
 /* A title-only row spends one unit of the card's space budget: name
    and outcome, no summary, so the padding tightens to match. */
