@@ -157,6 +157,55 @@ class TestGitBranchCacheLifecycle:
         with pytest.raises(RuntimeError, match="outside its context"):
             c.save("k", {})
 
+    def test_two_caches_on_the_same_branch_can_be_open_at_once(
+        self, repo_with_remote,
+    ):
+        """Regression: summarize_meetings.py opens ItemSummariesCache and
+        AttachmentGistsCache together, both on the ``summaries`` branch.
+        Git refuses to check out one branch into two worktrees, so the
+        second ``__enter__`` used to fail with "already used by worktree".
+        """
+        _, remote = repo_with_remote
+        with GitBranchCache("shared-branch", "summaries") as summaries, \
+                GitBranchCache("shared-branch", "attachment-gists") as gists:
+            summaries.save("m1", {"7": []})
+            gists.save("m1", {"a": 1})
+
+        content = _read_remote_blob(
+            str(remote), "shared-branch", "summaries/m1.json",
+        )
+        assert json.loads(content) == {"7": []}
+        content = _read_remote_blob(
+            str(remote), "shared-branch", "attachment-gists/m1.json",
+        )
+        assert json.loads(content) == {"a": 1}
+
+    def test_shared_worktree_removed_only_after_last_user_exits(
+        self, repo_with_remote,
+    ):
+        worker, _ = repo_with_remote
+        outer = GitBranchCache("shared-branch", "summaries")
+        outer.__enter__()
+        with GitBranchCache("shared-branch", "attachment-gists") as inner:
+            inner.save("m1", {"a": 1})
+            worktrees = subprocess.run(
+                ["git", "worktree", "list"], cwd=str(worker),
+                capture_output=True, text=True,
+            ).stdout
+            assert "shared-branch" in worktrees
+        # Inner exited but outer still holds the checkout open.
+        worktrees = subprocess.run(
+            ["git", "worktree", "list"], cwd=str(worker),
+            capture_output=True, text=True,
+        ).stdout
+        assert "shared-branch" in worktrees
+        outer.__exit__(None, None, None)
+        worktrees = subprocess.run(
+            ["git", "worktree", "list"], cwd=str(worker),
+            capture_output=True, text=True,
+        ).stdout
+        assert "shared-branch" not in worktrees
+
 
 class TestTypedWrappers:
     def test_transcript_cache_round_trip(self, repo_with_remote):
