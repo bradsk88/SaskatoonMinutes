@@ -366,13 +366,13 @@
             // one reads as a rendering fault rather than as a fact about
             // the speaker. Layout consistency is the reason; the muted
             // colour is what keeps it from claiming more than it knows.
-            // A speaker's row also carries the item's first category, so
-            // the row says what they came about, not just who came.
-            const catChip = isSpeaker
-                ? catChipHtml(((t.badges || []).find(b => b.type.startsWith('cat-')) || {}).type)
-                : '';
-            const metaHtml = (!isMore && (catChip || outcomeHtml))
-                ? `<span class="topic-name-meta">${catChip}${outcomeHtml}</span>`
+            //
+            // No category chip here: an inline speaker sits directly
+            // under the item they answered, so the topic is already on
+            // the card. Only digest rows name the category -- an org
+            // there is a name with no item beside it.
+            const metaHtml = (!isMore && outcomeHtml)
+                ? `<span class="topic-name-meta">${outcomeHtml}</span>`
                 : '';
             if (isMore) {
                 html += `<div class="topic-name"><span class="speaker-more">`

@@ -488,10 +488,14 @@ class TestTheCardBudget:
         ])
         assert out["organizations"][0]["categories"] == ["cat-transit"]
 
-    def test_a_speaker_row_names_the_category(self):
-        """One word from the filter's own category set, beside the
-        stance."""
-        assert "catChipHtml" in self._template()
+    def test_a_digest_row_names_the_category(self):
+        """One word from the filter's own category set -- an org in the
+        digest is a name with no item beside it, so the row says what
+        they came about. An inline speaker row has its item right above
+        it and carries no chip."""
+        source = self._template()
+        digest = source[source.index("function digestHtml"):]
+        assert "catChipHtml(cats[0])" in digest
 
     def test_a_consent_item_never_becomes_a_row(self):
         """Approved in one block vote without debate: nothing to
