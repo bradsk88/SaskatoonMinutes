@@ -453,9 +453,7 @@ def _topic_summary(item: dict) -> tuple[list[str], bool]:
 # item earns an entry by carrying a Description *or* one of these.  Two
 # lists of "the categories that mean the model found something" would
 # drift, and the gate is the whole of what the feed selects on.
-CARD_CHIP_CATEGORIES: tuple[str, ...] = ("Cost & Funding",) + tuple(
-    SEMANTIC_CATEGORIES
-)
+CARD_CHIP_CATEGORIES: tuple[str, ...] = tuple(SEMANTIC_CATEGORIES)
 
 # The chip categories worth one line, most telling first.  A reader
 # deciding whether to spend time is served better by what went wrong or

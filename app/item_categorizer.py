@@ -2,18 +2,20 @@
 Hybrid extractor that turns an agenda item + its transcript slice into an
 ItemSummary: a mandatory plain-language Description plus its Chips.
 
-Chip categories are a closed list of 22 labels.  Extraction runs in two
+Chip categories are a closed list of 16 labels.  Extraction runs in two
 passes when Gemini is enabled (deterministic + LLM); just the
 deterministic pass otherwise.
 
-  1. Deterministic pass — regex and heuristics over the item's metadata
-     and the item's raw transcript slice. Covers Outcome, Vote Breakdown,
-     Cost & Funding, Amendment Made, Procedural Note, Delegation, Next
-     Step, Related Item, Deferred From, Declared Conflict, Data Cited.
+  1. Deterministic pass — regex and heuristics over the item's metadata.
+     Covers Outcome, Vote Breakdown, Cost & Funding, Amendment Made,
+     Procedural Note.
 
   2. LLM pass — a single Gemini 2.5 Flash call per item, constrained to a
      JSON schema of ``{description, chips: [{category, text, usefulness}]}``
-     for the 11 remaining "soft" categories.  ``description`` is
+     for the 12 "soft" categories.  Cost & Funding sits in both passes:
+     the deterministic chip cites the official text, and only when it
+     found nothing is the LLM asked — a category already covered is
+     excluded from the prompt, so the two never duplicate.  ``description`` is
      **required**: as an optional category the model declined it on about
      half of all items and a metadata fallback echoed the item's title.
      See ``docs/adr/0003-item-summary-aggregate.md``.
@@ -70,18 +72,12 @@ CATEGORIES: list[str] = [
     "Vote Breakdown",
     "Amendment Made",
     "Cost & Funding",
-    "Delegation",
     "Debate Highlight",
     "Who's Affected",
     "Staff vs. Council",
-    "Next Step",
-    "Declared Conflict",
     "Procedural Note",
-    "Related Item",
-    "Deferred From",
     "Precedent Set",
     "Unanswered Question",
-    "Data Cited",
     "Public Sentiment",
     "Dissenting View",
     "Legal Risk Flagged",
@@ -97,21 +93,15 @@ CATEGORY_GROUP: dict[str, str] = {
     "Dissenting View": "decision",
     "Cost & Funding": "money",
     "Debate Highlight": "context",
-    "Data Cited": "context",
     "Unanswered Question": "context",
-    "Delegation": "voices",
     "Staff vs. Council": "voices",
     "Public Sentiment": "voices",
-    "Declared Conflict": "voices",
     "Who's Affected": "impact",
     "Equity Impact": "impact",
     "Environmental Impact": "impact",
     "Legal Risk Flagged": "impact",
     "Procedural Note": "future",
-    "Related Item": "future",
-    "Deferred From": "future",
     "Precedent Set": "future",
-    "Next Step": "future",
     "Promise Made": "future",
 }
 
@@ -129,10 +119,11 @@ MAX_SUMMARY_CHARS = 100
 # Sentiment.  Overlapping definitions do not produce more coverage, they
 # produce the same sentence wearing two labels.
 SEMANTIC_DEFINITIONS: dict[str, str] = {
+    "Cost & Funding": "a specific dollar figure attached to this item — an amount being spent, budgeted, granted, fined, or saved — with its purpose, e.g. \"$1.2M per acre for the North Yards parcels\" or \"$250 fine for fare evasion\". The figure must appear in the official text or be clearly stated about THIS item in the transcript; \"funded within the existing budget\" with no figure is not a chip. Transcript discussion sometimes belongs to a neighbouring item — if the figure's connection to this item is uncertain, omit the chip.",
     "Debate Highlight": "a sharp or notable moment of debate among the decision-makers — a memorable quote, a pointed exchange, or a striking argument from a named councillor or staff member. Do NOT use this to restate the vote outcome ('council unanimously opposed the proposal' is Outcome). If the speaker is a member of the public or a delegation, use Public Sentiment. If it is a councillor explaining a vote against, use Dissenting View.",
     "Who's Affected": "name the specific residents, neighbourhoods, businesses, or organizations this decision lands on — \"residents of Nutana, Varsity View and City Park\", \"13 non-profit groups\", \"taxpayers, at about $14,000 a year\". Emit it whenever a concrete group is identifiable; a named group is exactly the fact a reader is looking for. Do not settle for \"residents\" or \"the community\" in general — if you cannot name who, omit the chip. Two categories take precedence and REPLACE this chip rather than suppress it: Equity Impact when the group is affected precisely because it is marginalized, low-income, Indigenous, or under-served, and Environmental Impact when what is affected is ecological rather than a group of people.",
     "Staff vs. Council": "a real disagreement between city administration and elected councillors (not just a clarifying question)",
-    "Precedent Set": "a first-of-its-kind decision that will be referenced in future cases",
+    "Precedent Set": "a first-of-its-kind decision that future decisions will be judged against — a new policy, process, or land-use pattern that later applicants or the city itself will cite. The chip must name the pattern that was set. Do NOT use for something that merely happened for the first time (the first year of a program, the first report of a series) or for one-off facts no future decision will reference (a land purchase, an ownership change, a funding condition).",
     "Unanswered Question": "a substantive question raised that was NOT answered (if it was answered or clarified, do NOT emit this)",
     "Public Sentiment": "members of the public, delegations, or petitioners expressing clear support or opposition (not just 'public engagement is required'). This is the category for non-councillor voices; a councillor's argument is Debate Highlight.",
     "Dissenting View": "a councillor's stated reason for voting against the motion (omit if the vote was unanimous)",
@@ -313,10 +304,11 @@ def _extract_cost_funding(item: dict) -> list[dict]:
     Pacific Avenue emergency shelter.  No slicing rule fixes that; the
     timestamps are simply wrong.
 
-    Money spoken in debate but absent from the official text is not lost —
-    the Description and the soft chips still draw on the transcript.  What
-    changes is that a chip claiming civic/legal weight now cites a source
-    that can be checked.
+    Money spoken in debate but absent from the official text is the LLM
+    pass's share of the category: when this extractor found nothing, the
+    category is left in the prompt and the model may emit the figure it
+    heard.  When this extractor did fire, the category is excluded from
+    the prompt, so the two passes never duplicate.
     """
     combined = " ".join(
         str(item.get(k) or "")
@@ -385,98 +377,6 @@ def _money_purpose_snippet(tail: str) -> str:
     return f"{preposition} {m.group(2).strip()}"
 
 
-def _extract_declared_conflict(transcript_text: str) -> list[dict]:
-    m = re.search(
-        r"[^.!?]*\b(declare[ds]?|declaration of|conflict of interest)\b[^.!?]*",
-        transcript_text, re.IGNORECASE,
-    )
-    if not m:
-        return []
-    return [{"category": "Declared Conflict", "text": _transcript_chip(m.group(0))}]
-
-
-_DELEGATION_RE = re.compile(
-    r"(Director|Mr\.?|Ms\.?|Mrs\.?|Dr\.?)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?"
-    r"\s+(?:presented|spoke|addressed|appeared|responded)"
-    r"[^.!?]{0,80}",
-)
-
-
-def _extract_delegation(transcript_text: str) -> list[dict]:
-    m = _DELEGATION_RE.search(transcript_text[:4000])
-    if not m:
-        return []
-    return [{"category": "Delegation", "text": _transcript_chip(m.group(0))}]
-
-
-_NEXT_STEP_KW_RE = re.compile(
-    r"\b(report back|bring (?:this |it )?back|return to council|"
-    r"next meeting|next year|by (?:Q[1-4]|\d{4}|the end of))\b",
-    re.IGNORECASE,
-)
-
-
-def _extract_next_step(transcript_text: str) -> list[dict]:
-    for m in _NEXT_STEP_KW_RE.finditer(transcript_text):
-        sentence = sentence_around(transcript_text, m.start(), m.end())
-        before_kw = sentence.split(m.group(0), 1)[0]
-        if re.search(r"\bif\b", before_kw, re.IGNORECASE):
-            continue
-        if re.search(r"\bpreviously\b", sentence, re.IGNORECASE):
-            continue
-        chip = _transcript_chip(sentence)
-        # The matched keyword must survive trimming; otherwise we trimmed
-        # to a useless fragment.
-        if not chip or not re.search(re.escape(m.group(0)), chip, re.IGNORECASE):
-            continue
-        # Questions are not commitments.
-        if chip.rstrip().endswith("?"):
-            continue
-        # Rambling conversational speech tends to pile up commas.
-        if chip.count(",") >= 3:
-            continue
-        return [{"category": "Next Step", "text": chip}]
-    return []
-
-
-def _extract_related_deferred(item: dict, transcript_text: str) -> list[dict]:
-    """Detect cross-references to other agenda items and prior deferrals."""
-    results: list[dict] = []
-    if re.search(
-        r"\b(previously deferred|deferred from|referred back from|"
-        r"postponed from)\b",
-        transcript_text, re.IGNORECASE,
-    ):
-        m = re.search(
-            r"[^.!?]*\b(previously deferred|deferred from|referred back from|"
-            r"postponed from)\b[^.!?]*",
-            transcript_text, re.IGNORECASE,
-        )
-        if m:
-            results.append(
-                {"category": "Deferred From", "text": _transcript_chip(m.group(0))}
-            )
-    own = (item.get("section_number") or "").rstrip(".")
-    for m in re.finditer(
-        r"\bitem\s+(\d+(?:\.\d+){1,3})\b",
-        transcript_text, re.IGNORECASE,
-    ):
-        ref = m.group(1)
-        if ref == own:
-            continue
-        sentence = sentence_around(transcript_text, m.start(), m.end())
-        if re.search(r"\b(recuse|conflict of interest)\b", sentence, re.IGNORECASE):
-            continue
-        chip = _transcript_chip(sentence)
-        if not chip:
-            continue
-        results.append(
-            {"category": "Related Item", "text": chip}
-        )
-        break
-    return results
-
-
 def _extract_procedural_note(item: dict) -> list[dict]:
     title = item.get("title") or ""
     if not is_procedural(title):
@@ -485,22 +385,6 @@ def _extract_procedural_note(item: dict) -> list[dict]:
         (kw for kw in PROCEDURAL_KEYWORDS if kw in title.lower()), "procedural"
     )
     return [{"category": "Procedural Note", "text": _chip(match_kw.title())}]
-
-
-_DATA_RE = re.compile(
-    r"[^.!?]*\b\d+(?:,\d{3})*(?:\.\d+)?\s*"
-    r"(?:%|percent|km|kilometres|kilometers|metres|meters|hectares|"
-    r"units|residents|households|people|jobs|trips)"
-    r"[^.!?]*",
-    re.IGNORECASE,
-)
-
-
-def _extract_data_cited(transcript_text: str) -> list[dict]:
-    m = _DATA_RE.search(transcript_text)
-    if not m:
-        return []
-    return [{"category": "Data Cited", "text": _transcript_chip(m.group(0))}]
 
 
 # ── Semantic pass ───────────────────────────────────────────────────────────
@@ -1639,30 +1523,13 @@ def extract_item_summaries(
     results.extend(_extract_cost_funding(item))
     results.extend(_extract_procedural_note(item))
 
-    # Transcript-based regex extractors — only run when Gemini is disabled.
-    #
-    # NOTE: this means Declared Conflict, Delegation, Next Step, Related
-    # Item, Deferred From and Data Cited are produced by NOTHING in
-    # production.  They are not in SEMANTIC_CATEGORIES either, so the LLM
-    # never sees them.  Six of the twenty-two categories are unreachable.
-    #
-    # Running them on a cleaned-up transcript was tried and is worse, not
-    # better: on the eval fixtures they emit sentence fragments ("McDonald,
-    # and we will understand by the end of it…") and — because eSCRIBE
-    # bookmarks lag what was said — facts belonging to adjacent items
-    # ("445 hectares" from the Homewood concept plan landing on the 210
-    # Pacific Avenue shelter).  Cleaning the input does not fix a slice
-    # that contains the wrong item.
-    #
-    # Fixing this is a design decision, not a code tweak: either delete
-    # the six categories, move them to the LLM's remit, or fix the item
-    # boundaries.  See the plan's open questions.
-    if not extractor.enabled:
-        results.extend(_extract_declared_conflict(transcript_text))
-        results.extend(_extract_delegation(transcript_text))
-        results.extend(_extract_next_step(transcript_text))
-        results.extend(_extract_related_deferred(item, transcript_text))
-        results.extend(_extract_data_cited(transcript_text))
+    # Six transcript-regex extractors once ran here when Gemini was
+    # disabled — and therefore never ran in production.  They were
+    # deleted, not fixed: eSCRIBE bookmark lag means an item's transcript
+    # slice routinely contains a neighbouring item's words, and a regex
+    # cannot tell.  Their categories (Declared Conflict, Delegation, Next
+    # Step, Related Item, Deferred From, Data Cited) went with them; a
+    # category nothing reliable can produce is tag noise.
 
     # Drop deterministic chips that couldn't be fit at a natural break.
     results = [r for r in results if r.get("text")]

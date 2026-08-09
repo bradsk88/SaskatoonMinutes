@@ -18,13 +18,8 @@ from app.item_categorizer import (
     _summary_schema,
     _extract_amendment,
     _extract_cost_funding,
-    _extract_data_cited,
-    _extract_declared_conflict,
-    _extract_delegation,
-    _extract_next_step,
     _extract_outcome,
     _extract_procedural_note,
-    _extract_related_deferred,
     _is_unanimous_tally,
     _extract_vote_breakdown,
     _sanitize_chips,
@@ -68,9 +63,12 @@ class TestCategoryMetadata:
         allowed = {"decision", "money", "context", "voices", "impact", "future"}
         assert set(CATEGORY_GROUP.values()) <= allowed
 
-    def test_count_is_22(self):
-        """In Plain Terms was retired; the Description replaced it."""
-        assert len(CATEGORIES) == 22
+    def test_count_is_16(self):
+        """In Plain Terms was retired; the Description replaced it.  The
+        six transcript-regex categories (Declared Conflict, Delegation,
+        Next Step, Related Item, Deferred From, Data Cited) were deleted
+        unreachable — their extractors only ran with Gemini disabled."""
+        assert len(CATEGORIES) == 16
 
     def test_in_plain_terms_is_retired(self):
         assert "In Plain Terms" not in CATEGORIES
@@ -307,55 +305,6 @@ class TestCostFunding:
         assert any("$3.8M" in o["text"] for o in out)
 
 
-class TestDeclaredConflict:
-    def test_match(self):
-        out = _extract_declared_conflict("Councillor Smith declared a conflict of interest on this item.")
-        assert out and out[0]["category"] == "Declared Conflict"
-
-    def test_no_match(self):
-        assert _extract_declared_conflict("We discussed the budget") == []
-
-
-class TestDelegation:
-    def test_director_presented(self):
-        text = "Director Magus presented the report and responded to questions."
-        out = _extract_delegation(text)
-        assert out and out[0]["category"] == "Delegation"
-
-    def test_no_delegation(self):
-        assert _extract_delegation("No one spoke to this item.") == []
-
-
-class TestNextStep:
-    def test_report_back(self):
-        text = "Administration will report back at the next meeting."
-        out = _extract_next_step(text)
-        assert out and out[0]["category"] == "Next Step"
-
-    def test_by_year(self):
-        out = _extract_next_step("This must be completed by 2027.")
-        assert out and "2027" in out[0]["text"]
-
-
-class TestRelatedDeferred:
-    def test_deferred_from(self):
-        out = _extract_related_deferred({"section_number": "9.2.1"}, "This was previously deferred from the March meeting.")
-        cats = [o["category"] for o in out]
-        assert "Deferred From" in cats
-
-    def test_related_item_excludes_self(self):
-        out = _extract_related_deferred({"section_number": "9.2.1"}, "See item 9.2.1 and item 10.3.2 for context.")
-        cats = [o["category"] for o in out]
-        assert "Related Item" in cats
-        assert all("10.3.2" in o["text"] or o["category"] != "Related Item" for o in out)
-
-    def test_recusal_not_treated_as_related(self):
-        text = "I'd like to recuse myself from item 10.1.1 for reasons stated earlier."
-        out = _extract_related_deferred({"section_number": "9.2"}, text)
-        cats = [o["category"] for o in out]
-        assert "Related Item" not in cats
-
-
 class TestProceduralNote:
     def test_procedural_title(self):
         out = _extract_procedural_note({"title": "Call to Order"})
@@ -363,19 +312,6 @@ class TestProceduralNote:
 
     def test_non_procedural(self):
         assert _extract_procedural_note({"title": "Rezoning Application"}) == []
-
-
-class TestDataCited:
-    def test_percent(self):
-        out = _extract_data_cited("Cycling trips increased by 15% last year.")
-        assert out and out[0]["category"] == "Data Cited"
-
-    def test_units(self):
-        out = _extract_data_cited("The pilot reached 2,400 residents over three months.")
-        assert out and "residents" in out[0]["text"]
-
-    def test_no_number(self):
-        assert _extract_data_cited("Many people attended the meeting.") == []
 
 
 # ── LLM pass with stub Gemini extractor ────────────────────────────────────
@@ -461,8 +397,42 @@ class TestExtractItemSummariesSemantic:
         extract_item_summaries(item, segments, gemini_extractor=stub)
         # Outcome is always deterministic → must be excluded.
         assert "Outcome" not in captured["allowed_cats"]
-        # Only the 11 semantic categories are exposed to Gemini.
+        # Only the 12 semantic categories are exposed to Gemini.
         assert set(captured["allowed_cats"]).issubset(set(SEMANTIC_CATEGORIES))
+
+    def test_cost_funding_requested_only_when_the_hard_chip_missed(self):
+        """Both passes cover Cost & Funding, never for the same item.
+
+        Official text with a figure produces the deterministic chip and
+        the category leaves the prompt; official text without one leaves
+        the category in the prompt so money spoken in debate can surface.
+        """
+        base = {
+            "item_id": 3,
+            "title": "Snow Removal",
+            "motion_text": "",
+            "vote_result": "",
+            "vote_detail": "",
+            "content": "",
+            "section_number": "1.",
+            "time_start_ms": 0,
+            "time_end_ms": 300_000,
+        }
+        segments = [_seg(0, "Plenty of text to reach the min length threshold.")]
+
+        captured: dict = {}
+        with_money = dict(base, recommendation="Allocate $2 million for snow removal.")
+        extract_item_summaries(
+            with_money, segments, gemini_extractor=_stub_extractor([], captured=captured),
+        )
+        assert "Cost & Funding" not in captured["allowed_cats"]
+
+        captured = {}
+        without_money = dict(base, recommendation="That snow be removed.")
+        extract_item_summaries(
+            without_money, segments, gemini_extractor=_stub_extractor([], captured=captured),
+        )
+        assert "Cost & Funding" in captured["allowed_cats"]
 
 
 # ── Ordering / eligibility ──────────────────────────────────────────────────
@@ -510,61 +480,6 @@ class TestIsEligible:
         item = {"title": "Recess", "is_recess": True,
                 "time_start_ms": 0, "time_end_ms": 600_000}
         assert is_eligible_for_summary(item) is False
-
-
-# ── Next Step conditional filter ───────────────────────────────────────────
-
-
-class TestNextStepConditional:
-    def test_if_clause_skipped(self):
-        text = "if Council wanted to see a report back on this item. Administration will report back next year."
-        out = _extract_next_step(text)
-        assert out and "next year" in out[0]["text"]
-
-    def test_if_mid_sentence_skipped(self):
-        text = "I wonder if Council wanted to see a report back on this."
-        out = _extract_next_step(text)
-        assert out == []
-
-    def test_previously_skipped(self):
-        text = "We previously landed the world juniors and they want to come back next year."
-        out = _extract_next_step(text)
-        assert out == []
-
-    def test_regular_next_step_kept(self):
-        text = "Administration will report back at the next meeting."
-        out = _extract_next_step(text)
-        assert out and out[0]["category"] == "Next Step"
-
-    def test_keyword_in_chip_text(self):
-        text = "Some long preamble about various topics discussed at length. Staff committed to report back by Q2."
-        out = _extract_next_step(text)
-        assert out and "report back" in out[0]["text"]
-
-    def test_keyword_trimmed_away_drops_chip(self):
-        text = (
-            "the city will also have, though, any lead on the cost "
-            "estimates and everything, plus report back to council "
-            "about the current status of the full redesign plans"
-        )
-        out = _extract_next_step(text)
-        if out:
-            assert "report back" in out[0]["text"]
-
-    def test_question_dropped(self):
-        text = "For example, could it possibly in your mind be done by the end of 2026?"
-        out = _extract_next_step(text)
-        assert out == []
-
-    def test_rambling_speech_dropped(self):
-        text = "this is, again, I'll bring it back to the, the diligence and pre-opening stages."
-        out = _extract_next_step(text)
-        assert out == []
-
-    def test_clean_two_comma_chip_kept(self):
-        text = "Administration will report back, with a full update, by Q2."
-        out = _extract_next_step(text)
-        assert out and "report back" in out[0]["text"]
 
 
 # ── Unanimous vote suppresses Dissenting View ──────────────────────────────
@@ -757,20 +672,6 @@ class TestTranscriptReachesThePrompt:
         assert item_transcript_text(item, [_seg(0, "anything")]) == ""
 
 
-class TestNextStepSliceQuality:
-    def test_no_midword_start(self):
-        # The "r" of "report back" must not be cut off.
-        text = "If Council wanted to see a report about this. Administration will report back by Q2 next year on the findings."
-        out = _extract_next_step(text)
-        assert out
-        assert not out[0]["text"].startswith(("eport", "eturn", "ext ")), out[0]["text"]
-
-    def test_previously_mid_sentence_skipped(self):
-        text = "We previously landed the world juniors and Curling Canada, hey they want to come back next year."
-        out = _extract_next_step(text)
-        assert out == []
-
-
 class TestMoneyMinimum:
     def test_bare_tiny_amount_skipped(self):
         item = {"title": "", "recommendation": "It costs $3 to do this. Also $4 million overall.", "content": "", "motion_text": ""}
@@ -792,16 +693,6 @@ class TestMoneyMinimum:
         item = {"title": "", "recommendation": "Allocate $2 million for snow removal.", "content": "", "motion_text": ""}
         out = _extract_cost_funding(item)
         assert out and any("2M" in o["text"] or "million" in o["text"].lower() for o in out)
-
-
-class TestRelatedItemSliceQuality:
-    def test_no_midword_start(self):
-        text = "She noted item 10.1.1 is closely related to the cycling plan."
-        item = {"section_number": "9.2"}
-        out = _extract_related_deferred(item, text)
-        rel = [o for o in out if o["category"] == "Related Item"]
-        assert rel
-        assert not rel[0]["text"].startswith(("'d", "d ")), rel[0]["text"]
 
 
 class TestGeminiPromptIncludesMetadata:
