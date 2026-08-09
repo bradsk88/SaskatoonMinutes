@@ -41,7 +41,7 @@ from app.speakers import merge_remarks, mark_heard
 from app.summarizer import (
     extract_meeting_topics, extract_badges, speaker_roster,
 )
-from app.transcriber import correct_timestamps
+from app.transcriber import adjust_timestamps_for_recesses, correct_timestamps
 from app.transcript_cache import TranscriptCache
 from app.attachment_gists_cache import AttachmentGistsCache
 from app.item_summaries_cache import ItemSummariesCache
@@ -129,6 +129,7 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                     f"({len(transcript.segments)} segments)"
                 )
                 items = correct_timestamps(items, transcript.to_dict())
+                items = adjust_timestamps_for_recesses(items, transcript.to_dict())
 
             # Attach badges to each item (same as /api/meeting/<id>)
             for item in items:

@@ -416,6 +416,16 @@ def _find_in_transcript(
     return best_start_ms
 
 
+def _format_timestamp_ms(ms: int) -> str:
+    total_seconds = ms // 1000
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
+
+
 def correct_timestamps(
     agenda_items: list[dict],
     transcript: list[dict],
@@ -447,14 +457,107 @@ def correct_timestamps(
 
         if match_ms is not None:
             item["time_start_ms"] = match_ms
-            # Recalculate formatted time
-            total_seconds = match_ms // 1000
-            hours = total_seconds // 3600
-            minutes = (total_seconds % 3600) // 60
-            seconds = total_seconds % 60
-            if hours > 0:
-                item["time_start_formatted"] = f"{hours}:{minutes:02d}:{seconds:02d}"
-            else:
-                item["time_start_formatted"] = f"{minutes}:{seconds:02d}"
+            item["time_start_formatted"] = _format_timestamp_ms(match_ms)
+
+    return agenda_items
+
+
+# ---------------------------------------------------------------------------
+# Recess-aware timestamp adjustment
+# ---------------------------------------------------------------------------
+
+# Clerks sometimes bookmark an item when it is *called*, immediately before
+# a recess, so the bookmark lands on dead air and the actual discussion
+# starts minutes later.  Key only on explicit recess language — items
+# legitimately start with brief formalities and must not be over-shifted.
+_RECESS_RE = re.compile(
+    r"\b(recess|stand(?:s|ing)?\s+at\s+ease|stand\s+down|"
+    r"take\s+a\s+(?:short\s+)?break|back\s+at\s+\d{1,2})\b",
+    re.IGNORECASE,
+)
+
+# Phrases the chair uses when calling the meeting back.  A segment matching
+# one of these after a recess is the reconvene point; falling back to the
+# first speech of any kind after the recess risks landing on stray chatter.
+_RECONVENE_RE = re.compile(
+    r"\b(back\s+to\s+order|reconvene|resume|call\s+the\s+meeting\s+back|"
+    r"come\s+back\s+to\s+order)\b",
+    re.IGNORECASE,
+)
+
+# Shift only when the reconvene point is meaningfully after the bookmark
+# (a pause of a few seconds is not a recess) and never shift more than the
+# cap — a bookmark 30 minutes early is a different bug.
+RECESS_MIN_SHIFT_MS = 60_000
+RECESS_MAX_SHIFT_MS = 20 * 60_000
+
+
+def adjust_timestamps_for_recesses(
+    agenda_items: list[dict],
+    transcript: list[dict],
+) -> list[dict]:
+    """Shift item start times forward past recesses announced at the bookmark.
+
+    Only ever shifts forward.  The pre-adjustment timestamp is kept on the
+    item as ``time_start_escribe_ms`` and the shift is recorded as
+    ``adjustment_reason: "recess"`` so the change can be audited and
+    surfaced on the page.  Items with inherited timestamps (consent items)
+    are skipped.
+    """
+    if not transcript:
+        return agenda_items
+
+    for item in agenda_items:
+        if item.get("timestamp_inherited", False):
+            continue
+        start = item.get("time_start_ms")
+        if start is None:
+            continue
+
+        # Find recess language spoken at/after the bookmark, within the cap.
+        recess_idx: int | None = None
+        for i, seg in enumerate(transcript):
+            if seg["end_ms"] <= start:
+                continue
+            if seg["start_ms"] > start + RECESS_MAX_SHIFT_MS:
+                break
+            if _RECESS_RE.search(seg["text"]):
+                recess_idx = i
+                break
+        if recess_idx is None:
+            continue
+
+        # The reconvene point: the first segment after the recess that
+        # either sounds like the chair calling the meeting back, or follows
+        # a real silence gap (the dead air of the recess itself).  Speech
+        # contiguous with the announcement — "Thank you." as the chair
+        # leaves — is still the bookmarked moment, not the return.
+        reconvene_ms: int | None = None
+        prev_end = transcript[recess_idx]["end_ms"]
+        for seg in transcript[recess_idx + 1:]:
+            if seg["start_ms"] > start + RECESS_MAX_SHIFT_MS:
+                break
+            if _RECONVENE_RE.search(seg["text"]) or (
+                seg["start_ms"] - prev_end >= RECESS_MIN_SHIFT_MS
+            ):
+                reconvene_ms = seg["start_ms"]
+                break
+            # Whisper can stretch a segment's end across the silence that
+            # follows it ("Thank you." spanning the whole recess), making
+            # end_ms useless for gap measurement.  Clamp to a plausible
+            # utterance length.
+            prev_end = min(seg["end_ms"], seg["start_ms"] + 30_000)
+        if reconvene_ms is None:
+            continue
+
+        shift = reconvene_ms - start
+        if not (RECESS_MIN_SHIFT_MS <= shift <= RECESS_MAX_SHIFT_MS):
+            continue
+
+        item.setdefault("time_start_escribe_ms", start)
+        item["time_start_ms"] = reconvene_ms
+        item["time_start_formatted"] = _format_timestamp_ms(reconvene_ms)
+        item["time_start_adjusted"] = True
+        item["adjustment_reason"] = "recess"
 
     return agenda_items

@@ -9,6 +9,7 @@ from app.transcriber import (
     _section_number_patterns,
     _find_in_transcript,
     correct_timestamps,
+    adjust_timestamps_for_recesses,
 )
 
 
@@ -298,6 +299,109 @@ class TestCorrectTimestamps:
         result = correct_timestamps(items, transcript)
         assert result[0]["time_start_ms"] == 4800_000
         assert result[0]["time_start_formatted"] == "1:20:00"
+
+
+class TestAdjustTimestampsForRecesses:
+    """PDCS 2026-08-05, item 6.3.1: bookmarked at 1:33:51, when the chair
+    called the item and immediately recessed; the presentation started
+    ~11 minutes later."""
+
+    def _item(self, start_ms: int = 5631900) -> dict:
+        return {
+            "item_id": 99,
+            "section_number": "6.3.1",
+            "title": "Downtown BID - Bench Removal",
+            "time_start_ms": start_ms,
+            "time_end_ms": start_ms + 900_000,
+            "time_start_formatted": "1:33:51",
+            "timestamp_inherited": False,
+        }
+
+    def test_shifts_past_recess_to_reconvene(self):
+        items = [self._item()]
+        transcript = _make_segments([
+            (5631_000, "item 6.3.1. We will stand at ease for ten minutes"),
+            (6300_000, "call the meeting back to order"),
+            (6310_000, "the presentation on bench removal"),
+        ])
+        result = adjust_timestamps_for_recesses(items, transcript)
+        item = result[0]
+        assert item["time_start_ms"] == 6300_000
+        assert item["time_start_escribe_ms"] == 5631900
+        assert item["time_start_adjusted"] is True
+        assert item["adjustment_reason"] == "recess"
+        assert item["time_start_formatted"] == "1:45:00"
+
+    def test_falls_back_to_first_speech_after_recess(self):
+        items = [self._item()]
+        transcript = _make_segments([
+            (5631_000, "we will take a short recess"),
+            (6300_000, "thank you, the next presenter"),
+        ])
+        result = adjust_timestamps_for_recesses(items, transcript)
+        assert result[0]["time_start_ms"] == 6300_000
+
+    def test_no_shift_without_recess_language(self):
+        items = [self._item()]
+        transcript = _make_segments([
+            (5631_000, "item 6.3.1 bench removal request"),
+            (6300_000, "further discussion"),
+        ])
+        result = adjust_timestamps_for_recesses(items, transcript)
+        assert result[0]["time_start_ms"] == 5631900
+        assert "time_start_adjusted" not in result[0]
+
+    def test_no_shift_when_reconvene_too_soon(self):
+        items = [self._item()]
+        transcript = _make_segments([
+            (5631_000, "brief recess while the presenter sets up"),
+            (5660_000, "call the meeting back to order"),
+        ])
+        result = adjust_timestamps_for_recesses(items, transcript)
+        assert result[0]["time_start_ms"] == 5631900
+
+    def test_no_shift_beyond_cap(self):
+        items = [self._item()]
+        transcript = _make_segments([
+            (5631_000, "we will recess for an hour"),
+            (5631_000 + 21 * 60_000, "call the meeting back to order"),
+        ])
+        result = adjust_timestamps_for_recesses(items, transcript)
+        assert result[0]["time_start_ms"] == 5631900
+
+    def test_skips_inherited_and_untimed_items(self):
+        inherited = self._item()
+        inherited["timestamp_inherited"] = True
+        untimed = self._item()
+        untimed["time_start_ms"] = None
+        transcript = _make_segments([
+            (5631_000, "we will recess"),
+            (6300_000, "back to order"),
+        ])
+        result = adjust_timestamps_for_recesses([inherited, untimed], transcript)
+        assert result[0]["time_start_ms"] == 5631900
+        assert result[1]["time_start_ms"] is None
+
+    def test_gap_inside_stretched_segment(self):
+        """Whisper can stretch a short utterance's end_ms across the whole
+        recess (observed in PDCS 2026-08-05: 'Thank you.' spanned 11 min).
+        The gap must be measured against a clamped end."""
+        items = [self._item()]
+        transcript = [
+            {"start_ms": 5631_000, "end_ms": 5633_000,
+             "text": "we will come back at 11 11"},
+            {"start_ms": 5633_000, "end_ms": 6486_000,  # stretched
+             "text": "thank you"},
+            {"start_ms": 6486_000, "end_ms": 6487_000,
+             "text": "we have 6.3.1"},
+        ]
+        result = adjust_timestamps_for_recesses(items, transcript)
+        assert result[0]["time_start_ms"] == 6486_000
+
+    def test_empty_transcript_passthrough(self):
+        items = [self._item()]
+        result = adjust_timestamps_for_recesses(items, [])
+        assert result[0]["time_start_ms"] == 5631900
 
 
 # ── Whisper initial_prompt ─────────────────────────────────────────
