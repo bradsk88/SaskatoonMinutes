@@ -28,4 +28,4 @@ Cost & Funding is now in both passes. The deterministic chip still cites only of
 
 The taxonomy is 16 categories, down from 22. `CARD_CHIP_CATEGORIES` is simply `SEMANTIC_CATEGORIES` now that Cost & Funding is semantic too — one list fewer to keep in sync.
 
-The audit was manual: cache files, a date index scraped from built pages, ad-hoc counters. It will be worth re-running after a few months of the new Cost & Funding definition, and the next one should be a script rather than a session.
+The first audit was manual: cache files, a date index scraped from built pages, ad-hoc counters. It is now codified as `scripts/audit_categories.py`, which reproduces the frequency table, the zero-firing and tag-noise flags, and the money check against any recent window. Re-run it after a few months of the new Cost & Funding definition, and before any future taxonomy change — the comment above `CATEGORIES` points there.
