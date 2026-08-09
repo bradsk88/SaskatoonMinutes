@@ -133,6 +133,23 @@ def qualifying_items(agenda_items: list[dict]) -> list[dict]:
     return [item for _, item in ranked[:MAX_ITEMS_PER_MEETING]]
 
 
+def item_topics(item: dict) -> list[str]:
+    """The item's interpretive chip categories, deduped, as feed tags.
+
+    A reader that filters by category turns these into topic
+    subscriptions -- every item carrying a ``Cost & Funding`` chip is an
+    item about money.  Keyword subscribers need nothing: readers match
+    keywords against title and content, which the Description already
+    fills.
+    """
+    topics = []
+    for chip in interpretive_chips(item):
+        category = chip["category"]
+        if category not in topics:
+            topics.append(category)
+    return topics
+
+
 def takeaway(item: dict) -> dict | None:
     """The one chip worth a line, or ``None``.
 
@@ -434,7 +451,15 @@ def build_day_feed(meetings: list[dict], today: date) -> str:
             link=_day_link(day_meetings),
             updated=_timestamp(day),
             content=_day_content_html(day_meetings),
-            categories=sorted({m.get("body_slug") or "" for m in day_meetings}),
+            categories=(
+                sorted({m.get("body_slug") or "" for m in day_meetings})
+                + sorted({
+                    topic
+                    for m in day_meetings
+                    for item in qualifying_items(m.get("agenda_items") or [])
+                    for topic in item_topics(item)
+                })
+            ),
         )
     return _serialize(feed)
 
@@ -470,7 +495,7 @@ def build_item_feed(meetings: list[dict], today: date) -> str:
             link=url,
             updated=_timestamp(day),
             content=content,
-            categories=[meeting.get("body_slug") or ""],
+            categories=[meeting.get("body_slug") or ""] + item_topics(item),
         )
     return _serialize(feed)
 

@@ -182,6 +182,11 @@ class DayEntries(unittest.TestCase):
     def feed(self):
         return ET.fromstring(feeds.build_day_feed(self.meetings, date(2026, 7, 27)))
 
+    def test_a_day_entry_carries_the_union_of_its_items_topics(self):
+        entry = self.feed().findall(f"{ATOM}entry")[0]
+        terms = [c.get("term") for c in entry.findall(f"{ATOM}category")]
+        self.assertEqual(["council", "planning", "Debate Highlight"], terms)
+
     def test_two_bodies_on_one_day_are_one_entry(self):
         entries = self.feed().findall(f"{ATOM}entry")
         self.assertEqual(2, len(entries))
@@ -303,6 +308,10 @@ class ItemEntries(unittest.TestCase):
         self.assertEqual(
             "council", self.entry().find(f"{ATOM}category").get("term"),
         )
+
+    def test_chip_categories_are_tags_a_reader_can_filter_on(self):
+        terms = [c.get("term") for c in self.entry().findall(f"{ATOM}category")]
+        self.assertEqual(["council", "Debate Highlight"], terms)
 
 
 class Retention(unittest.TestCase):
