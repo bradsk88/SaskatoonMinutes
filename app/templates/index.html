@@ -1253,11 +1253,16 @@
                 });
                 sortTabsByRecency(dateMap);
 
-                // Activate the first tab (most recent)
-                const sortedTabs = document.querySelectorAll('.meeting-tab');
+                // Activate the first tab with meetings. The Future tab is
+                // pinned left-most, but when it is empty (nothing scheduled
+                // in the lookahead window) open the most recent past tab
+                // instead of a blank page.
+                const sortedTabs = Array.from(document.querySelectorAll('.meeting-tab'));
                 sortedTabs.forEach(t => t.classList.remove('meeting-tab-active'));
-                const firstSlug = sortedTabs[0]?.dataset.slug || 'council';
-                sortedTabs[0]?.classList.add('meeting-tab-active');
+                const firstTab = sortedTabs.find(t => (allTabs[t.dataset.slug]?.meetings || []).length > 0)
+                    || sortedTabs[0];
+                const firstSlug = firstTab?.dataset.slug || 'council';
+                firstTab?.classList.add('meeting-tab-active');
                 activeTypeSlug = firstSlug;
 
                 const tabData = allTabs[firstSlug];
