@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
-from app.agenda_items import format_outcome
+from app.agenda_items import format_outcome, is_procedural
 from app.agenda_text import plainify, readable_date, titleize
 from app.speakers import merge_remarks, organization_label
 from app.summarizer import (
@@ -39,6 +39,13 @@ FEED_SUBTITLE = "What Saskatoon city council actually decided"
 
 DAY_FEED_PATH = "feed.xml"
 ITEM_FEED_PATH = "feed-items.xml"
+FUTURE_FEED_PATH = "feed-future.xml"
+
+# How close to the Request-to-Speak Deadline an agenda-less Scheduled
+# Meeting gets before it publishes a bare entry anyway (ADR ``0024``).
+# The deadline is the user's decision point; an entry that waits for an
+# agenda that never posts must still arrive before it.
+NO_AGENDA_FALLBACK_DAYS = 3
 
 # Retention.  The build holds far more than this -- 20 meetings across
 # each of 16 tabs -- but most readers import every entry in the file when
@@ -396,10 +403,11 @@ def _timestamp(day: str) -> str:
     ).isoformat()
 
 
-def _feed_root(title: str, self_path: str, updated: str) -> ET.Element:
+def _feed_root(title: str, self_path: str, updated: str,
+               subtitle: str = FEED_SUBTITLE) -> ET.Element:
     feed = ET.Element("feed", {"xmlns": ATOM_NS})
     ET.SubElement(feed, "title").text = title
-    ET.SubElement(feed, "subtitle").text = FEED_SUBTITLE
+    ET.SubElement(feed, "subtitle").text = subtitle
     ET.SubElement(feed, "id").text = f"{SITE_URL}/{self_path}"
     ET.SubElement(feed, "updated").text = updated
     ET.SubElement(feed, "link", {"rel": "alternate", "type": "text/html",
@@ -496,6 +504,110 @@ def build_item_feed(meetings: list[dict], today: date) -> str:
             updated=_timestamp(day),
             content=content,
             categories=[meeting.get("body_slug") or ""] + item_topics(item),
+        )
+    return _serialize(feed)
+
+
+# --------------------------------------------------------------------------
+# The Future Feed (ADR 0024): Scheduled Meetings, dropped when they happen
+# --------------------------------------------------------------------------
+
+def future_meeting_publishable(meeting: dict, today: date) -> bool:
+    """Whether a Scheduled Meeting earns an entry yet.
+
+    Normally when the agenda first posts -- an entry before that cannot
+    answer \"should I sign up?\".  The fallback: if the deadline is
+    ``NO_AGENDA_FALLBACK_DAYS`` away (or already past) and there is
+    still no agenda, publish a bare entry so the subscriber hears about
+    the meeting before its deadline rather than after.
+    """
+    day = _parse_date(meeting.get("date"))
+    if day is None or day < today:
+        return False
+    if meeting.get("has_agenda"):
+        return True
+    deadline = _parse_date(meeting.get("request_to_speak_deadline"))
+    if deadline is None:
+        return False
+    return (deadline - today).days <= NO_AGENDA_FALLBACK_DAYS
+
+
+def _future_agenda_items(meeting: dict) -> list[dict]:
+    """The meeting's agenda in agenda order, minus the scaffolding.
+
+    Procedural rows and recesses are how an agenda is laid out, not
+    things a resident can speak to.  Section headers are *not* filtered:
+    ``is_section_header`` reads timestamps a Scheduled Meeting's items
+    never have, so it would call every future item a header.
+    """
+    return [
+        item for item in (meeting.get("agenda_items") or [])
+        if not item.get("is_recess")
+        and not is_procedural(item.get("title") or "")
+    ]
+
+
+def _future_content_html(meeting: dict) -> str:
+    """Deadline up top, then the full agenda with provisional Descriptions.
+
+    The deadline leads because it is the reason the feed exists: the
+    subscriber's question is \"do I need to register by Monday?\", not
+    \"what is on the agenda?\".
+    """
+    parts = []
+    deadline = _parse_date(meeting.get("request_to_speak_deadline"))
+    if deadline is not None:
+        parts.append(
+            "<p><strong>Request to speak by "
+            f"{_esc(readable_date(deadline.isoformat()))}, 5:00 p.m.</strong></p>"
+        )
+    items = _future_agenda_items(meeting)
+    if not items:
+        parts.append("<p>The agenda has not been posted yet.</p>")
+    for item in items:
+        parts.append(f"<p>{_esc(item_title(item))}</p>")
+        bullets = item_description(item)
+        if bullets:
+            lines = "".join(f"<li>{_esc(b)}</li>" for b in bullets)
+            parts.append(f"<ul>{lines}</ul>")
+    parts.append(
+        f"<p><small>{_esc(AI_DISCLOSURE)} {_esc(_SOURCE_NOTE)}</small></p>"
+    )
+    return "".join(parts)
+
+
+def build_future_feed(meetings: list[dict], today: date) -> str:
+    """The third feed: one entry per Scheduled Meeting, soonest first.
+
+    *meetings* is one dict per Scheduled Meeting: ``meeting_id``,
+    ``body``, ``body_slug``, ``date``, ``has_agenda``,
+    ``request_to_speak_deadline`` and ``agenda_items``.  Entries are
+    dropped, not annotated, once the meeting happens -- the meeting
+    flips into the settled feeds on its own, and readers keep what they
+    already fetched (ADR ``0024``).
+    """
+    publishable = [
+        m for m in meetings
+        if future_meeting_publishable(m, today)
+    ]
+    publishable.sort(key=lambda m: (m.get("date") or "", m.get("body") or ""))
+    updated = _timestamp(publishable[0].get("date")) if publishable else _timestamp("")
+    feed = _feed_root(
+        f"{FEED_TITLE} — Upcoming Meetings", FUTURE_FEED_PATH, updated,
+        subtitle="What Saskatoon city council is about to take up",
+    )
+    for meeting in publishable:
+        day = meeting.get("date") or ""
+        body = (meeting.get("body") or meeting.get("title") or "").strip()
+        title = f"{body} · {readable_date(day)}" if body else readable_date(day)
+        _add_entry(
+            feed,
+            entry_id=f"{SITE_URL}/feed/future/{meeting['meeting_id']}",
+            title=title,
+            link=f"{SITE_URL}/meeting/{meeting['meeting_id']}.html",
+            updated=_timestamp(day),
+            content=_future_content_html(meeting),
+            categories=[meeting.get("body_slug") or ""],
         )
     return _serialize(feed)
 

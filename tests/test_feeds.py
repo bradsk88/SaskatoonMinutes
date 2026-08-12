@@ -389,5 +389,91 @@ class FeedDocument(unittest.TestCase):
             self.assertEqual(0, len(root.findall(f"{ATOM}entry")))
 
 
+def scheduled(meeting_id="s1", *, day="2026-08-19", deadline="2026-08-17",
+              body="City Council", slug="council", has_agenda=True, items=None):
+    """One Scheduled Meeting in the shape ``build_site`` hands the Future Feed."""
+    return {
+        "meeting_id": meeting_id,
+        "body": body,
+        "body_slug": slug,
+        "date": day,
+        "has_agenda": has_agenda,
+        "request_to_speak_deadline": deadline,
+        "agenda_items": items or [],
+    }
+
+
+TODAY = date(2026, 8, 14)  # the Friday before the Monday deadline
+
+
+class FutureFeed(unittest.TestCase):
+    def entries(self, xml):
+        return ET.fromstring(xml).findall(f"{ATOM}entry")
+
+    def test_a_meeting_with_an_agenda_publishes(self):
+        xml = feeds.build_future_feed([scheduled()], TODAY)
+        self.assertEqual(1, len(self.entries(xml)))
+
+    def test_a_meeting_without_an_agenda_waits_until_the_deadline_nears(self):
+        far = scheduled(has_agenda=False)
+        self.assertEqual(
+            0, len(self.entries(feeds.build_future_feed(
+                [far], date(2026, 8, 10)))))
+        near = feeds.build_future_feed([far], TODAY)  # 3 days out
+        self.assertEqual(1, len(self.entries(near)))
+
+    def test_the_bare_entry_says_the_agenda_is_not_posted(self):
+        xml = feeds.build_future_feed([scheduled(has_agenda=False)], TODAY)
+        content = self.entries(xml)[0].find(f"{ATOM}content").text
+        self.assertIn("agenda has not been posted", content)
+
+    def test_a_meeting_that_has_happened_is_dropped(self):
+        xml = feeds.build_future_feed(
+            [scheduled(day="2026-08-12", deadline="2026-08-10")], TODAY)
+        self.assertEqual(0, len(self.entries(xml)))
+
+    def test_entries_run_soonest_first(self):
+        xml = feeds.build_future_feed([
+            scheduled("later", day="2026-08-26", deadline="2026-08-24"),
+            scheduled("sooner", day="2026-08-19", deadline="2026-08-17"),
+        ], TODAY)
+        ids = [e.find(f"{ATOM}id").text for e in self.entries(xml)]
+        self.assertEqual(
+            ["https://yxeminutes.ca/feed/future/sooner",
+             "https://yxeminutes.ca/feed/future/later"], ids)
+
+    def test_the_guid_is_stable_per_meeting(self):
+        entry = self.entries(feeds.build_future_feed([scheduled("abc")], TODAY))[0]
+        self.assertEqual("https://yxeminutes.ca/feed/future/abc",
+                         entry.find(f"{ATOM}id").text)
+
+    def test_the_title_names_the_body_and_the_date(self):
+        entry = self.entries(feeds.build_future_feed([scheduled()], TODAY))[0]
+        self.assertIn("City Council", entry.find(f"{ATOM}title").text)
+        self.assertIn("August 19, 2026", entry.find(f"{ATOM}title").text)
+
+    def test_the_deadline_leads_the_entry(self):
+        xml = feeds.build_future_feed([scheduled()], TODAY)
+        content = self.entries(xml)[0].find(f"{ATOM}content").text
+        self.assertTrue(content.startswith(
+            "<p><strong>Request to speak by August 17, 2026"))
+
+    def test_the_agenda_runs_in_agenda_order_with_descriptions(self):
+        xml = feeds.build_future_feed([scheduled(items=[
+            item(2, "Second item", description=["Does the second thing."]),
+            item(1, "Adoption of Agenda"),
+            item(3, "First real item", description=["Does the first thing."]),
+        ])], TODAY)
+        content = self.entries(xml)[0].find(f"{ATOM}content").text
+        self.assertNotIn("Adoption of Agenda", content)
+        self.assertLess(content.index("Second item"),
+                        content.index("First real item"))
+        self.assertIn("Does the second thing.", content)
+
+    def test_an_empty_future_still_produces_a_valid_feed(self):
+        root = ET.fromstring(feeds.build_future_feed([], TODAY))
+        self.assertEqual(0, len(root.findall(f"{ATOM}entry")))
+
+
 if __name__ == "__main__":
     unittest.main()

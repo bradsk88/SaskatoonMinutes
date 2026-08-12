@@ -36,7 +36,7 @@ from app.agenda_items import (
     mark_row_weights,
 )
 from app.agenda_text import plainify, readable_date, titleize
-from app.feeds import build_feeds
+from app.feeds import build_feeds, build_future_feed
 from app.speakers import merge_remarks, mark_heard
 from app.summarizer import (
     extract_meeting_topics, extract_badges, speaker_roster,
@@ -364,6 +364,7 @@ def fetch_all_data():
     # that knows which body a meeting belongs to -- a feed entry read in
     # a reader has no tab to say where it came from.
     feed_meetings: list[dict] = []
+    future_feed_meetings: list[dict] = []
 
     with TranscriptCache.open() as transcript_cache, \
             ItemSummariesCache.open() as summaries_cache, \
@@ -392,6 +393,17 @@ def fetch_all_data():
         )
         all_topics.update(sched_topics)
         all_details.update(sched_details)
+
+        # The Future Feed (ADR 0024).  Scheduled Meetings ride the same
+        # caches as past meetings above, so the agenda items are already
+        # in hand; the feed stays pure and only reads dicts.
+        slug_by_label = {t["label"]: t["slug"] for t in MEETING_TABS}
+        for s in scheduled:
+            d = s.to_dict()
+            detail = sched_details.get(s.meeting_id) or {}
+            d["body_slug"] = slug_by_label.get(s.body, "")
+            d["agenda_items"] = detail.get("agenda_items") or []
+            future_feed_meetings.append(d)
 
         for tab in MEETING_TABS:
             slug = tab["slug"]
@@ -427,7 +439,8 @@ def fetch_all_data():
                     "agenda_items": detail.get("agenda_items") or [],
                 })
 
-    return all_tabs_meetings, all_topics, all_details, feed_meetings
+    return (all_tabs_meetings, all_topics, all_details, feed_meetings,
+            future_feed_meetings)
 
 
 def render_index_html(all_tabs_meetings, topics_data):
@@ -626,7 +639,8 @@ def main():
         shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
 
-    all_tabs_meetings, topics_data, details_data, feed_meetings = fetch_all_data()
+    (all_tabs_meetings, topics_data, details_data, feed_meetings,
+     future_feed_meetings) = fetch_all_data()
 
     print("Rendering static index.html...")
     html = render_index_html(all_tabs_meetings, topics_data)
@@ -667,6 +681,11 @@ def main():
     # so a rebuild whose data has not moved is byte-identical and no
     # subscriber sees anything (ADR 0019).
     feeds = build_feeds(feed_meetings, date.today())
+    # The Future Feed is built separately: its input is Scheduled
+    # Meetings, not the settled-meeting dicts the other two read
+    # (ADR 0024).
+    feeds["feed-future.xml"] = build_future_feed(future_feed_meetings,
+                                                 date.today())
     for filename, xml in feeds.items():
         with open(os.path.join(OUTPUT_DIR, filename), "w") as f:
             f.write(xml)
