@@ -180,10 +180,24 @@
     // A Scheduled Meeting (not yet held) offers the "register to speak"
     // call-to-action where the meeting's own page can answer it: one
     // static blurb, one City form, and the computed Monday-5pm deadline.
+    // The City's cutoff is 5:00 p.m. on the deadline date; treat the
+    // whole deadline day as still open.
+    function todayIso() {
+        const t = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        return t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate());
+    }
+
     function speakBlurbHtml(data) {
         const url = data.register_to_speak_url
             || 'https://www.saskatoon.ca/submit-letterrequest-speak-council-and-committees';
-        const deadline = readableDate(data.request_to_speak_deadline);
+        const deadlineIso = data.request_to_speak_deadline;
+        const deadline = readableDate(deadlineIso);
+        if (deadlineIso && todayIso() > deadlineIso) {
+            return `<div class="speak-blurb">This meeting hasn't happened yet, `
+                + `but the deadline to send a letter or request to speak `
+                + `(${escapeHtml(deadline)}, 5:00 p.m.) has passed.</div>`;
+        }
         return `<div class="speak-blurb">This meeting hasn't happened yet. `
             + `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">Send a letter or request to speak</a>`
             + (deadline ? ` by ${escapeHtml(deadline)}, 5:00 p.m.` : '')
