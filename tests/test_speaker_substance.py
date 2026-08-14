@@ -675,6 +675,19 @@ class TestTheCardBudget:
                                 "text": "my name is melissa nitaohau."}])
         assert item["speakers"][0]["time_start_ms"] == 400
 
+    def test_a_four_letter_first_name_with_a_garbled_surname_stamps(self):
+        """Ella Dawn McGeough came out of Whisper as \"Dr. Ella Don
+        McGoff\": a four-letter first name beside a surname-shaped word,
+        said at a podium (\"name is\"), is her."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 0, "time_end_ms": 1000,
+            "speakers": [{"name": "Ella Dawn McGeough"}],
+        }
+        mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
+                                "text": "my name is dr. ella don mcgoff."}])
+        assert item["speakers"][0]["time_start_ms"] == 400
+
     def test_a_common_first_name_alone_does_not_stamp(self):
         """Every Robert in the transcript is not Robert Clipperton."""
         from app.speakers import mark_timestamps
