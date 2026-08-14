@@ -423,6 +423,13 @@ in production reaches it today.
 
 ## Noted, not scheduled
 
+- Speaker stance chips ("Support", "Concern") name a direction but not
+  an object: on G&P 2026-08-12 6.3.2/7.1 a reader can't tell what it
+  means to "support" the item (the policy? the motion to kill it?).
+  Where an item has speakers, define the stances in that item's context
+  at the top of the speaker section — likely one more field from the
+  summarization step, rendered above the roster.
+
 - Tabs reorder themselves by recency on every load
   (`sortTabsByRecency`, `index.html:117`), so the default tab and the tab
   positions change week to week.
