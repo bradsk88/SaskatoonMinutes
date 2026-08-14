@@ -29,6 +29,14 @@
         </div>
     </div>
 
+    <div id="category-filter" class="category-filter-bar" style="display: none;">
+        <div class="filter-bar-inner">
+            <span class="filter-label">Filter:</span>
+            <div class="filter-chips" id="filter-chips"></div>
+            <button class="filter-clear" id="filter-clear" style="display:none;">Clear</button>
+        </div>
+    </div>
+
     <div id="agenda-items" class="agenda-items">
         <div class="loading">Loading agenda...</div>
     </div>
@@ -42,6 +50,85 @@
     let videoUrl = null;
     let currentItems = [];
     let sortByVideo = true;
+
+    // Same category set as the index filter (must match _TOPIC_CATEGORIES keys).
+    const ALL_CATEGORIES = [
+        { label: 'Homelessness', slug: 'cat-homelessness' },
+        { label: 'Housing', slug: 'cat-housing' },
+        { label: 'Zoning & Dev', slug: 'cat-zoning-dev' },
+        { label: 'Active Transport', slug: 'cat-active-transport' },
+        { label: 'Transit', slug: 'cat-transit' },
+        { label: 'Traffic', slug: 'cat-traffic' },
+        { label: 'Greenspace', slug: 'cat-greenspace' },
+        { label: 'Small Business', slug: 'cat-small-business' },
+        { label: 'Infrastructure', slug: 'cat-infrastructure' },
+        { label: 'Public Safety', slug: 'cat-public-safety' },
+        { label: 'Recreation', slug: 'cat-recreation' },
+        { label: 'Property Tax', slug: 'cat-property-tax' },
+        { label: 'Arts & Culture', slug: 'cat-arts-culture' },
+        { label: 'Environment', slug: 'cat-environment' },
+    ];
+    const selectedCategories = new Set();
+
+    // Only categories actually present on this meeting's items earn a chip.
+    function initCategoryFilter(items) {
+        const present = new Set();
+        items.forEach(item => {
+            (item.badges || []).forEach(b => {
+                if (b.type && b.type.startsWith('cat-')) present.add(b.type);
+            });
+        });
+        const bar = document.getElementById('category-filter');
+        const chipsContainer = document.getElementById('filter-chips');
+        const clearBtn = document.getElementById('filter-clear');
+        if (present.size === 0) return;
+
+        ALL_CATEGORIES.filter(c => present.has(c.slug)).forEach(cat => {
+            const chip = document.createElement('button');
+            chip.className = `filter-chip badge topic-badge badge-${cat.slug}`;
+            chip.textContent = cat.label;
+            chip.dataset.slug = cat.slug;
+            chip.addEventListener('click', () => {
+                if (selectedCategories.has(cat.slug)) {
+                    selectedCategories.delete(cat.slug);
+                    chip.classList.remove('filter-chip-active');
+                } else {
+                    selectedCategories.add(cat.slug);
+                    chip.classList.add('filter-chip-active');
+                }
+                clearBtn.style.display = selectedCategories.size > 0 ? '' : 'none';
+                applyCategoryFilter();
+            });
+            chipsContainer.appendChild(chip);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            selectedCategories.clear();
+            chipsContainer.querySelectorAll('.filter-chip-active').forEach(c =>
+                c.classList.remove('filter-chip-active'));
+            clearBtn.style.display = 'none';
+            applyCategoryFilter();
+        });
+
+        bar.style.display = '';
+    }
+
+    function applyCategoryFilter() {
+        const active = selectedCategories.size > 0;
+        document.querySelectorAll('#agenda-items .agenda-item').forEach(el => {
+            if (!active || !el.dataset.categories) {
+                el.style.display = active && !el.dataset.categories ? 'none' : '';
+                return;
+            }
+            const cats = el.dataset.categories.split(' ').filter(Boolean);
+            el.style.display = cats.some(c => selectedCategories.has(c)) ? '' : 'none';
+        });
+        // A heading names the items beneath it; with a filter on, its
+        // group may be empty, and a rule drawn over nothing reads as a
+        // broken page. Same for the routine-business strip.
+        document.querySelectorAll('#agenda-items .agenda-heading, #agenda-items .routine-strip')
+            .forEach(el => { el.style.display = active ? 'none' : ''; });
+    }
 
     async function loadMeeting() {
         const headerEl = document.getElementById('meeting-header');
@@ -102,6 +189,7 @@
             headerEl.innerHTML = meetingHeaderHtml(data, items.length);
 
             currentItems = items;
+            initCategoryFilter(items);
             if (videoUrl) {
                 document.getElementById('sort-toggle').style.display = '';
                 updateSortButtons();
@@ -520,6 +608,10 @@
         const el = document.createElement('div');
         el.className = 'agenda-item';
         el.dataset.itemId = item.item_id;
+        const catSlugs = (item.badges || [])
+            .filter(b => b.type && b.type.startsWith('cat-'))
+            .map(b => b.type);
+        if (catSlugs.length) el.dataset.categories = catSlugs.join(' ');
         // A stable address for one agenda item, which is what a feed
         // entry and a shared link both point at. Deliberately not the
         // video position: a consent item's timestamp belongs to its
@@ -686,6 +778,7 @@
         });
         if (routine.length) container.appendChild(buildRoutineStripEl(routine));
         applyTranscriptClamps();
+        applyCategoryFilter();
 
         if (animate) {
             container.querySelectorAll('.agenda-item').forEach((el, i) => {

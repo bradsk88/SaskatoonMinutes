@@ -68,14 +68,28 @@ def extract_text(pdf_bytes: bytes) -> str:
         return ""
 
 
+# The eSCRIBE host rejects the default python-requests UA from
+# datacenter IPs; the transport in app/escribe.py sends a browser UA
+# for the same reason.
+_HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+
+
 def fetch_text(url: str) -> str:
     """Download the PDF and extract its text.  '' on any failure."""
     try:
-        resp = requests.get(url, timeout=TIMEOUT, verify=False)
+        resp = requests.get(url, headers=_HEADERS, timeout=TIMEOUT, verify=False)
         resp.raise_for_status()
-    except Exception:
+    except Exception as exc:
+        print(f"      gist: download failed — {exc}", flush=True)
         return ""
-    return extract_text(resp.content)
+    text = extract_text(resp.content)
+    if not text:
+        print(
+            f"      gist: no text in {len(resp.content)} bytes "
+            f"(content-type: {resp.headers.get('Content-Type', '?')})",
+            flush=True,
+        )
+    return text
 
 
 def parse_gist(answer: str) -> AttachmentGist | None:
