@@ -632,8 +632,21 @@ class TestTheCardBudget:
             "speakers": [{"name": "Rob Wilgenhof"}],
         }
         mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
-                                "text": "is robert wilgunhof? there you are."}])
+                                "text": "the next speaker is robert wilgunhof."}])
         assert item["speakers"][0]["time_start_ms"] == 400
+
+    def test_a_fuzzy_match_without_an_introduction_cue_does_not_stamp(self):
+        """\"Gather\" sits at 0.86 from \"Gauthier\": a fuzzy hit in the
+        middle of someone's remarks is a word, not a speaker."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 0, "time_end_ms": 1000,
+            "speakers": [{"name": "Jean-Sébastien Gauthier"}],
+        }
+        mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
+                                "text": "it can encourage people to stop, "
+                                        "gather and interact with space."}])
+        assert "time_start_ms" not in item["speakers"][0]
 
     def test_a_distinctive_first_name_with_a_garbled_surname_stamps(self):
         """Naytowhow came out as nitaohau -- past the surname rule, but

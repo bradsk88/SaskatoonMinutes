@@ -201,8 +201,8 @@ def _close_word(probe: str, words: list[str], threshold: float) -> bool:
 _FIRST_NAME_TITLES = {"chief", "dr", "mayor", "councillor", "elder"}
 
 
-def _name_in_text(name: str, text: str) -> bool:
-    """True when *text* (lowercased) names this speaker.
+def _name_match_tier(name: str, text: str) -> str | None:
+    """How *text* (lowercased) names this speaker: "exact", "fuzzy", None.
 
     Whisper mangles names ("Wilgenhof" became "Wilgunhof", "Naytowhow"
     became "nitaohau"), so a full name match is not required.  A long
@@ -211,9 +211,13 @@ def _name_in_text(name: str, text: str) -> bool:
     surname-shaped word beside it, which catches the garblings too
     heavy for the surname rule without putting every "Robert" at a
     podium.
+
+    The tier matters because fuzzy is wrong often enough — "gather"
+    sits at 0.86 from "gauthier" — that a fuzzy match on its own is
+    not evidence of a podium moment; see ``mark_timestamps``.
     """
     if name in text:
-        return True
+        return "exact"
     parts = name.split()
     first, last = parts[0], parts[-1]
     if first in _FIRST_NAME_TITLES and len(parts) > 2:
@@ -223,15 +227,31 @@ def _name_in_text(name: str, text: str) -> bool:
     words = re.findall(r"[a-z'\-]+", text)
     surnames = last.split("-") if "-" in last else [last]
     for surname in surnames:
-        if len(surname) >= _HEARD_MIN_SURNAME and (
-            surname in text or _close_word(surname, words, 0.8)
-        ):
-            return True
-    return (
+        if len(surname) >= _HEARD_MIN_SURNAME and surname in text:
+            return "exact"
+    for surname in surnames:
+        if len(surname) >= _HEARD_MIN_SURNAME and _close_word(surname, words, 0.8):
+            return "fuzzy"
+    if (
         len(first) >= 5
         and first in words
         and any(_close_word(s, words, 0.45) for s in surnames)
-    )
+    ):
+        return "fuzzy"
+    return None
+
+
+def _name_in_text(name: str, text: str) -> bool:
+    """True when *text* (lowercased) names this speaker, exact or fuzzy."""
+    return _name_match_tier(name, text) is not None
+
+
+# A fuzzy name match is only a podium moment when the chair is doing
+# podium things in the same breath.  Exact matches need no such
+# chaperone.
+_INTRO_CUE = re.compile(
+    r"speaker|podium|microphone|welcom|introduc|name is|five minutes"
+)
 
 
 def mark_timestamps(item: dict, segments: list[dict]) -> None:
@@ -262,7 +282,11 @@ def mark_timestamps(item: dict, segments: list[dict]) -> None:
         if not name:
             continue
         for seg in window:
-            if _name_in_text(name, seg.get("text", "").lower()):
+            text = seg.get("text", "").lower()
+            tier = _name_match_tier(name, text)
+            if tier == "exact" or (
+                tier == "fuzzy" and _INTRO_CUE.search(text)
+            ):
                 speaker["time_start_ms"] = seg.get("start_ms")
                 break
     # Speakers are shown in the order they spoke. The sort is stable,
