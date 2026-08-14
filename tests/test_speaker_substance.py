@@ -598,7 +598,7 @@ class TestTheCardBudget:
              "text": "Thank you for having me."},
         ]
         mark_timestamps(item, segments)
-        assert item["speakers"][0]["time_start_ms"] == 2_800_000
+        assert item["speakers"][0]["time_start_ms"] == 2_813_076
         assert "time_start_ms" not in item["speakers"][1]
 
     def test_speakers_are_ordered_by_when_they_spoke(self):
@@ -633,7 +633,7 @@ class TestTheCardBudget:
         }
         mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
                                 "text": "the next speaker is robert wilgunhof."}])
-        assert item["speakers"][0]["time_start_ms"] == 400
+        assert item["speakers"][0]["time_start_ms"] == 764
 
     def test_a_fuzzy_match_without_an_introduction_cue_does_not_stamp(self):
         """\"Gather\" sits at 0.86 from \"Gauthier\": a fuzzy hit in the
@@ -661,7 +661,7 @@ class TestTheCardBudget:
              "text": "we have one more speaker."},
             {"start_ms": 200, "end_ms": 300, "text": "sorry, mr. clipper."},
         ])
-        assert item["speakers"][0]["time_start_ms"] == 200
+        assert item["speakers"][0]["time_start_ms"] == 257
 
     def test_a_distinctive_first_name_with_a_garbled_surname_stamps(self):
         """Naytowhow came out as nitaohau -- past the surname rule, but
@@ -673,7 +673,7 @@ class TestTheCardBudget:
         }
         mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
                                 "text": "my name is melissa nitaohau."}])
-        assert item["speakers"][0]["time_start_ms"] == 400
+        assert item["speakers"][0]["time_start_ms"] == 596
 
     def test_a_four_letter_first_name_with_a_garbled_surname_stamps(self):
         """Ella Dawn McGeough came out of Whisper as \"Dr. Ella Don
@@ -686,7 +686,7 @@ class TestTheCardBudget:
         }
         mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
                                 "text": "my name is dr. ella don mcgoff."}])
-        assert item["speakers"][0]["time_start_ms"] == 400
+        assert item["speakers"][0]["time_start_ms"] == 641
 
     def test_a_common_first_name_alone_does_not_stamp(self):
         """Every Robert in the transcript is not Robert Clipperton."""

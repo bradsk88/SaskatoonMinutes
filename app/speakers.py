@@ -182,18 +182,22 @@ def organization_color(organization: str) -> int | None:
 _HEARD_MIN_SURNAME = 7
 
 
-def _close_word(probe: str, words: list[str], threshold: float) -> bool:
-    """True when some word is a Whisper-garbled rendering of *probe*.
+def _close_word_pos(
+    probe: str, word_spans: list[tuple[str, int]], threshold: float,
+) -> int | None:
+    """Where the first Whisper-garbled rendering of *probe* starts.
 
     Words under four letters are excluded: "of" sits at 0.57 from
     "wolfe", and a two-letter word is close to everything.
     """
-    return any(
-        len(w) >= 4
-        and abs(len(w) - len(probe)) <= 3
-        and difflib.SequenceMatcher(None, probe, w).ratio() >= threshold
-        for w in words
-    )
+    for w, pos in word_spans:
+        if (
+            len(w) >= 4
+            and abs(len(w) - len(probe)) <= 3
+            and difflib.SequenceMatcher(None, probe, w).ratio() >= threshold
+        ):
+            return pos
+    return None
 
 
 # A title leading the roster entry ("Chief Kelly Wolfe") is not a first
@@ -201,8 +205,14 @@ def _close_word(probe: str, words: list[str], threshold: float) -> bool:
 _FIRST_NAME_TITLES = {"chief", "dr", "mayor", "councillor", "elder"}
 
 
-def _name_match_tier(name: str, text: str) -> str | None:
-    """How *text* (lowercased) names this speaker: "exact", "fuzzy", None.
+def _name_match_tier(name: str, text: str) -> tuple[str, float] | None:
+    """How *text* (lowercased) names this speaker, and where.
+
+    Returns ``(tier, offset)`` — "exact" or "fuzzy", and the match's
+    character position as a fraction of the text — or None.  The
+    offset turns a segment's start into the moment the name was said:
+    a Whisper segment runs up to thirty seconds, and \"…as we move to
+    our third speaker Kelsey Ford\" names her at 90% of it.
 
     Whisper mangles names ("Wilgenhof" became "Wilgunhof", "Naytowhow"
     became "nitaohau"), so a full name match is not required.  A long
@@ -218,28 +228,43 @@ def _name_match_tier(name: str, text: str) -> str | None:
     reads a clipped name ("Mr. Clipper" for Clipperton); below that
     is a different name.
     """
-    if name in text:
-        return "exact"
+    idx = text.find(name)
+    if idx >= 0:
+        return "exact", idx / max(len(text), 1)
     parts = name.split()
     first, last = parts[0], parts[-1]
     if first in _FIRST_NAME_TITLES and len(parts) > 2:
         first = parts[1]
     # Words, not substrings: "robert" sits inside "robertson", and a
     # trailing period ("nitaohau.") sinks the fuzzy comparison.
-    words = re.findall(r"[a-z'\-]+", text)
+    word_spans = [
+        (m.group(), m.start())
+        for m in re.finditer(r"[a-z'\-]+", text)
+    ]
+    words = [w for w, _ in word_spans]
     surnames = last.split("-") if "-" in last else [last]
     for surname in surnames:
-        if len(surname) >= _HEARD_MIN_SURNAME and surname in text:
-            return "exact"
+        if len(surname) >= _HEARD_MIN_SURNAME:
+            idx = text.find(surname)
+            if idx >= 0:
+                return "exact", idx / max(len(text), 1)
     for surname in surnames:
-        if len(surname) >= _HEARD_MIN_SURNAME and _close_word(surname, words, 0.75):
-            return "fuzzy"
-    if (
-        len(first) >= 4
-        and first in words
-        and any(_close_word(s, words, 0.45) for s in surnames)
-    ):
-        return "fuzzy"
+        if len(surname) >= _HEARD_MIN_SURNAME:
+            pos = _close_word_pos(surname, word_spans, 0.75)
+            if pos is not None:
+                return "fuzzy", pos / max(len(text), 1)
+    if len(first) >= 4 and first in words:
+        surname_pos = min(
+            (
+                pos
+                for s in surnames
+                if (pos := _close_word_pos(s, word_spans, 0.45)) is not None
+            ),
+            default=None,
+        )
+        if surname_pos is not None:
+            first_pos = next(p for w, p in word_spans if w == first)
+            return "fuzzy", min(first_pos, surname_pos) / max(len(text), 1)
     return None
 
 
@@ -286,15 +311,20 @@ def mark_timestamps(item: dict, segments: list[dict]) -> None:
         prev_text = ""
         for seg in window:
             text = seg.get("text", "").lower()
-            tier = _name_match_tier(name, text)
+            matched = _name_match_tier(name, text)
             # The cue may be one breath behind: \"We have one more
             # speaker.\" / \"Sorry, Mr. Clipper.\" is one introduction
             # split across two segments.
-            if tier == "exact" or (
-                tier == "fuzzy"
-                and _INTRO_CUE.search(prev_text + " " + text)
+            if matched and (
+                matched[0] == "exact"
+                or _INTRO_CUE.search(prev_text + " " + text)
             ):
-                speaker["time_start_ms"] = seg.get("start_ms")
+                # The name lands partway through the segment; speech is
+                # uniform enough that the character offset is the time
+                # offset.
+                start = seg.get("start_ms", 0)
+                span = seg.get("end_ms", start) - start
+                speaker["time_start_ms"] = start + int(matched[1] * span)
                 break
             prev_text = text
     # Speakers are shown in the order they spoke. The sort is stable,

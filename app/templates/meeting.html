@@ -495,9 +495,13 @@
                   + ` onclick="seekVideo(${p.time_start_ms})"`
                   + ` title="Jump to where ${escapeHtml(p.name)} spoke">&#9654; ${stanceLabel}</button>`
                 : `<span class="badge speaker-stance ${stanceClass}">${stanceLabel}</span>`;
+            const timeHtml = p.time_start_ms != null
+                ? `<span class="speaker-time">${formatTimestamp(p.time_start_ms)}</span>`
+                : '';
             return `<div class="speaker-card">
                 <div class="speaker-card-header">
                     <span class="speaker-name">${escapeHtml(p.name)}</span>
+                    ${timeHtml}
                     ${orgHtml}
                     ${stanceHtml}
                 </div>
