@@ -688,6 +688,31 @@ class TestTheCardBudget:
                                 "text": "my name is dr. ella don mcgoff."}])
         assert item["speakers"][0]["time_start_ms"] == 641
 
+    def test_a_phonetic_match_stamps_when_both_names_sound_right(self):
+        """Whisper heard Em Ironstar and wrote \"Emma Armstrong\" -- no
+        edit distance forgives it (0.35), but it sounds the same."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 0, "time_end_ms": 1000,
+            "speakers": [{"name": "Em Ironstar"}],
+        }
+        mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
+                                "text": "so my name is emma armstrong."}])
+        assert item["speakers"][0]["time_start_ms"] == 641
+
+    def test_a_phonetic_match_still_needs_the_cue(self):
+        """Soundex collides freely; away from the podium a colliding
+        name is someone else."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 0, "time_end_ms": 1000,
+            "speakers": [{"name": "Em Ironstar"}],
+        }
+        mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
+                                "text": "councillor emma armstrong voted "
+                                        "against the motion."}])
+        assert "time_start_ms" not in item["speakers"][0]
+
     def test_a_common_first_name_alone_does_not_stamp(self):
         """Every Robert in the transcript is not Robert Clipperton."""
         from app.speakers import mark_timestamps

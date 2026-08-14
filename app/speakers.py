@@ -204,6 +204,43 @@ def _close_word_pos(
 # name; matching on it puts every mention of the chief at his podium.
 _FIRST_NAME_TITLES = {"chief", "dr", "mayor", "councillor", "elder"}
 
+_SOUNDEX_CODES = {
+    **dict.fromkeys("bfpv", "1"),
+    **dict.fromkeys("cgjkqsxz", "2"),
+    **dict.fromkeys("dt", "3"),
+    "l": "4",
+    **dict.fromkeys("mn", "5"),
+    "r": "6",
+}
+
+
+def _phonetic(word: str) -> str:
+    """A soundex key with the vowel-initial normalised to V.
+
+    Whisper's worst garblings are phonetic, not orthographic: it heard
+    \"Em Ironstar\" and wrote \"Emma Armstrong\", which no edit distance
+    forgives (0.35) but which sounds nearly the same.  Vowel initials
+    collapse to V because Whisper swaps them freely (I for A here).
+    Three digits, like classic soundex.
+    """
+    if not word:
+        return ""
+    first = word[0]
+    head = "V" if first in "aeiou" else first
+    prev = _SOUNDEX_CODES.get(first, "0")
+    digits = []
+    for ch in word[1:]:
+        code = _SOUNDEX_CODES.get(ch, "0")
+        if ch in "hw":
+            continue  # transparent: do not separate a run of one code
+        if code == "0":
+            prev = "0"  # vowels separate runs
+        else:
+            if code != prev:
+                digits.append(code)
+            prev = code
+    return head + "".join(digits)[:3]
+
 
 def _name_match_tier(name: str, text: str) -> tuple[str, float] | None:
     """How *text* (lowercased) names this speaker, and where.
@@ -265,6 +302,18 @@ def _name_match_tier(name: str, text: str) -> tuple[str, float] | None:
         if surname_pos is not None:
             first_pos = next(p for w, p in word_spans if w == first)
             return "fuzzy", min(first_pos, surname_pos) / max(len(text), 1)
+    # Phonetic last resort: both names must sound right.  Requiring the
+    # pair is what keeps soundex's appetite for false positives in
+    # check -- one colliding key is common, two in a row is a person.
+    first_key = _phonetic(first)
+    surname_keys = {_phonetic(s) for s in surnames}
+    for (w1, p1), (w2, _) in zip(word_spans, word_spans[1:]):
+        if (
+            first_key
+            and _phonetic(w1) == first_key
+            and _phonetic(w2) in surname_keys
+        ):
+            return "phonetic", p1 / max(len(text), 1)
     return None
 
 
@@ -279,6 +328,36 @@ def _name_in_text(name: str, text: str) -> bool:
 _INTRO_CUE = re.compile(
     r"speaker|podium|microphone|welcom|introduc|name is|five minutes"
 )
+
+
+def _scan_for_name(
+    name: str, segments: list[dict], tiers: set[str] | None = None,
+) -> int | None:
+    """The moment *name* is first said in *segments*, or None.
+
+    A match below exact answers to the podium cue, which may be one
+    breath behind: \"We have one more speaker.\" / \"Sorry, Mr.
+    Clipper.\" is one introduction split across two segments.  The
+    name lands partway through its segment; speech is uniform enough
+    that the character offset is the time offset.
+    """
+    prev_text = ""
+    for seg in segments:
+        text = seg.get("text", "").lower()
+        matched = _name_match_tier(name, text)
+        if (
+            matched
+            and (tiers is None or matched[0] in tiers)
+            and (
+                matched[0] == "exact"
+                or _INTRO_CUE.search(prev_text + " " + text)
+            )
+        ):
+            start = seg.get("start_ms", 0)
+            span = seg.get("end_ms", start) - start
+            return start + int(matched[1] * span)
+        prev_text = text
+    return None
 
 
 def mark_timestamps(item: dict, segments: list[dict]) -> None:
@@ -308,25 +387,18 @@ def mark_timestamps(item: dict, segments: list[dict]) -> None:
         name = " ".join((speaker.get("name") or "").lower().split())
         if not name:
             continue
-        prev_text = ""
-        for seg in window:
-            text = seg.get("text", "").lower()
-            matched = _name_match_tier(name, text)
-            # The cue may be one breath behind: \"We have one more
-            # speaker.\" / \"Sorry, Mr. Clipper.\" is one introduction
-            # split across two segments.
-            if matched and (
-                matched[0] == "exact"
-                or _INTRO_CUE.search(prev_text + " " + text)
-            ):
-                # The name lands partway through the segment; speech is
-                # uniform enough that the character offset is the time
-                # offset.
-                start = seg.get("start_ms", 0)
-                span = seg.get("end_ms", start) - start
-                speaker["time_start_ms"] = start + int(matched[1] * span)
-                break
-            prev_text = text
+        found = _scan_for_name(name, window)
+        if found is None:
+            # eSCRIBE bookmarks lag: items heard together get one
+            # another's speakers, and a speaker can land outside their
+            # item's window entirely (Em Ironstar spoke four minutes
+            # before her item's bookmark).  Only the phonetic tier
+            # roams -- it needs both names to sound right and a podium
+            # cue, which is specific enough to trust anywhere in the
+            # meeting, and a no-show simply finds nothing.
+            found = _scan_for_name(name, segments, tiers={"phonetic"})
+        if found is not None:
+            speaker["time_start_ms"] = found
     # Speakers are shown in the order they spoke. The sort is stable,
     # so an unstamped speaker keeps their roster place behind everyone
     # whose moment is known.
