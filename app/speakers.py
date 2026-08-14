@@ -331,7 +331,10 @@ _INTRO_CUE = re.compile(
 
 
 def _scan_for_name(
-    name: str, segments: list[dict], tiers: set[str] | None = None,
+    name: str,
+    segments: list[dict],
+    tiers: set[str] | None = None,
+    require_cue: bool = False,
 ) -> int | None:
     """The moment *name* is first said in *segments*, or None.
 
@@ -340,6 +343,12 @@ def _scan_for_name(
     Clipper.\" is one introduction split across two segments.  The
     name lands partway through its segment; speech is uniform enough
     that the character offset is the time offset.
+
+    ``require_cue`` makes every tier answer to the cue, exact included.
+    Roaming the whole meeting (outside the item's window) a bare exact
+    match is as often a councillor *referring to* the speaker as the
+    chair introducing them — \"What am I calling Jake Moore?\" said an
+    hour after he spoke (G&P 2026-08-12).
     """
     prev_text = ""
     for seg in segments:
@@ -349,7 +358,7 @@ def _scan_for_name(
             matched
             and (tiers is None or matched[0] in tiers)
             and (
-                matched[0] == "exact"
+                (matched[0] == "exact" and not require_cue)
                 or _INTRO_CUE.search(prev_text + " " + text)
             )
         ):
@@ -360,7 +369,11 @@ def _scan_for_name(
     return None
 
 
-def mark_timestamps(item: dict, segments: list[dict]) -> None:
+def mark_timestamps(
+    item: dict,
+    segments: list[dict],
+    window: tuple[int, int] | None = None,
+) -> None:
     """Stamp each speaker with the moment the chair introduced them.
 
     The chair names every speaker at the podium, so the first segment in
@@ -370,16 +383,19 @@ def mark_timestamps(item: dict, segments: list[dict]) -> None:
     transcript never names keeps no stamp, and the UI leaves their name
     unlinked rather than seeking to a guess.  Mutates
     ``item["speakers"]``; call after ``merge_remarks``.
+
+    *window* overrides the item's own bookmark — pass
+    ``group_window(item, items)`` for jointly-heard items, whose later
+    bookmarks start long after their first delegate spoke.
     """
-    start = item.get("time_start_ms")
-    end = item.get("time_end_ms")
+    start, end = window or (item.get("time_start_ms"), item.get("time_end_ms"))
     if start is None or end is None:
         return
-    window = [
+    in_window = [
         s for s in segments
         if s.get("end_ms", 0) > start and s.get("start_ms", 0) < end
     ]
-    if not window:
+    if not in_window:
         return
     for speaker in item.get("speakers") or []:
         if not isinstance(speaker, dict):
@@ -387,16 +403,21 @@ def mark_timestamps(item: dict, segments: list[dict]) -> None:
         name = " ".join((speaker.get("name") or "").lower().split())
         if not name:
             continue
-        found = _scan_for_name(name, window)
+        found = _scan_for_name(name, in_window)
         if found is None:
             # eSCRIBE bookmarks lag: items heard together get one
             # another's speakers, and a speaker can land outside their
             # item's window entirely (Em Ironstar spoke four minutes
-            # before her item's bookmark).  Only the phonetic tier
-            # roams -- it needs both names to sound right and a podium
-            # cue, which is specific enough to trust anywhere in the
-            # meeting, and a no-show simply finds nothing.
-            found = _scan_for_name(name, segments, tiers={"phonetic"})
+            # before her item's bookmark).  The roam accepts any tier
+            # but every tier answers to the podium cue there: without
+            # it, an exact match is as often a councillor referring to
+            # the speaker as the chair introducing them, and a no-show
+            # simply finds nothing.
+            found = _scan_for_name(
+                name, segments,
+                tiers={"exact", "fuzzy", "phonetic"},
+                require_cue=True,
+            )
         if found is not None:
             speaker["time_start_ms"] = found
     # Speakers are shown in the order they spoke. The sort is stable,
@@ -412,7 +433,121 @@ def mark_timestamps(item: dict, segments: list[dict]) -> None:
         )
 
 
-def mark_heard(item: dict, segments: list[dict]) -> None:
+# How a delegate's organization sounds right after their name: the
+# chair's "Robert Clipperton with Bus Riders of Saskatoon", a "Chief
+# Kelly Wolfe of ...", or the delegate's own "I'm the executive
+# director of the Saskatchewan Arts Alliance".  The name itself is
+# matched fuzzily — Whisper wrote "Emma Armstrong" for Em Ironstar —
+# so the search anchors on the match's position, not on the exact
+# name string, which may never appear in the transcript at all.
+_ORG_CHAIR_INTRO = re.compile(
+    r"^(?:\S+\s+){0,4}?(?:with|from|representing)\s+([a-z][a-z &'\-]{2,60})"
+)
+_ORG_NAME_OF = re.compile(r"^(?:\S+\s+){0,2}?of\s+([a-z][a-z &'\-]{2,60})")
+_ORG_SELF_INTRO = re.compile(
+    r"\b(?:i'm|i am)\s+(?:the\s+|an?\s+)?([a-z][a-z \-]{1,40}?)"
+    r"\s+of\s+(?:the\s+)?([a-z][a-z &'\-]{2,60})"
+)
+
+
+def _clean_heard_org(org: str) -> str:
+    """Trim and case an organization overheard in the transcript.
+
+    Whisper runs on past the name: \"with bus riders of saskatoon and
+    you are well familiar\". An org name is short; the first discourse
+    marker ends it.  Whisper also lowercases freely, and an org chip
+    reads wrong in all-lowercase — small words stay small unless they
+    lead.
+    """
+    for stop in (" and ", " you ", " we ", " i ", " thank ",
+                 " members ", " your ", " mr ", " ms ", ",", "."):
+        org = org.split(stop)[0]
+    org = org.strip()
+    if not org:
+        return ""
+    small = {"of", "and", "the", "for", "on", "in"}
+    return " ".join(
+        w if w in small and i else w.capitalize()
+        for i, w in enumerate(org.split())
+    )
+
+
+# A delegate who says they are *not* speaking for their organization
+# means it: \"I say those things to establish my expertise, not to
+# speak on behalf of those organizations\" (G&P 2026-08-12).  Printing
+# the disclaimed org on their chip is worse than printing \"Resident\".
+_ORG_DISCLAIMER = re.compile(
+    r"not (?:to )?speak(?:ing)? (?:on behalf|for)|"
+    r"not (?:here |speaking )?on behalf of|"
+    r"as a private citizen|"
+    r"not represent"
+)
+
+
+def _org_near_name(name: str, segments: list[dict]) -> str:
+    """The organization named just after *name*'s introduction, or \"\".
+
+    Anchors on the first segment that names the speaker the way
+    ``_scan_for_name`` would — fuzzy matches need a podium cue, or
+    \"gathered\" anchors the search for Gauthier's org on the call to
+    order.  \"of\" is only believed beside a job title — \"executive
+    director of the Saskatchewan Arts Alliance\" is an org, \"a member
+    of Saskatoon's art community\" is a neighbour, and no rule can read
+    the second as the first without one.
+    """
+    prev_text = ""
+    for i, seg in enumerate(segments):
+        text = seg.get("text", "").lower()
+        matched = _name_match_tier(name, text)
+        if matched and (
+            matched[0] == "exact"
+            or _INTRO_CUE.search(prev_text + " " + text)
+        ):
+            tail = text[int(matched[1] * len(text)):]
+            # The org often lands a breath after the name: \"My name is
+            # Emma Armstrong.\" / \"I'm the executive director of ...\"
+            # is one introduction split across two segments.
+            for nxt in segments[i + 1:i + 3]:
+                tail += " " + nxt.get("text", "").lower()
+            tail = tail[:400]
+            # A disclaimer trails the org by a sentence or two — \"I
+            # say those things to establish my expertise, not to speak
+            # on behalf of those organizations\" — so it reads a wider
+            # window than the org itself: the speaker's next two
+            # minutes.  Longer than that and the next delegate's
+            # disclaimer starts swallowing this one's org.
+            disclaimer_tail = tail
+            for nxt in segments[i + 1:]:
+                if nxt.get("start_ms", 0) - seg.get("start_ms", 0) > 120_000:
+                    break
+                disclaimer_tail += " " + nxt.get("text", "").lower()
+            if _ORG_DISCLAIMER.search(disclaimer_tail[:1200]):
+                return ""
+            for pattern in (_ORG_CHAIR_INTRO, _ORG_NAME_OF):
+                m = pattern.search(tail)
+                if m:
+                    org = m.group(1)
+                    # A capture that hit the length cap mid-word drops
+                    # its partial last word.
+                    if tail[m.end():m.end() + 1].isalpha():
+                        org = " ".join(org.split()[:-1])
+                    return _clean_heard_org(org)
+            for m in _ORG_SELF_INTRO.finditer(tail):
+                if m.group(1).split()[-1] in _ORG_ROLE_TAIL:
+                    org = m.group(2)
+                    if tail[m.end():m.end() + 1].isalpha():
+                        org = " ".join(org.split()[:-1])
+                    return _clean_heard_org(org)
+            return ""
+        prev_text = text
+    return ""
+
+
+def mark_heard(
+    item: dict,
+    segments: list[dict],
+    window: tuple[int, int] | None = None,
+) -> None:
     """Flag registered speakers the transcript actually captured.
 
     An RTS filing proves intent, not attendance, and the substance pass
@@ -422,16 +557,18 @@ def mark_heard(item: dict, segments: list[dict]) -> None:
     item, a deterministic check that needs no model.
 
     Mutates ``item[\"speakers\"]``; call after ``merge_remarks``.
+    *window* overrides the item's own bookmark — pass
+    ``group_window(item, items)`` for jointly-heard items, whose later
+    bookmarks start long after their first delegate spoke.
     """
-    start = item.get("time_start_ms")
-    end = item.get("time_end_ms")
+    start, end = window or (item.get("time_start_ms"), item.get("time_end_ms"))
     if start is None or end is None:
         return
-    heard_text = " ".join(
-        s.get("text", "")
-        for s in segments
+    in_window = [
+        s for s in segments
         if s.get("end_ms", 0) > start and s.get("start_ms", 0) < end
-    ).lower()
+    ]
+    heard_text = " ".join(s.get("text", "") for s in in_window).lower()
     if not heard_text:
         return
     for speaker in item.get("speakers") or []:
@@ -450,31 +587,9 @@ def mark_heard(item: dict, segments: list[dict]) -> None:
         # a filing never does. An org that attended belongs in the
         # digest as itself, not rolled up into "N Residents".
         if not (speaker.get("organization") or "").strip():
-            m = re.search(
-                re.escape(name)
-                + r"\s+(?:with|from|of|representing)\s+([a-z][a-z &'\-]{2,60})",
-                heard_text,
-            )
-            if m:
-                org = m.group(1)
-                # Whisper runs on past the name: "with bus riders of
-                # saskatoon and you are well familiar". An org name is
-                # short; the first discourse marker ends it.
-                for stop in (" and ", " you ", " we ", " i ", " thank ",
-                             " members ", " your ", " Mr ".lower(), " Ms ".lower(),
-                             ",", "."):
-                    org = org.split(stop)[0]
-                org = org.strip()
-                if org:
-                    # Whisper lowercases freely; an org chip reads wrong
-                    # in all-lowercase. Small words stay small unless
-                    # they lead.
-                    small = {"of", "and", "the", "for", "on", "in"}
-                    cased = [
-                        w if w in small and i else w.capitalize()
-                        for i, w in enumerate(org.split())
-                    ]
-                    speaker["organization"] = " ".join(cased)
+            org = _org_near_name(name, in_window)
+            if org:
+                speaker["organization"] = org
 
 
 def merge_remarks(item: dict) -> list[dict]:
@@ -786,9 +901,10 @@ def mark_jointly_heard(items: list[dict]) -> None:
     began there, so the shared speaker list lives on its card. Each
     grouped item gets ``heard_with`` naming the primary's item_id and
     the partner section numbers; the template merges the rosters on
-    the primary and points the partners at it. Call after
-    ``mark_timestamps`` -- stamps are how the merged list stays in
-    speaking order.
+    the primary and points the partners at it. Call before
+    ``mark_heard``/``mark_timestamps`` so their transcript windows can
+    union via ``group_window``; the merged list still reads in
+    speaking order because the template sorts by stamp at render time.
     """
     for group in _jointly_heard_groups(items):
         primary = min(

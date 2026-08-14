@@ -38,6 +38,7 @@ from app.agenda_items import (
 from app.agenda_text import plainify, readable_date, titleize
 from app.feeds import build_feeds, build_future_feed
 from app.speakers import (
+    group_window,
     mark_jointly_heard,
     mark_heard,
     mark_timestamps,
@@ -161,18 +162,25 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
             # alone never puts anyone in the digest.
             for item in items:
                 item["speakers"] = merge_remarks(item)
-            if transcript and transcript.segments:
-                segments = transcript.to_dict()
-                for item in items:
-                    mark_heard(item, segments)
-                    # Where each speaker's name first sounds in the
-                    # transcript is where their card links the video.
-                    mark_timestamps(item, segments)
 
             # Items taken as one discussion (6.3.2 with 7.1) would
             # otherwise repeat the same speaker, same stamp, on two
             # cards — one speech that answered both, reading as a leak.
+            # Annotated before the transcript pass so speaker matching
+            # scans the group's union window: the later item's bookmark
+            # starts long after its first delegate spoke (G&P 2026-08-12
+            # bookmarked 7.1 at 1:10:51; its first delegate spoke at
+            # 42:40, inside 6.3.2's window).
             mark_jointly_heard(items)
+
+            if transcript and transcript.segments:
+                segments = transcript.to_dict()
+                for item in items:
+                    window = group_window(item, items)
+                    mark_heard(item, segments, window=window)
+                    # Where each speaker's name first sounds in the
+                    # transcript is where their card links the video.
+                    mark_timestamps(item, segments, window=window)
 
             mark_row_weights(items)
 

@@ -242,3 +242,134 @@ def test_summarize_meeting_summarizes_grouped_items_on_the_union_window():
         s for s in summaries["25"].speakers if s.name == "Kelsey Ford"
     )
     assert ford.said == ["Argued the corridor study ignored growth."]
+
+
+# ── Speaker matching scans the union window too ──────────────────────────────
+#
+# Same meeting, same lag, one layer up: mark_heard / mark_timestamps used
+# each item's own bookmark, so every delegate who spoke before 7.1's
+# 1:10:51 bookmark was invisible on 7.1's card.  User-verified ground
+# truth, stamped permanently (see CLAUDE.md): Deneh'Cho Thompson was
+# introduced at ~49:30, John Penner at 55:05, Jake Moore at 59:00, and
+# Betsy Rosenwald at 1:06:00 — all four missed on the published page.
+# Whisper's renderings below are verbatim from the meeting's transcript.
+
+from app.speakers import mark_heard, mark_timestamps
+
+
+def _delegate_item(item_id, section, start_ms, end_ms, names):
+    return {
+        "item_id": item_id,
+        "section_number": section,
+        "time_start_ms": start_ms,
+        "time_end_ms": end_ms,
+        "speakers": [
+            {"name": n, "source": "registered", "organization": ""}
+            for n in names
+        ],
+    }
+
+
+def _gpc_delegate_items():
+    return [
+        _delegate_item(24, "6.3.2", 428_270, 12_988_978,
+                       ["Kelsey Ford", "Daniel Macdonald"]),
+        _delegate_item(25, "7.1", 4_251_000, 11_330_000, [
+            "Em Ironstar", "Deneh’Cho Thompson", "John Penner",
+            "Jake Moore", "Betsy Rosenwald", "Daniel Macdonald",
+        ]),
+    ]
+
+
+def _seg(minutes, text):
+    start = int(minutes * 60_000)
+    return {"start_ms": start, "end_ms": start + 3_000, "text": text}
+
+
+_DELEGATE_SEGMENTS = [
+    _seg(42.39, "And I own staff for five minutes, introduce yourself "
+                "when you're ready."),
+    _seg(42.68, "So my name is Emma Armstrong. I'm the executive "
+                "director of the Saskatchewan Arts Alliance."),
+    _seg(49.40, "Our next speaker is Denika Short Thompson."),
+    _seg(49.81, "I'm an associate professor in the School for the Arts at the University of Saskatchewan."),
+    _seg(49.89, "I'm also the chair of the Board of the Saskatchewan Association of Theatre Professionals."),
+    _seg(49.99, "I say those things to establish my expertise, not to speak on behalf of those organizations. I am choosing to speak as a private citizen today."),
+    _seg(55.08, "Our next speaker is John Pan."),
+    _seg(55.45, "My name is John Paner."),
+    _seg(58.74, "On next speaker is Jake Moore."),
+    _seg(65.90, "I'm going to go and next speaker is Beth's tea for "
+                "Rosenwall."),
+    _seg(66.51, "Yes, I'm Betsy Rosenwalled. I'm an artist and a member "
+                "of Saskatoon's art community and a resident of Ward 1."),
+    # A councillor referring to Jake Moore during questions, half an
+    # hour after he spoke — a reference, not an introduction.
+    _seg(90.92, "What am I calling Jake Moore? I think knows more about "
+                "this. But yes, I think that there could be more "
+                "consultation."),
+]
+
+
+def _stamps(item):
+    return {s["name"]: s.get("time_start_ms") for s in item["speakers"]}
+
+
+def test_delegates_before_the_bookmark_are_stamped_on_the_union_window():
+    items = _gpc_delegate_items()
+    mark_jointly_heard(items)
+    motion = items[1]
+    window = group_window(motion, items)
+    mark_timestamps(motion, _DELEGATE_SEGMENTS, window=window)
+    stamps = _stamps(motion)
+
+    # User-stamped facts: ~49:30, 55:05, 59:00, 1:06:00.  The stamp
+    # lands on the sentence that names them, seconds from the fact.
+    assert 49.0 * 60_000 <= stamps["Deneh’Cho Thompson"] <= 50.0 * 60_000
+    assert 55.0 * 60_000 <= stamps["John Penner"] <= 56.0 * 60_000
+    assert 58.5 * 60_000 <= stamps["Jake Moore"] <= 59.5 * 60_000
+    assert 65.5 * 60_000 <= stamps["Betsy Rosenwald"] <= 66.5 * 60_000
+
+
+def test_an_introduction_beats_a_later_reference():
+    """Jake Moore's card linked to 90:56 — a councillor saying his name
+    during questions — because his real introduction at 58:44 sat
+    outside 7.1's bookmark."""
+    items = _gpc_delegate_items()
+    mark_jointly_heard(items)
+    motion = items[1]
+    mark_timestamps(motion, _DELEGATE_SEGMENTS,
+                    window=group_window(motion, items))
+    jake = _stamps(motion)["Jake Moore"]
+    assert jake < 60.0 * 60_000
+
+
+def test_garbled_delegates_are_heard_on_the_union_window():
+    items = _gpc_delegate_items()
+    mark_jointly_heard(items)
+    motion = items[1]
+    mark_heard(motion, _DELEGATE_SEGMENTS,
+               window=group_window(motion, items))
+    heard = {s["name"]: s.get("heard") for s in motion["speakers"]}
+    assert heard["Em Ironstar"] is True          # "Emma Armstrong"
+    assert heard["Deneh’Cho Thompson"] is True   # "Denika Short Thompson"
+    assert heard["John Penner"] is True          # "John Paner"
+    assert heard["Betsy Rosenwald"] is True      # "Betsy Rosenwalled"
+
+
+def test_org_is_read_beside_the_garbled_name():
+    """Em Ironstar filed as herself but spoke as the Saskatchewan Arts
+    Alliance's executive director — audible only through Whisper's
+    "Emma Armstrong", which an exact-name org search can never find."""
+    items = _gpc_delegate_items()
+    mark_jointly_heard(items)
+    motion = items[1]
+    mark_heard(motion, _DELEGATE_SEGMENTS,
+               window=group_window(motion, items))
+    orgs = {s["name"]: s["organization"] for s in motion["speakers"]}
+    assert orgs["Em Ironstar"] == "Saskatchewan Arts Alliance"
+    # "A member of Saskatoon's art community" is a neighbour, not an
+    # organization — the chip stays "Resident".
+    assert orgs["Betsy Rosenwald"] == ""
+    # Deneh'Cho named her boards and then said she was *not* speaking
+    # for them — a disclaimed org is worse than none.
+    assert orgs["Deneh’Cho Thompson"] == ""
