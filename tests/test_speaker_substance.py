@@ -648,6 +648,21 @@ class TestTheCardBudget:
                                         "gather and interact with space."}])
         assert "time_start_ms" not in item["speakers"][0]
 
+    def test_a_cue_one_segment_back_still_stamps(self):
+        """\"We have one more speaker.\" / \"Sorry, Mr. Clipper.\" is one
+        introduction split across two segments."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 0, "time_end_ms": 10_000,
+            "speakers": [{"name": "Robert Clipperton"}],
+        }
+        mark_timestamps(item, [
+            {"start_ms": 100, "end_ms": 200,
+             "text": "we have one more speaker."},
+            {"start_ms": 200, "end_ms": 300, "text": "sorry, mr. clipper."},
+        ])
+        assert item["speakers"][0]["time_start_ms"] == 200
+
     def test_a_distinctive_first_name_with_a_garbled_surname_stamps(self):
         """Naytowhow came out as nitaohau -- past the surname rule, but
         a rare first name beside a surname-shaped word is still her."""

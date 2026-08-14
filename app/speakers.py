@@ -214,7 +214,9 @@ def _name_match_tier(name: str, text: str) -> str | None:
 
     The tier matters because fuzzy is wrong often enough — "gather"
     sits at 0.86 from "gauthier" — that a fuzzy match on its own is
-    not evidence of a podium moment; see ``mark_timestamps``.
+    not evidence of a podium moment; see ``mark_timestamps``.  0.75
+    reads a clipped name ("Mr. Clipper" for Clipperton); below that
+    is a different name.
     """
     if name in text:
         return "exact"
@@ -230,10 +232,10 @@ def _name_match_tier(name: str, text: str) -> str | None:
         if len(surname) >= _HEARD_MIN_SURNAME and surname in text:
             return "exact"
     for surname in surnames:
-        if len(surname) >= _HEARD_MIN_SURNAME and _close_word(surname, words, 0.8):
+        if len(surname) >= _HEARD_MIN_SURNAME and _close_word(surname, words, 0.75):
             return "fuzzy"
     if (
-        len(first) >= 5
+        len(first) >= 4
         and first in words
         and any(_close_word(s, words, 0.45) for s in surnames)
     ):
@@ -281,14 +283,20 @@ def mark_timestamps(item: dict, segments: list[dict]) -> None:
         name = " ".join((speaker.get("name") or "").lower().split())
         if not name:
             continue
+        prev_text = ""
         for seg in window:
             text = seg.get("text", "").lower()
             tier = _name_match_tier(name, text)
+            # The cue may be one breath behind: \"We have one more
+            # speaker.\" / \"Sorry, Mr. Clipper.\" is one introduction
+            # split across two segments.
             if tier == "exact" or (
-                tier == "fuzzy" and _INTRO_CUE.search(text)
+                tier == "fuzzy"
+                and _INTRO_CUE.search(prev_text + " " + text)
             ):
                 speaker["time_start_ms"] = seg.get("start_ms")
                 break
+            prev_text = text
     # Speakers are shown in the order they spoke. The sort is stable,
     # so an unstamped speaker keeps their roster place behind everyone
     # whose moment is known.
