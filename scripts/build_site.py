@@ -37,7 +37,12 @@ from app.agenda_items import (
 )
 from app.agenda_text import plainify, readable_date, titleize
 from app.feeds import build_feeds, build_future_feed
-from app.speakers import merge_remarks, mark_heard, mark_timestamps
+from app.speakers import (
+    mark_jointly_heard,
+    mark_heard,
+    mark_timestamps,
+    merge_remarks,
+)
 from app.summarizer import (
     extract_meeting_topics, extract_badges, speaker_roster,
 )
@@ -163,6 +168,11 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                     # Where each speaker's name first sounds in the
                     # transcript is where their card links the video.
                     mark_timestamps(item, segments)
+
+            # Items taken as one discussion (6.3.2 with 7.1) would
+            # otherwise repeat the same speaker, same stamp, on two
+            # cards — one speech that answered both, reading as a leak.
+            mark_jointly_heard(items)
 
             mark_row_weights(items)
 

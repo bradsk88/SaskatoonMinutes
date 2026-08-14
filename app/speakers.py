@@ -701,3 +701,108 @@ def _from_registered_attachments(
             source="registered",
         ))
     return results
+
+
+# Two items heard as one discussion overlap by well over half the shorter
+# window -- G&P 2026-08-12 put 6.3.2's window at 7:08-3:36:29 against
+# 7.1's 1:10:51-3:08:50. Sloppy-but-separate bookmarks brush, they do
+# not half-cover.
+_JOINT_OVERLAP_MIN = 0.5
+
+
+def _sections_nested(a: str, b: str) -> bool:
+    """True when one section number sits under the other in the agenda.
+
+    "6." legitimately contains "6.1" and "6.1.1" -- a parent's window
+    spanning its children is hierarchy, not a joint hearing.
+    """
+    a, b = a.rstrip("."), b.rstrip(".")
+    return b.startswith(a + ".") or a.startswith(b + ".")
+
+
+def _jointly_heard_groups(items: list[dict]) -> list[list[int]]:
+    """Group indices of items a committee heard as one discussion.
+
+    Bookmark overlap alone fires on 228 of 255 meetings -- eSCRIBE
+    windows are loose. What proves one discussion is a shared witness:
+    both rosters name the same speaker, which happens when one speech
+    answered both items (G&P 2026-08-12 heard 6.3.2 and 7.1 together).
+    So a pair groups only when their windows overlap by at least half
+    the shorter window, neither section nests under the other, both
+    have rosters, and the rosters share a name. The shared-name bar
+    also stops union-find from chaining a meeting's worth of laggy
+    bookmarks into one blob.
+    """
+    parent = list(range(len(items)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def names(item: dict) -> set[str]:
+        return {
+            " ".join((s.get("name") or "").lower().split())
+            for s in item.get("speakers") or []
+            if isinstance(s, dict) and (s.get("name") or "").strip()
+        }
+
+    for i in range(len(items)):
+        a = items[i]
+        s1, e1 = a.get("time_start_ms"), a.get("time_end_ms")
+        if s1 is None or e1 is None or e1 <= s1:
+            continue
+        n1 = names(a)
+        if not n1:
+            continue
+        sec1 = a.get("section_number") or ""
+        for j in range(i + 1, len(items)):
+            b = items[j]
+            s2, e2 = b.get("time_start_ms"), b.get("time_end_ms")
+            if s2 is None or e2 is None or e2 <= s2:
+                continue
+            if _sections_nested(sec1, b.get("section_number") or ""):
+                continue
+            overlap = min(e1, e2) - max(s1, s2)
+            if overlap <= 0:
+                continue
+            if overlap / min(e1 - s1, e2 - s2) < _JOINT_OVERLAP_MIN:
+                continue
+            if not (n1 & names(b)):
+                continue
+            parent[find(i)] = find(j)
+
+    groups: dict[int, list[int]] = {}
+    for i in range(len(items)):
+        groups.setdefault(find(i), []).append(i)
+    return [sorted(g) for g in groups.values() if len(g) > 1]
+
+
+def mark_jointly_heard(items: list[dict]) -> None:
+    """Annotate jointly-heard items so the page draws one speaker list.
+
+    The item whose window starts first is the primary: the discussion
+    began there, so the shared speaker list lives on its card. Each
+    grouped item gets ``heard_with`` naming the primary's item_id and
+    the partner section numbers; the template merges the rosters on
+    the primary and points the partners at it. Call after
+    ``mark_timestamps`` -- stamps are how the merged list stays in
+    speaking order.
+    """
+    for group in _jointly_heard_groups(items):
+        primary = min(
+            group,
+            key=lambda i: items[i].get("time_start_ms") or 0,
+        )
+        primary_id = items[primary].get("item_id")
+        for i in group:
+            partners = [
+                items[j].get("section_number") or ""
+                for j in group if j != i
+            ]
+            items[i]["heard_with"] = {
+                "primary_item_id": primary_id,
+                "primary_section": items[primary].get("section_number") or "",
+                "partners": sorted(partners),
+            }

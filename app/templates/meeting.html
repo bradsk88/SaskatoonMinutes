@@ -445,8 +445,51 @@
         return `<div class="transcript-content">${parts}</div>`;
     }
 
-    function buildSpeakersHtml(item) {
-        const speakers = item.speakers || [];
+    // One speech answered both items, so mark_timestamps put the same
+    // stamp under each (6.3.2/7.1, G&P 2026-08-12). The primary card
+    // draws the union of the group's rosters; each person appears once,
+    // in speaking order, with their single stamp.
+    function mergedGroupSpeakers(item, byId) {
+        const pid = item.heard_with.primary_item_id;
+        const byName = new Map();
+        Object.values(byId)
+            .filter(x => x.heard_with && x.heard_with.primary_item_id === pid)
+            .forEach(x => (x.speakers || []).forEach(p => {
+                const key = (p.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                if (!key) return;
+                const cur = byName.get(key);
+                if (!cur) {
+                    byName.set(key, Object.assign({}, p, {said: (p.said || []).slice()}));
+                    return;
+                }
+                if (cur.time_start_ms == null) cur.time_start_ms = p.time_start_ms;
+                cur.heard = cur.heard || p.heard;
+                (p.said || []).forEach(s => { if (!cur.said.includes(s)) cur.said.push(s); });
+                if (!cur.summary && p.summary) cur.summary = p.summary;
+                if (!cur.stance && p.stance) cur.stance = p.stance;
+            }));
+        const merged = Array.from(byName.values());
+        // Same order mark_timestamps sorts by: stamped speakers in the
+        // order they spoke, unstamped behind them.
+        merged.sort((a, b) =>
+            (a.time_start_ms == null) - (b.time_start_ms == null)
+            || (a.time_start_ms || 0) - (b.time_start_ms || 0));
+        return merged;
+    }
+
+    // The partner card points at the primary instead of repeating the
+    // roster -- the same names with the same stamps read as a leak.
+    function buildHeardWithPointer(item) {
+        const hw = item.heard_with;
+        return `<div class="speaker-section">
+            <p class="speaker-heard-note">Heard together with
+            <a href="#item-${hw.primary_item_id}">item ${escapeHtml(hw.primary_section)}</a>
+            — speakers are listed there.</p>
+        </div>`;
+    }
+
+    function buildSpeakersHtml(item, speakers, heardNote) {
+        speakers = speakers || item.speakers || [];
         if (speakers.length === 0) return '';
         // A filing is intent, not attendance: registered speakers the
         // transcript never captured (no remarks, the chair never named
@@ -517,7 +560,7 @@
                     `<li>${escapeHtml(p.name)}</li>`).join('')}</ul>
             </details>`;
         return `<div class="speaker-section">
-            <div class="speaker-section-title">Guest speakers <span class="speaker-count">${shown.length}</span></div>
+            <div class="speaker-section-title">Guest speakers <span class="speaker-count">${shown.length}</span>${heardNote ? ` <span class="speaker-heard-note">${heardNote}</span>` : ''}</div>
             <div class="speaker-list">${cards}</div>
             ${noShowHtml}
         </div>`;
@@ -625,7 +668,7 @@
         return el;
     }
 
-    function buildItemEl(item, outOfOrder, idx) {
+    function buildItemEl(item, outOfOrder, idx, byId) {
         if (item.is_recess) return buildRecessEl(item);
         if (item.is_heading) return buildHeadingEl(item);
 
@@ -706,7 +749,14 @@
             : '';
 
         const chipsHtml = hasChips ? buildChipViewHtml(item) : '';
-        const speakersHtml = buildSpeakersHtml(item);
+        const hw = item.heard_with;
+        const speakersHtml = !hw
+            ? buildSpeakersHtml(item)
+            : item.item_id !== hw.primary_item_id
+                ? buildHeardWithPointer(item)
+                : buildSpeakersHtml(
+                    item, mergedGroupSpeakers(item, byId),
+                    `heard together with item ${hw.partners.map(escapeHtml).join(' & ')}`);
 
         el.innerHTML = `
             <div class="item-header">
@@ -776,6 +826,7 @@
         });
         const outOfOrder = computeOutOfOrder(items);
 
+        const byId = Object.fromEntries(allItems.map(i => [i.item_id, i]));
         container.innerHTML = '';
 
         // What "Not discussed" means, said once in text. It used to live
@@ -793,7 +844,7 @@
 
         const STAGGER = 60;
         items.forEach((item, idx) => {
-            const el = buildItemEl(item, outOfOrder, idx);
+            const el = buildItemEl(item, outOfOrder, idx, byId);
             if (animate) {
                 el.style.opacity = '0';
                 el.style.transform = 'translateY(-20px)';

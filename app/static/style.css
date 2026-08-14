@@ -988,6 +988,18 @@ main {
     margin-top: 0.6rem;
 }
 
+/* Items heard as one discussion (6.3.2 with 7.1) share one speaker
+   list; the note says why names appear under a different item. */
+.speaker-heard-note {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+.speaker-heard-note a {
+    color: var(--color-primary);
+}
+
 .speaker-section-title {
     font-size: 0.7rem;
     font-weight: 600;
