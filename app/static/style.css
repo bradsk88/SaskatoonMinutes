@@ -859,6 +859,12 @@ main {
     background: #ddd6fe;
 }
 
+/* The item play button, moved below the speakers when it points at
+   the committee's questions instead of the first speech. */
+.council-jump {
+    margin: 0.5rem 0 0.25rem;
+}
+
 .item-duration {
     color: var(--color-muted);
     font-size: 0.8rem;

@@ -41,6 +41,7 @@ from app.speakers import (
     group_window,
     mark_jointly_heard,
     mark_heard,
+    mark_questions,
     mark_timestamps,
     merge_remarks,
 )
@@ -181,6 +182,11 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                     # Where each speaker's name first sounds in the
                     # transcript is where their card links the video.
                     mark_timestamps(item, segments, window=window)
+                    # And where the chair turns from speakers to the
+                    # committee's questions is where the item's own
+                    # play button earns its keep -- the one moment in
+                    # the window no speaker card can point at.
+                    mark_questions(item, segments, window=window)
 
             mark_row_weights(items)
 

@@ -956,3 +956,52 @@ def group_window(item: dict, items: list[dict]) -> tuple[int, int] | None:
     if not starts:
         return None
     return min(starts), max(ends)
+
+
+# When the last delegate sits down, the chair turns the floor over to
+# the committee: "Now we move to questions for administration" (G&P
+# 2026-08-12, 2:08:42). That moment is the answer to "what did council
+# have to say?" — and it hides inside the item's bookmark window with
+# no marker of its own, behind every guest speech.
+_QUESTIONS_OPEN_RE = re.compile(
+    r"\b(?:move|moved|proceed|turn|go)\s+to\s+questions\s+"
+    r"(?:for|of|to)\s+(?:the\s+)?administration\b",
+    re.IGNORECASE,
+)
+
+
+def mark_questions(
+    item: dict,
+    segments: list[dict],
+    window: tuple[int, int] | None = None,
+) -> None:
+    """Stamp where the committee's questions begin on *item*.
+
+    The item's own bookmark points at the first guest speaker, which
+    is the one thing the page already links well — every speaker card
+    seeks to their own introduction. What a reader cannot reach is the
+    discussion after the speeches. When the chair announces the turn,
+    its transcript moment goes on ``item["questions_start_ms"]`` and
+    the page moves the item's play button there. Without the phrase
+    the item keeps its header button as-is. Mutates *item*; call after
+    ``merge_remarks`` and ``mark_jointly_heard``, and pass
+    ``group_window`` for grouped items -- the turn comes after every
+    speech in the union window.
+
+    Items with no speakers are skipped: their windows still sprawl
+    over someone else's Q&A (G&P 2026-08-12's 6.3.1, a by-election
+    information report, is bookmarked 1:23:14-4:16:32 while its actual
+    reading sits at 4:14), and with no speeches to skip past the stamp
+    would only ever point at another topic's discussion.
+    """
+    if not item.get("speakers"):
+        return
+    start, end = window or (item.get("time_start_ms"), item.get("time_end_ms"))
+    if start is None or end is None:
+        return
+    for s in segments:
+        if s.get("end_ms", 0) <= start or s.get("start_ms", 0) >= end:
+            continue
+        if _QUESTIONS_OPEN_RE.search(s.get("text") or ""):
+            item["questions_start_ms"] = s.get("start_ms")
+            return

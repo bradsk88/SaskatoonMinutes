@@ -697,16 +697,26 @@
         const hasTimestamp = item.time_start_ms !== null;
         let playBtnHtml = '';
         let durationHtml = '';
+        // When the transcript says where the committee's questions
+        // began, the header play button moves below the speaker list
+        // and points there instead. The bookmark it vacated was the
+        // first guest speaker's moment -- the one thing a card already
+        // links well, since every speaker seeks to their own
+        // introduction. What no card could reach is what council had
+        // to say once the speeches ended (mark_questions).
+        const questionsMs = item.questions_start_ms ?? null;
         if (isConsent) {
             playBtnHtml = `<span class="badge badge-consent" data-tooltip="Approved as a group without individual discussion">Not discussed</span>`;
         } else if (hasTimestamp) {
             durationHtml = (item.time_end_ms !== null && item.time_end_ms > item.time_start_ms)
                 ? `<span class="item-duration">${formatDuration(item.time_end_ms - item.time_start_ms)}</span>`
                 : '';
-            playBtnHtml = `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
-                 data-tooltip="Jump to this item in the video">
-                 &#9654; ${item.time_start_formatted}
-               </button>`;
+            if (questionsMs === null) {
+                playBtnHtml = `<button class="timestamp-link" onclick="seekVideo(${item.time_start_ms})"
+                     data-tooltip="Jump to this item in the video">
+                     &#9654; ${item.time_start_formatted}
+                   </button>`;
+            }
         }
 
         const ooo = outOfOrder.get(idx);
@@ -769,6 +779,12 @@
             </div>
             ${badgesHtml ? `<div class="item-badges">${badgesHtml}</div>` : ''}
             ${speakersHtml}
+            ${questionsMs !== null ? `<div class="council-jump">
+                <button class="timestamp-link" onclick="seekVideo(${questionsMs})"
+                    data-tooltip="Skip the guest speakers — jump to council's questions and debate">
+                    &#9654; ${formatTimestamp(questionsMs)} &middot; what council had to say
+                </button>
+            </div>` : ''}
             ${toggleHtml}
             ${chipsHtml}
             <div class="item-notes-view">${transcriptHtml}</div>
