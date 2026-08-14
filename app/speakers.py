@@ -16,6 +16,7 @@ someone else's sentence, e.g. "...along with Tammy MacFarlane.").
 
 from __future__ import annotations
 
+import difflib
 import re
 import zlib
 
@@ -181,16 +182,55 @@ def organization_color(organization: str) -> int | None:
 _HEARD_MIN_SURNAME = 7
 
 
+def _close_word(probe: str, words: list[str], threshold: float) -> bool:
+    """True when some word is a Whisper-garbled rendering of *probe*.
+
+    Words under four letters are excluded: "of" sits at 0.57 from
+    "wolfe", and a two-letter word is close to everything.
+    """
+    return any(
+        len(w) >= 4
+        and abs(len(w) - len(probe)) <= 3
+        and difflib.SequenceMatcher(None, probe, w).ratio() >= threshold
+        for w in words
+    )
+
+
+# A title leading the roster entry ("Chief Kelly Wolfe") is not a first
+# name; matching on it puts every mention of the chief at his podium.
+_FIRST_NAME_TITLES = {"chief", "dr", "mayor", "councillor", "elder"}
+
+
 def _name_in_text(name: str, text: str) -> bool:
     """True when *text* (lowercased) names this speaker.
 
-    Whisper mangles names ("Wilgenhof" became "Wilgunhof"), so a full
-    name match is not required: a distinctive surname standing alone is
-    enough.
+    Whisper mangles names ("Wilgenhof" became "Wilgunhof", "Naytowhow"
+    became "nitaohau"), so a full name match is not required.  A long
+    surname stands alone, exact or close (0.8 reads a letter swap, not
+    a different name); a distinctive first name needs a vaguely
+    surname-shaped word beside it, which catches the garblings too
+    heavy for the surname rule without putting every "Robert" at a
+    podium.
     """
-    surname = name.split()[-1]
-    return name in text or (
-        len(surname) >= _HEARD_MIN_SURNAME and surname in text
+    if name in text:
+        return True
+    parts = name.split()
+    first, last = parts[0], parts[-1]
+    if first in _FIRST_NAME_TITLES and len(parts) > 2:
+        first = parts[1]
+    # Words, not substrings: "robert" sits inside "robertson", and a
+    # trailing period ("nitaohau.") sinks the fuzzy comparison.
+    words = re.findall(r"[a-z'\-]+", text)
+    surnames = last.split("-") if "-" in last else [last]
+    for surname in surnames:
+        if len(surname) >= _HEARD_MIN_SURNAME and (
+            surname in text or _close_word(surname, words, 0.8)
+        ):
+            return True
+    return (
+        len(first) >= 5
+        and first in words
+        and any(_close_word(s, words, 0.45) for s in surnames)
     )
 
 

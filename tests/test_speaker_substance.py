@@ -601,6 +601,41 @@ class TestTheCardBudget:
         assert item["speakers"][0]["time_start_ms"] == 2_800_000
         assert "time_start_ms" not in item["speakers"][1]
 
+    def test_a_whisper_garbled_surname_still_stamps(self):
+        """Wilgenhof came out of Whisper as Wilgunhof; a close rendering
+        of a long surname is still its owner at the podium."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 0, "time_end_ms": 1000,
+            "speakers": [{"name": "Rob Wilgenhof"}],
+        }
+        mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
+                                "text": "is robert wilgunhof? there you are."}])
+        assert item["speakers"][0]["time_start_ms"] == 400
+
+    def test_a_distinctive_first_name_with_a_garbled_surname_stamps(self):
+        """Naytowhow came out as nitaohau -- past the surname rule, but
+        a rare first name beside a surname-shaped word is still her."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 0, "time_end_ms": 1000,
+            "speakers": [{"name": "Melissa Naytowhow"}],
+        }
+        mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
+                                "text": "my name is melissa nitaohau."}])
+        assert item["speakers"][0]["time_start_ms"] == 400
+
+    def test_a_common_first_name_alone_does_not_stamp(self):
+        """Every Robert in the transcript is not Robert Clipperton."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 0, "time_end_ms": 1000,
+            "speakers": [{"name": "Robert Clipperton"}],
+        }
+        mark_timestamps(item, [{"start_ms": 400, "end_ms": 900,
+                                "text": "councillor robertson moved the motion."}])
+        assert "time_start_ms" not in item["speakers"][0]
+
     def test_a_short_surname_needs_the_full_name(self):
         """Otherwise Taylor Street attends every meeting on 25th."""
         from app.speakers import mark_heard

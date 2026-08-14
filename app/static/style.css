@@ -1037,24 +1037,15 @@ main {
     color: var(--color-text);
 }
 
-/* A speaker whose introduction the transcript captured: the name is a
-   button that seeks the video to where they spoke. */
-button.speaker-name-link {
-    background: none;
+/* A speaker whose introduction the transcript captured: their stance
+   chip is a play button that seeks the video to where they spoke. */
+button.speaker-play {
     border: none;
-    padding: 0;
-    font: inherit;
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--color-video);
-    cursor: pointer;
-    text-decoration: underline;
-    text-decoration-style: dotted;
-    text-underline-offset: 3px;
+    font-family: inherit;
 }
 
-button.speaker-name-link:hover {
-    text-decoration-style: solid;
+button.speaker-play:hover {
+    filter: brightness(0.92);
 }
 
 /* Who a speaker came for. The colour comes from the organization's own

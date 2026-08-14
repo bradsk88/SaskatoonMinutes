@@ -476,19 +476,21 @@
                   + said.map(s => `<li>${escapeHtml(s)}</li>`).join('')
                   + `</ul>`
                 : `<p class="speaker-summary">${escapeHtml(p.summary)}</p>`;
-            // The name seeks the video to the moment the chair
-            // introduced them (mark_timestamps). No stamp means the
-            // transcript never named them, and an unlinked name beats a
+            // The stance chip doubles as a play button when the
+            // transcript named them (mark_timestamps): it seeks the
+            // video to their introduction. No stamp means the
+            // transcript never named them, and a plain chip beats a
             // seek to a guess.
-            const nameHtml = p.time_start_ms != null
-                ? `<button class="speaker-name speaker-name-link" onclick="seekVideo(${p.time_start_ms})"`
-                  + ` title="Jump to where ${escapeHtml(p.name)} spoke">${escapeHtml(p.name)}</button>`
-                : `<span class="speaker-name">${escapeHtml(p.name)}</span>`;
+            const stanceHtml = p.time_start_ms != null
+                ? `<button class="badge speaker-stance ${stanceClass} speaker-play"`
+                  + ` onclick="seekVideo(${p.time_start_ms})"`
+                  + ` title="Jump to where ${escapeHtml(p.name)} spoke">&#9654; ${stanceLabel}</button>`
+                : `<span class="badge speaker-stance ${stanceClass}">${stanceLabel}</span>`;
             return `<div class="speaker-card">
                 <div class="speaker-card-header">
-                    ${nameHtml}
+                    <span class="speaker-name">${escapeHtml(p.name)}</span>
                     ${orgHtml}
-                    <span class="badge speaker-stance ${stanceClass}">${stanceLabel}</span>
+                    ${stanceHtml}
                 </div>
                 ${bodyHtml}
             </div>`;
