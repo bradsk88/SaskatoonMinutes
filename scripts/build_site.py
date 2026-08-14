@@ -37,7 +37,7 @@ from app.agenda_items import (
 )
 from app.agenda_text import plainify, readable_date, titleize
 from app.feeds import build_feeds, build_future_feed
-from app.speakers import merge_remarks, mark_heard
+from app.speakers import merge_remarks, mark_heard, mark_timestamps
 from app.summarizer import (
     extract_meeting_topics, extract_badges, speaker_roster,
 )
@@ -160,6 +160,9 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 segments = transcript.to_dict()
                 for item in items:
                     mark_heard(item, segments)
+                    # Where each speaker's name first sounds in the
+                    # transcript is where their card links the video.
+                    mark_timestamps(item, segments)
 
             mark_row_weights(items)
 

@@ -579,6 +579,28 @@ class TestTheCardBudget:
         assert item["speakers"][0]["organization"] == "Bus Riders of Saskatoon"
         assert "heard" not in item["speakers"][1]
 
+    def test_a_speaker_is_stamped_where_the_chair_named_them(self):
+        """mark_timestamps: the first in-window segment naming the speaker
+        is where their link seeks the video."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 2_760_000, "time_end_ms": 3_600_000,
+            "speakers": [
+                {"name": "Robert Clipperton", "source": "registered"},
+                {"name": "No Show", "source": "registered"},
+            ],
+        }
+        segments = [
+            {"start_ms": 100, "end_ms": 200, "text": "outside the item"},
+            {"start_ms": 2_800_000, "end_ms": 2_820_000,
+             "text": "We'll go now to the first speaker Robert Clipperton."},
+            {"start_ms": 2_820_000, "end_ms": 2_900_000,
+             "text": "Thank you for having me."},
+        ]
+        mark_timestamps(item, segments)
+        assert item["speakers"][0]["time_start_ms"] == 2_800_000
+        assert "time_start_ms" not in item["speakers"][1]
+
     def test_a_short_surname_needs_the_full_name(self):
         """Otherwise Taylor Street attends every meeting on 25th."""
         from app.speakers import mark_heard

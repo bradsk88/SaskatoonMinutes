@@ -305,7 +305,14 @@ def _format_speaker_row(
         # Categories are the item's, so the topic filter keeps a speaker
         # with the subject they came to talk about.
         "badges": [b for b in topic_row.get("badges", []) if b["type"].startswith("cat-")],
-        "time_start_ms": topic_row.get("time_start_ms"),
+        # The speaker's own moment when the transcript named them
+        # (mark_timestamps), so the row's ?t= seek lands on their
+        # introduction rather than the item's opening bookmark.
+        "time_start_ms": (
+            speaker.get("time_start_ms")
+            if speaker.get("time_start_ms") is not None
+            else topic_row.get("time_start_ms")
+        ),
         # The item they spoke to, so their row lands on it rather than
         # at the top of the page.  A speaker has no anchor of their own
         # -- see the open note in the handover.

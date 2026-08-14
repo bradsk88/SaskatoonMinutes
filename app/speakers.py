@@ -181,6 +181,52 @@ def organization_color(organization: str) -> int | None:
 _HEARD_MIN_SURNAME = 7
 
 
+def _name_in_text(name: str, text: str) -> bool:
+    """True when *text* (lowercased) names this speaker.
+
+    Whisper mangles names ("Wilgenhof" became "Wilgunhof"), so a full
+    name match is not required: a distinctive surname standing alone is
+    enough.
+    """
+    surname = name.split()[-1]
+    return name in text or (
+        len(surname) >= _HEARD_MIN_SURNAME and surname in text
+    )
+
+
+def mark_timestamps(item: dict, segments: list[dict]) -> None:
+    """Stamp each speaker with the moment the chair introduced them.
+
+    The chair names every speaker at the podium, so the first segment in
+    the item's window that names them is within seconds of when they
+    started speaking — the precision a "jump to where they spoke" link
+    needs, where the item's own start bookmark is not.  A speaker the
+    transcript never names keeps no stamp, and the UI leaves their name
+    unlinked rather than seeking to a guess.  Mutates
+    ``item["speakers"]``; call after ``merge_remarks``.
+    """
+    start = item.get("time_start_ms")
+    end = item.get("time_end_ms")
+    if start is None or end is None:
+        return
+    window = [
+        s for s in segments
+        if s.get("end_ms", 0) > start and s.get("start_ms", 0) < end
+    ]
+    if not window:
+        return
+    for speaker in item.get("speakers") or []:
+        if not isinstance(speaker, dict):
+            continue
+        name = " ".join((speaker.get("name") or "").lower().split())
+        if not name:
+            continue
+        for seg in window:
+            if _name_in_text(name, seg.get("text", "").lower()):
+                speaker["time_start_ms"] = seg.get("start_ms")
+                break
+
+
 def mark_heard(item: dict, segments: list[dict]) -> None:
     """Flag registered speakers the transcript actually captured.
 
@@ -190,9 +236,7 @@ def mark_heard(item: dict, segments: list[dict]) -> None:
     The chair, however, introduces every speaker by name during their
     item, a deterministic check that needs no model.
 
-    Whisper mangles names (\"Wilgenhof\" became \"Wilgunhof\"), so a full
-    name match is not required: a distinctive surname standing alone is
-    enough. Mutates ``item[\"speakers\"]``; call after ``merge_remarks``.
+    Mutates ``item[\"speakers\"]``; call after ``merge_remarks``.
     """
     start = item.get("time_start_ms")
     end = item.get("time_end_ms")
@@ -213,11 +257,7 @@ def mark_heard(item: dict, segments: list[dict]) -> None:
         name = " ".join((speaker.get("name") or "").lower().split())
         if not name:
             continue
-        surname = name.split()[-1]
-        heard = name in heard_text or (
-            len(surname) >= _HEARD_MIN_SURNAME and surname in heard_text
-        )
-        if not heard:
+        if not _name_in_text(name, heard_text):
             continue
         speaker["heard"] = True
         # The introduction often names who they came for — "the first
