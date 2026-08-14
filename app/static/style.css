@@ -1037,6 +1037,23 @@ main {
     color: var(--color-text);
 }
 
+/* Registered no-shows collapse into one expandable row beneath the
+   speakers who came. */
+.speaker-noshows {
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--color-muted);
+}
+
+.speaker-noshows summary {
+    cursor: pointer;
+}
+
+.speaker-noshow-list {
+    margin: 0.3rem 0 0;
+    padding-left: 1.2rem;
+}
+
 /* A speaker whose introduction the transcript captured: their stance
    chip is a play button that seeks the video to where they spoke. */
 button.speaker-play {

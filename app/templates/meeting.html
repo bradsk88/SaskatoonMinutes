@@ -448,7 +448,16 @@
     function buildSpeakersHtml(item) {
         const speakers = item.speakers || [];
         if (speakers.length === 0) return '';
-        const cards = speakers.map(p => {
+        // A filing is intent, not attendance: registered speakers the
+        // transcript never captured (no remarks, and the chair never
+        // named them -- mark_heard) are no-shows. They collapse into
+        // one expandable row so a packed agenda does not scroll past
+        // six people who never reached the podium.
+        const isNoShow = p => p.source === 'registered'
+            && (p.said || []).length === 0 && !p.heard;
+        const shown = speakers.filter(p => !isNoShow(p));
+        const noShows = speakers.filter(isNoShow);
+        const cards = shown.map(p => {
             // "Registered" is what we can say about someone we only know
             // filed to speak. Once the transcript tells us what they
             // argued, that is the better label — badging a speaker whose
@@ -495,9 +504,16 @@
                 ${bodyHtml}
             </div>`;
         }).join('');
+        const noShowHtml = noShows.length === 0 ? ''
+            : `<details class="speaker-noshows">
+                <summary>${noShows.length} registered but didn't speak</summary>
+                <ul class="speaker-noshow-list">${noShows.map(p =>
+                    `<li>${escapeHtml(p.name)}</li>`).join('')}</ul>
+            </details>`;
         return `<div class="speaker-section">
-            <div class="speaker-section-title">Guest speakers <span class="speaker-count">${speakers.length}</span></div>
+            <div class="speaker-section-title">Guest speakers <span class="speaker-count">${shown.length}</span></div>
             <div class="speaker-list">${cards}</div>
+            ${noShowHtml}
         </div>`;
     }
 
