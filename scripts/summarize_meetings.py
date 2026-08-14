@@ -61,6 +61,7 @@ from app.item_summaries_cache import ItemSummariesCache
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
 from app.models import ItemSummary
+from app.speakers import group_window, mark_jointly_heard
 from app.transcript_cache import TranscriptCache
 
 
@@ -106,6 +107,13 @@ def summarize_meeting(
     items = [it.to_dict() for it in detail.agenda_items]
     transcript_segments = transcript.to_dict()
 
+    # Items the committee heard as one discussion (6.3.2 with 7.1) keep
+    # independent bookmarks, and the later item's starts after its first
+    # delegates already spoke — G&P 2026-08-12 has 7.1 at 1:10:51 with
+    # Kelsey Ford speaking at 35:20.  Grouped items summarize on the
+    # union of the group's windows, computed per item below.
+    mark_jointly_heard(items)
+
     eligible = [i for i in items if is_eligible_for_summary(i)]
     # Ineligible items get an empty summary so the page can tell "nothing
     # to summarize here" apart from "not summarized yet".
@@ -115,11 +123,21 @@ def summarize_meeting(
     }
 
     def run(item: dict) -> tuple[dict, dict]:
+        window = group_window(item, items)
+        if window is not None:
+            partners = ", ".join(item["heard_with"]["partners"])
+            print(
+                f"    Item {item['item_id']} heard together with "
+                f"{partners} — slicing the group's union window",
+                flush=True,
+            )
         try:
             return item, extract_item_summaries(
                 item, transcript_segments,
                 gemini_extractor=extractor,
-                transcript_text=item_transcript_text(item, transcript_segments),
+                transcript_text=item_transcript_text(
+                    item, transcript_segments, window=window,
+                ),
             )
         except ExtractionFailed as exc:
             # Name the item — the caller only sees the meeting, and "one

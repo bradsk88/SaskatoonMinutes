@@ -806,3 +806,37 @@ def mark_jointly_heard(items: list[dict]) -> None:
                 "primary_section": items[primary].get("section_number") or "",
                 "partners": sorted(partners),
             }
+
+
+def group_window(item: dict, items: list[dict]) -> tuple[int, int] | None:
+    """The union transcript window of *item*'s jointly-heard group.
+
+    Call after ``mark_jointly_heard``; None when the item stands alone.
+    Items heard as one discussion keep independent eSCRIBE bookmarks,
+    and the later item's starts long after the discussion did -- G&P
+    2026-08-12 bookmarked 7.1 at 1:10:51 though its first delegate
+    spoke at 35:20, inside 6.3.2's window.  A summary sliced on the
+    raw bookmark describes a discussion the model never saw, and the
+    speaker pass comes back empty for people who spoke for minutes.
+    The group was heard as one discussion; its slice is the union,
+    earliest start to latest end.
+    """
+    heard = item.get("heard_with")
+    if not isinstance(heard, dict):
+        return None
+    primary = heard.get("primary_item_id")
+    starts, ends = [], []
+    for other in items:
+        if not isinstance(other.get("heard_with"), dict):
+            continue
+        if other["heard_with"].get("primary_item_id") != primary:
+            continue
+        s = other.get("time_start_ms")
+        e = other.get("time_end_ms")
+        if s is None or e is None:
+            continue
+        starts.append(s)
+        ends.append(e)
+    if not starts:
+        return None
+    return min(starts), max(ends)

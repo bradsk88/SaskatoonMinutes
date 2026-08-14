@@ -737,13 +737,33 @@ class GeminiExtractor:
         return _sanitize_speakers(parsed.get("speakers"), speakers)
 
 
-def item_transcript_text(item: dict, transcript_segments: list[dict]) -> str:
+def item_transcript_text(
+    item: dict,
+    transcript_segments: list[dict],
+    window: tuple[int, int] | None = None,
+) -> str:
     """The transcript slice the summarizer reads for *item*.
 
     One space between segments, which is what the cleanup pass used to
     receive before it was deleted (ADR `0005`) — so the text the chip
     call sees is byte-identical to the raw arm the A/B measured.
+
+    ``window`` pins the slice to an explicit span.  Jointly-heard items
+    (``app.speakers.mark_jointly_heard``) pass their group's union span:
+    the discussion was one, but the bookmarks are per-item, and the
+    later item's bookmark starts after its first speakers already
+    spoke.
     """
+    if window is not None:
+        # A copy, not a mutation — the item's own bookmarks still belong
+        # to the page, which slices speaker stamps and video links on
+        # them.
+        item = {
+            **item,
+            "time_start_ms": window[0],
+            "time_end_ms": window[1],
+            "timestamp_inherited": False,
+        }
     return " ".join(
         text
         for s in _slice_transcript(transcript_segments, item)
