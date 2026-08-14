@@ -265,6 +265,17 @@ def mark_timestamps(item: dict, segments: list[dict]) -> None:
             if _name_in_text(name, seg.get("text", "").lower()):
                 speaker["time_start_ms"] = seg.get("start_ms")
                 break
+    # Speakers are shown in the order they spoke. The sort is stable,
+    # so an unstamped speaker keeps their roster place behind everyone
+    # whose moment is known.
+    speakers = item.get("speakers")
+    if speakers:
+        speakers.sort(
+            key=lambda s: (
+                s.get("time_start_ms") is None,
+                s.get("time_start_ms") or 0,
+            )
+        )
 
 
 def mark_heard(item: dict, segments: list[dict]) -> None:

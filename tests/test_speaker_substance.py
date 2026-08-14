@@ -601,6 +601,28 @@ class TestTheCardBudget:
         assert item["speakers"][0]["time_start_ms"] == 2_800_000
         assert "time_start_ms" not in item["speakers"][1]
 
+    def test_speakers_are_ordered_by_when_they_spoke(self):
+        """The roster follows the agenda; the podium does not."""
+        from app.speakers import mark_timestamps
+        item = {
+            "time_start_ms": 0, "time_end_ms": 10_000,
+            "speakers": [
+                {"name": "Karen Kobussen"},
+                {"name": "Robert Clipperton"},
+                {"name": "Never Introduced"},
+            ],
+        }
+        segments = [
+            {"start_ms": 1000, "end_ms": 2000,
+             "text": "robert clipperton, welcome."},
+            {"start_ms": 5000, "end_ms": 6000,
+             "text": "karen kobussen, welcome."},
+        ]
+        mark_timestamps(item, segments)
+        assert [s["name"] for s in item["speakers"]] == [
+            "Robert Clipperton", "Karen Kobussen", "Never Introduced",
+        ]
+
     def test_a_whisper_garbled_surname_still_stamps(self):
         """Wilgenhof came out of Whisper as Wilgunhof; a close rendering
         of a long surname is still its owner at the podium."""
