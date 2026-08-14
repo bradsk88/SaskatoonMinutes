@@ -449,12 +449,13 @@
         const speakers = item.speakers || [];
         if (speakers.length === 0) return '';
         // A filing is intent, not attendance: registered speakers the
-        // transcript never captured (no remarks, and the chair never
-        // named them -- mark_heard) are no-shows. They collapse into
-        // one expandable row so a packed agenda does not scroll past
-        // six people who never reached the podium.
+        // transcript never captured (no remarks, the chair never named
+        // them, and no podium timestamp) are no-shows. They collapse
+        // into one expandable row so a packed agenda does not scroll
+        // past six people who never reached the podium.
         const isNoShow = p => p.source === 'registered'
-            && (p.said || []).length === 0 && !p.heard;
+            && (p.said || []).length === 0 && !p.heard
+            && p.time_start_ms == null;
         const shown = speakers.filter(p => !isNoShow(p));
         const noShows = speakers.filter(isNoShow);
         const cards = shown.map(p => {
@@ -463,7 +464,8 @@
             // argued, that is the better label — badging a speaker whose
             // remarks are printed underneath as merely "Registered"
             // contradicts the card it sits on.
-            const spoke = (p.said || []).length > 0;
+            const spoke = (p.said || []).length > 0
+                || p.heard || p.time_start_ms != null;
             const stanceClass = !spoke && p.source === 'registered' ? 'stance-registered'
                 : p.stance ? `stance-${p.stance}` : 'stance-neutral';
             const stanceLabel = !spoke && p.source === 'registered' ? 'Registered'
