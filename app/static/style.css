@@ -599,6 +599,27 @@ main {
     /* height set dynamically via JS */
 }
 
+/* Size toggle tab pinned to the left edge of the sticky mini-player */
+.video-size-tab {
+    position: fixed;
+    z-index: 101;
+    width: 22px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius) 0 0 var(--radius);
+    background: #1f2937;
+    color: #fff;
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.video-size-tab:hover {
+    background: #374151;
+}
+
 /* Highlight flash on agenda item when scrolled-to */
 @keyframes agenda-highlight {
     0%   { background-color: #ede9fe; }

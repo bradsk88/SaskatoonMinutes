@@ -951,9 +951,40 @@
         const isMobile = window.innerWidth <= 640;
         const aspectPct = (containerHeight / containerWidth * 100).toFixed(2);
         container.style.setProperty('--video-aspect', aspectPct + '%');
-        const miniWidth = isMobile ? containerWidth : 320;
-        const scale = miniWidth / containerWidth;
-        const miniHeight = Math.round(containerHeight * scale);
+
+        // Size toggle: « grows the mini-player leftward, » shrinks it.
+        var sizeIdx = parseInt(localStorage.getItem('videoSizeIdx') || '0', 10) || 0;
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'video-size-tab';
+        tab.style.display = 'none';
+        document.body.appendChild(tab);
+
+        function miniWidth() {
+            return isMobile ? containerWidth : (sizeIdx === 1 ? 560 : 320);
+        }
+
+        function applyStickySize() {
+            const w = miniWidth();
+            const scale = w / containerWidth;
+            const h = Math.round(containerHeight * scale);
+            videoSection.style.width = w + 'px';
+            videoSection.style.height = h + 'px';
+            container.style.width = containerWidth + 'px';
+            container.style.height = containerHeight + 'px';
+            container.style.paddingBottom = '0';
+            container.style.transform = 'scale(' + scale + ')';
+            tab.style.top = 'calc(1rem + ' + Math.max(0, Math.round(h / 2) - 20) + 'px)';
+            tab.style.right = 'calc(1rem + ' + w + 'px)';
+            tab.textContent = sizeIdx === 1 ? '\u00BB' : '\u00AB';
+            tab.title = sizeIdx === 1 ? 'Smaller video' : 'Larger video';
+        }
+
+        tab.addEventListener('click', function() {
+            sizeIdx = sizeIdx === 1 ? 0 : 1;
+            localStorage.setItem('videoSizeIdx', String(sizeIdx));
+            applyStickySize();
+        });
 
         // Spacer preserves layout space when the video goes fixed.
         const spacer = document.createElement('div');
@@ -979,12 +1010,8 @@
                 if (isSticky) return;
                 isSticky = true;
                 spacer.style.display = 'block';
-                videoSection.style.width = miniWidth + 'px';
-                videoSection.style.height = miniHeight + 'px';
-                container.style.width = containerWidth + 'px';
-                container.style.height = containerHeight + 'px';
-                container.style.paddingBottom = '0';
-                container.style.transform = 'scale(' + scale + ')';
+                applyStickySize();
+                tab.style.display = 'block';
                 videoSection.classList.add('sticky');
             } else if (entry.isIntersecting) {
                 if (!isSticky) return;
@@ -997,6 +1024,7 @@
                 container.style.paddingBottom = '';
                 container.style.transform = '';
                 spacer.style.display = 'none';
+                tab.style.display = 'none';
             }
         }, { threshold: 0 });
 
