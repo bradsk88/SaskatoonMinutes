@@ -123,3 +123,21 @@ class TestProvisionalSummaries:
     def test_real_summary_is_current(self):
         cached = {"1": ItemSummary(description=["x"])}
         assert is_current(cached)
+
+
+def test_body_shorthand_covers_every_tab_label():
+    """The Future tab's date squares name their body with a short code
+    (<=6 chars, fits the square when written vertically). Every tab
+    label needs one; an unknown body falls back to the full label and
+    overflows."""
+    import re
+    index = open("app/templates/index.html", encoding="utf-8").read()
+    m = re.search(r"BODY_SHORTHAND = \{(.+?)\};", index, re.S)
+    assert m, "BODY_SHORTHAND map missing from index.html"
+    keys = set(re.findall(r"'([^']+)':\s*'([^']+)'", m.group(1)))
+    codes = {k: v for k, v in keys}
+    from app.meeting_types import MEETING_TABS
+    for tab in MEETING_TABS:
+        assert tab["label"] in codes, f"no shorthand for {tab['label']}"
+    for label, code in codes.items():
+        assert len(code) <= 6, f"{code} too long for the square's edge"

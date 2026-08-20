@@ -1013,7 +1013,29 @@
     // The Future tab shows a row of date squares instead of a scroll
     // list: future meetings are few and a resident is picking a day to
     // attend, not browsing a feed. Clicking a square swaps the single
-    // card shown below the row.
+    // card shown below the row. The Future tab mixes bodies, so each
+    // square names its own body as a colored strip down the left edge
+    // holding a short code (<=6 chars, fits the square's height when
+    // written vertically).
+    const BODY_SHORTHAND = {
+        'Council': 'CC',
+        'Public Hearing': 'PH',
+        'Budget': 'BUD',
+        'Governance & Priorities': 'GOV+PR',
+        'Planning & Dev': 'PLN+DV',
+        'Transportation': 'TRANS',
+        'Environment & Utilities': 'ENV+UT',
+        'Finance': 'FIN',
+        'Police Board': 'POLICE',
+        'Municipal Planning': 'MPLAN',
+        'Heritage': 'HERIT',
+        'Accessibility': 'ACCESS',
+        'Env Advisory': 'ENVADV',
+        'Diversity & Inclusion': 'DIV+IN',
+        'Public Art': 'ART',
+        'Civic Naming': 'NAME',
+    };
+
     function renderFuturePicker(meetings, container, isStatic) {
         container.innerHTML = '';
         const picker = document.createElement('div');
@@ -1042,9 +1064,13 @@
             sq.setAttribute('aria-pressed', 'false');
             const month = d.toLocaleDateString('en-CA', { month: 'short' }).toUpperCase();
             const weekday = d.toLocaleDateString('en-CA', { weekday: 'short' });
-            sq.innerHTML = `<span class="date-square-month">${month}</span>`
+            const code = BODY_SHORTHAND[m.body] || m.body;
+            sq.innerHTML = `<span class="date-square-body body-${code.toLowerCase()}" title="${m.body}">${code}</span>`
+                + `<span class="date-square-inner">`
+                + `<span class="date-square-month">${month}</span>`
                 + `<span class="date-square-day">${d.getDate()}</span>`
-                + `<span class="date-square-weekday">${weekday}</span>`;
+                + `<span class="date-square-weekday">${weekday}</span>`
+                + `</span>`;
             sq.addEventListener('click', () => select(i));
             picker.appendChild(sq);
         });

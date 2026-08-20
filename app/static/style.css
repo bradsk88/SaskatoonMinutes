@@ -166,18 +166,18 @@ nav {
     /* "safe" keeps overflow scrollable: a plain center would clip the
        leftmost squares when the row is wider than the screen. */
     justify-content: safe center;
-    padding-bottom: 0.5rem;
-    margin-bottom: 1rem;
+    /* Equal air above and below the row of squares. */
+    padding: 1rem 0;
+    margin: 1rem 0;
 }
 
 .date-square {
     flex: 0 0 auto;
     width: 4.25rem;
-    padding: 0.5rem 0;
+    aspect-ratio: 1;
+    padding: 0;
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.1rem;
+    align-items: stretch;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -185,6 +185,50 @@ nav {
     color: inherit;
     font: inherit;
     transition: border-color 0.15s, box-shadow 0.15s;
+    overflow: hidden;
+}
+
+/* The colored strip down the left edge: which body the meeting is for.
+   The code is short (<=6 chars) so it fits the square's height when
+   written vertically. One color per body. */
+.date-square-body {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #fff;
+    width: 0.95rem;
+    flex-shrink: 0;
+}
+
+.body-cc     { background: #1a5276; }
+.body-ph     { background: #6c3483; }
+.body-bud    { background: #9c640c; }
+.body-gov\+pr  { background: #1e8449; }
+.body-pln\+dv  { background: #a04000; }
+.body-trans  { background: #b03a2e; }
+.body-env\+ut  { background: #117a65; }
+.body-fin    { background: #7d6608; }
+.body-police { background: #1b2a4a; }
+.body-mplan  { background: #5b2c6f; }
+.body-herit  { background: #784212; }
+.body-access { background: #2874a6; }
+.body-envadv { background: #239b56; }
+.body-div\+in  { background: #b03a8b; }
+.body-art    { background: #c2185b; }
+.body-name   { background: #616a6b; }
+
+.date-square-inner {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1rem;
 }
 
 .date-square:hover {
