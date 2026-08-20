@@ -1011,6 +1011,59 @@
         });
     }
 
+    // The Future tab shows a row of date squares instead of a scroll
+    // list: future meetings are few and a resident is picking a day to
+    // attend, not browsing a feed. Clicking a square swaps the single
+    // card shown below the row.
+    function renderFuturePicker(meetings, container, isStatic) {
+        container.innerHTML = '';
+        const picker = document.createElement('div');
+        picker.className = 'date-picker-row';
+        const grid = document.createElement('div');
+        grid.className = 'meetings-grid';
+
+        function select(idx) {
+            picker.querySelectorAll('.date-square').forEach((sq, i) => {
+                sq.classList.toggle('date-square-active', i === idx);
+                sq.setAttribute('aria-pressed', i === idx ? 'true' : 'false');
+            });
+            grid.innerHTML = '';
+            renderMeetingCards([meetings[idx]], grid, isStatic);
+            if (!meetings[idx].is_cancelled) {
+                loadTopics(meetings[idx].meeting_id, meetings[idx].title);
+            }
+            if (selectedCategories.size > 0) applyFilters();
+        }
+
+        meetings.forEach((m, i) => {
+            const d = new Date(m.date + 'T00:00:00');
+            const sq = document.createElement('button');
+            sq.type = 'button';
+            sq.className = 'date-square' + (m.is_cancelled ? ' date-square-cancelled' : '');
+            sq.setAttribute('aria-pressed', 'false');
+            const month = d.toLocaleDateString('en-CA', { month: 'short' }).toUpperCase();
+            const weekday = d.toLocaleDateString('en-CA', { weekday: 'short' });
+            sq.innerHTML = `<span class="date-square-month">${month}</span>`
+                + `<span class="date-square-day">${d.getDate()}</span>`
+                + `<span class="date-square-weekday">${weekday}</span>`;
+            sq.addEventListener('click', () => select(i));
+            picker.appendChild(sq);
+        });
+
+        container.appendChild(picker);
+        container.appendChild(grid);
+        select(0);
+    }
+
+    function renderTabMeetings(slug, meetings, container, isStatic) {
+        if (slug === 'future') {
+            renderFuturePicker(meetings, container, isStatic);
+            return;
+        }
+        renderMeetingCards(meetings, container, isStatic);
+        meetings.filter(m => !m.is_cancelled).forEach(m => loadTopics(m.meeting_id, m.title));
+    }
+
     async function fetchNextApiPage() {
         if (allFetched) return;
         try {
@@ -1215,8 +1268,7 @@
                     }
                     totalCount = tabData.total_count;
                     container.innerHTML = '';
-                    renderMeetingCards(tabData.meetings, container, true);
-                    tabData.meetings.filter(m => !m.is_cancelled).forEach(m => loadTopics(m.meeting_id, m.title));
+                    renderTabMeetings(slug, tabData.meetings, container, true);
                     if (selectedCategories.size > 0) applyFilters();
                     return;
                 }
@@ -1227,6 +1279,16 @@
 
                 await fetchNextApiPage();
                 container.innerHTML = '';
+                if (slug === 'future') {
+                    // One page covers the lookahead window; no scroll.
+                    const meetings = buffer.splice(0);
+                    if (meetings.length === 0) {
+                        container.innerHTML = '<div class="empty">No meetings found.</div>';
+                        return;
+                    }
+                    renderFuturePicker(meetings, container, false);
+                    return;
+                }
                 await renderBatch();
                 setupInfiniteScroll();
             });
@@ -1274,8 +1336,7 @@
                     return;
                 }
 
-                renderMeetingCards(meetings, container, true);
-                meetings.filter(m => !m.is_cancelled).forEach(m => loadTopics(m.meeting_id, m.title));
+                renderTabMeetings(firstSlug, meetings, container, true);
                 return;
             }
 
@@ -1344,6 +1405,10 @@
         }
 
         container.innerHTML = '';
+        if (firstSlug === 'future' && cached) {
+            renderFuturePicker(cached.meetings, container, false);
+            return;
+        }
         await renderBatch();
         setupInfiniteScroll();
     }

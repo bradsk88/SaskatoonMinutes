@@ -155,6 +155,68 @@ nav {
     50% { opacity: 0.4; }
 }
 
+/* === Future meeting date picker ===
+   Squares sit above the single selected meeting card. The row scrolls
+   horizontally when the lookahead window holds more dates than fit. */
+.date-picker-row {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.date-square {
+    flex: 0 0 auto;
+    width: 4.25rem;
+    padding: 0.5rem 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.date-square:hover {
+    border-color: var(--color-primary);
+}
+
+.date-square-active {
+    border-color: var(--color-primary);
+    border-width: 2px;
+    box-shadow: var(--shadow-sm);
+}
+
+.date-square-month {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+}
+
+.date-square-day {
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.date-square-weekday {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+}
+
+.date-square-cancelled .date-square-day {
+    text-decoration: line-through;
+    color: var(--color-text-muted);
+}
+
 /* === Category Filter Bar === */
 .category-filter-bar {
     background: var(--color-surface);
