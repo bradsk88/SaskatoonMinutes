@@ -1185,6 +1185,19 @@
         const bar = document.getElementById('category-filter-bar');
         const toggle = document.getElementById('filter-toggle');
 
+        // ?filters=chips|stripes|stripes-fwd|slant|cascade picks the
+        // visual variant of the filter bar. Default is the pill chips.
+        // Purely presentational; category slugs and filter logic are
+        // untouched, so a shared URL with a variant still filters the
+        // same way.
+        const filterMode = new URLSearchParams(location.search).get('filters') || 'chips';
+        if (['stripes', 'stripes-fwd', 'slant', 'cascade'].includes(filterMode)) {
+            bar.classList.add(`filters-${filterMode}`);
+        }
+        if (filterMode === 'cascade') {
+            bar.classList.add('filters-cascade');
+        }
+
         toggle.addEventListener('click', () => {
             const open = bar.classList.toggle('filter-bar-open');
             toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -1193,7 +1206,25 @@
         ALL_CATEGORIES.forEach(cat => {
             const chip = document.createElement('button');
             chip.className = `filter-chip badge topic-badge badge-${cat.slug}`;
-            chip.textContent = cat.label;
+            if (filterMode === 'cascade') {
+                // Cascade renders each letter as its own span so CSS
+                // can offset them diagonally, like a word flowing
+                // downhill. aria-label preserves the full word for
+                // screen readers, which would otherwise read the
+                // letters individually.
+                chip.setAttribute('aria-label', cat.label);
+                chip.style.setProperty('--n', cat.label.length);
+                [...cat.label].forEach((ch, i) => {
+                    const s = document.createElement('span');
+                    s.className = 'cascade-letter';
+                    s.textContent = ch === ' ' ? '\u00a0' : ch;
+                    s.style.setProperty('--i', i);
+                    s.setAttribute('aria-hidden', 'true');
+                    chip.appendChild(s);
+                });
+            } else {
+                chip.textContent = cat.label;
+            }
             chip.dataset.slug = cat.slug;
             chip.addEventListener('click', () => {
                 if (selectedCategories.has(cat.slug)) {
