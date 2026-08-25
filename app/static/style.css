@@ -91,12 +91,19 @@ nav {
 .meeting-type-tabs {
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
+}
+
+/* The wrap owns the 1100px cap and the side gutters, so the scroll
+   arrows sit in the gutters at each end of the strip and never cover a
+   tab. The strip is only the scrolling track between them. */
+.tabs-wrap {
+    position: relative;
+    max-width: 1100px;
+    margin: 0 auto;
     padding: 0 1.5rem;
 }
 
 .tabs-inner {
-    max-width: 1100px;
-    margin: 0 auto;
     display: flex;
     gap: 0;
     overflow-x: auto;
@@ -106,6 +113,46 @@ nav {
 
 .tabs-inner::-webkit-scrollbar {
     display: none;
+}
+
+/* The strip is otherwise scrollable only by gesture (Ctrl+scroll on a
+   mouse, a swipe on touch), which is the path the report flagged. The
+   arrows make it explicit: one at each end, enabled only while more
+   strip lies that way. Disabled to start so a pre-JS paint shows no
+   dead arrow; update() opens the ones that reach past the edge. */
+.tab-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-text-muted);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.tab-arrow-left { left: 0; }
+.tab-arrow-right { right: 0; }
+.tab-arrow:hover { color: var(--color-text); }
+
+.tab-arrow:disabled {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.tab-arrow:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
 }
 
 .meeting-tab {

@@ -14,11 +14,17 @@
 </section>
 
 <section class="meeting-type-tabs" id="meeting-type-tabs">
-    <div class="tabs-inner">
-        {% for tab in meeting_tabs %}
-        <button class="meeting-tab{% if loop.first %} meeting-tab-active{% endif %}"
-                data-slug="{{ tab.slug }}">{{ tab.label }}</button>
-        {% endfor %}
+    <div class="tabs-wrap">
+        <button class="tab-arrow tab-arrow-left" id="tab-scroll-left"
+                type="button" aria-label="Scroll meeting types left" disabled>&lsaquo;</button>
+        <div class="tabs-inner">
+            {% for tab in meeting_tabs %}
+            <button class="meeting-tab{% if loop.first %} meeting-tab-active{% endif %}"
+                    data-slug="{{ tab.slug }}">{{ tab.label }}</button>
+            {% endfor %}
+        </div>
+        <button class="tab-arrow tab-arrow-right" id="tab-scroll-right"
+                type="button" aria-label="Scroll meeting types right" disabled>&rsaquo;</button>
     </div>
 </section>
 
@@ -1322,9 +1328,41 @@
         });
     }
 
+    function initTabArrows() {
+        const strip = document.querySelector('.tabs-inner');
+        const left = document.getElementById('tab-scroll-left');
+        const right = document.getElementById('tab-scroll-right');
+        if (!strip || !left || !right) return;
+
+        // One tap advances about half the strip (never less than a few
+        // tabs), so a reader moves a real chunk rather than a sliver.
+        const step = () => Math.max(180, Math.round(strip.clientWidth * 0.5));
+
+        function update() {
+            // A disabled arrow is neither clickable nor focusable, so a
+            // reader cannot tab to a dead control at either end.
+            left.disabled = strip.scrollLeft <= 0;
+            right.disabled =
+                strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 1;
+        }
+
+        left.addEventListener('click', () =>
+            strip.scrollBy({ left: -step(), behavior: 'smooth' }));
+        right.addEventListener('click', () =>
+            strip.scrollBy({ left: step(), behavior: 'smooth' }));
+        strip.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+        update();
+        // The row is re-sorted by recency after the first data pass,
+        // which can change the overflow; re-check once layout settles.
+        requestAnimationFrame(update);
+        setTimeout(update, 200);
+    }
+
     async function init() {
         initFilterBar();
         initTabs();
+        initTabArrows();
         const container = document.getElementById('meetings-list');
 
         // Static mode: use preloaded data if available
