@@ -166,9 +166,9 @@ nav {
     /* "safe" keeps overflow scrollable: a plain center would clip the
        leftmost squares when the row is wider than the screen. */
     justify-content: safe center;
-    /* Equal air above and below the row of squares. */
-    padding: 1rem 0;
-    margin: 1rem 0;
+    /* A compact row, not a padded banner: small air above and below. */
+    padding: 0.25rem 0;
+    margin: 0.5rem 0;
 }
 
 .date-square {
@@ -342,7 +342,7 @@ nav {
    mouse user would click, so a keyboard-only reader sees the same path. */
 .meeting-tab:focus-visible,
 .filter-chip:focus-visible,
-.meeting-title:focus-visible {
+.meeting-card-header:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
 }
@@ -493,18 +493,29 @@ main {
 }
 
 .meeting-title {
-    font-weight: 600;
-    font-size: 1rem;
-    margin-bottom: 0.5rem;
+    font-weight: 700;
+    font-size: 1.05rem;
     line-height: 1.4;
-    /* The title is a link to the meeting: the green reads as "open this",
-       and the underline on hover is the tap cue. */
-    color: var(--color-primary);
-    text-decoration: none;
+    color: inherit;
 }
 
-.meeting-title:hover {
-    text-decoration: underline;
+/* The whole header (date + title) is the link. A coloured bar reads as a
+   tap target; it bleeds to the card's edges to sit flush with the border
+   and darkens a hair on hover. The card's own border also turns green on
+   hover, so the header and card give the same cue together. */
+.meeting-card-header {
+    display: block;
+    background: var(--color-primary-light);
+    color: inherit;
+    text-decoration: none;
+    border-radius: 8px 8px 0 0;
+    margin: -1.25rem -1.25rem 0;
+    padding: 0.75rem 1.25rem;
+    transition: filter 0.15s;
+}
+
+.meeting-card-header:hover {
+    filter: brightness(0.96);
 }
 
 /* === Badges === */

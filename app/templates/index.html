@@ -509,8 +509,10 @@
         // The footer that used to hold a lone Open button is now built
         // with the topics, so it can say how many items are not shown.
         return `
-            <div class="meeting-date">${escapeAttr(dateStr)}${time ? ` &middot; ${escapeAttr(time)}` : ''}${cancelledBadge}${noVideoBadge}</div>
-            <a href="${escapeAttr(openHref)}" class="meeting-title">${escapeAttr(cardTitle)}</a>
+            <a href="${escapeAttr(openHref)}" class="meeting-card-header">
+                <div class="meeting-date">${escapeAttr(dateStr)}${time ? ` &middot; ${escapeAttr(time)}` : ''}${cancelledBadge}${noVideoBadge}</div>
+                <div class="meeting-title">${escapeAttr(cardTitle)}</div>
+            </a>
             ${topicsHtml}
         `;
     }
