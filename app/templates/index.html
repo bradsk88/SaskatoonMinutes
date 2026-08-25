@@ -510,7 +510,7 @@
         // with the topics, so it can say how many items are not shown.
         return `
             <div class="meeting-date">${escapeAttr(dateStr)}${time ? ` &middot; ${escapeAttr(time)}` : ''}${cancelledBadge}${noVideoBadge}</div>
-            <div class="meeting-title">${escapeAttr(cardTitle)}</div>
+            <a href="${escapeAttr(openHref)}" class="meeting-title">${escapeAttr(cardTitle)}</a>
             ${topicsHtml}
         `;
     }

@@ -451,6 +451,10 @@ main {
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    /* The filter bar has a bottom border and shadow; without this gap
+       the first card abuts it. Matching the 1rem card-to-card gap keeps
+       the rhythm even above the first card. */
+    margin-top: 1rem;
 }
 
 .meeting-card {
@@ -481,6 +485,14 @@ main {
     font-size: 1rem;
     margin-bottom: 0.5rem;
     line-height: 1.4;
+    /* The title is a link to the meeting: the green reads as "open this",
+       and the underline on hover is the tap cue. */
+    color: var(--color-primary);
+    text-decoration: none;
+}
+
+.meeting-title:hover {
+    text-decoration: underline;
 }
 
 /* === Badges === */
