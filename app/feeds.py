@@ -334,21 +334,33 @@ def _esc(text: str) -> str:
 
 
 def _day_content_html(meetings: list[dict]) -> str:
-    """A day's meetings, bodies as headings, items beneath each."""
+    """A day's meetings, bodies as headings only when more than one sat.
+
+    A single-body day names its body in the entry title already, so a
+    heading that repeats it spends a line a preview cannot spare -- and
+    a reader that shows only the top line or two never reaches the item
+    beneath it. When several bodies sat, the heading stays: it keeps the
+    one body's items apart from another's, both for a reader that cuts
+    off after the first and for one that expands to see the rest.
+    """
+    rows = [
+        (meeting, qualifying_items(meeting.get("agenda_items") or []))
+        for meeting in sorted(meetings, key=lambda m: (m.get("body") or ""))
+    ]
+    rows = [(meeting, items) for meeting, items in rows if items]
+    heading = len(rows) > 1
     parts = []
-    for meeting in sorted(meetings, key=lambda m: (m.get("body") or "")):
-        items = qualifying_items(meeting.get("agenda_items") or [])
-        if not items:
-            continue
+    for meeting, items in rows:
         body = meeting.get("body") or meeting.get("title") or "Meeting"
-        parts.append(f"<h3>{_esc(body)}</h3>")
+        if heading:
+            parts.append(f"<h3>{_esc(body)}</h3>")
         for item in items:
             url = item_url(meeting["meeting_id"], item)
             outcome = item_outcome(item)
-            heading = f'<p><a href="{_esc(url)}">{_esc(item_title(item))}</a>'
+            line = f'<p><a href="{_esc(url)}">{_esc(item_title(item))}</a>'
             if outcome:
-                heading += f" — {_esc(outcome)}"
-            parts.append(heading + "</p>")
+                line += f" — {_esc(outcome)}"
+            parts.append(line + "</p>")
             parts.append(item_content_html(meeting, item, include_context=False))
     parts.append(f"<p><small>{_esc(AI_DISCLOSURE)} {_esc(_SOURCE_NOTE)}</small></p>")
     return "".join(parts)

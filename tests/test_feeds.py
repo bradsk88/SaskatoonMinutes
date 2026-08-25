@@ -209,6 +209,17 @@ class DayEntries(unittest.TestCase):
         self.assertIn("<h3>City Council</h3>", content)
         self.assertIn("<h3>Planning &amp; Dev</h3>", content)
 
+    def test_a_single_body_day_does_not_repeat_its_body_as_a_heading(self):
+        """The body is already in the title, so a heading that repeats it
+
+        spends a line a preview cannot spare, and cuts off the item's
+        gist beneath it.  A day with one body leads straight to the item.
+        """
+        single = self.feed().findall(f"{ATOM}entry")[1]  # 2026-07-13, Council alone
+        content = single.find(f"{ATOM}content").text
+        self.assertNotIn("<h3>", content)
+        self.assertTrue(content.lstrip().startswith("<p><a"))
+
     def test_items_link_to_their_own_anchor(self):
         content = self.feed().findall(f"{ATOM}entry")[0].find(f"{ATOM}content").text
         self.assertIn(
