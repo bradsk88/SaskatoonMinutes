@@ -1050,6 +1050,12 @@
         picker.className = 'date-picker-row';
         const grid = document.createElement('div');
         grid.className = 'meetings-grid';
+        // #meetings-list is already a flex column with a 1rem gap and a
+        // 1rem top margin, so the row of date squares has 1rem above it
+        // (the top margin) and 1rem below it (the gap). This grid's own
+        // 1rem top margin would add a second 1rem under the squares and
+        // break that balance.
+        grid.style.marginTop = '0';
 
         function select(idx) {
             picker.querySelectorAll('.date-square').forEach((sq, i) => {
