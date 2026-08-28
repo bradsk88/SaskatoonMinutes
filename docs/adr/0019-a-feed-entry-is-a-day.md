@@ -1,5 +1,9 @@
 # A feed entry is a day the city sat, not a meeting and not an item, because granularity is the one thing a feed cannot change later
 
+> Reversed 2026-08-28: the default feed is now one entry per meeting,
+> not per day. The decision recorded here was the right call when it
+> was written and is superseded. See the Reversal section at the end.
+
 The index is going out as a feed (`TODO.md` item 12, `0017`). The unit had three candidates: an agenda item, a meeting, or a calendar day.
 
 Granularity is close to irreversible. A subscriber's reader remembers entries by their `id`. Change what an entry *is* and every `id` changes, so every entry in the retention window reappears as unread — for everyone, at once, with no way to say sorry. Nothing else about the feed carries that cost: the ranking can be retuned, the entry body rewritten, the retention raised, and a subscriber sees only that the next entry is better.
@@ -35,3 +39,34 @@ The gap this leaves is narrow: a day published thin under the seven-day fallback
 Retention is 30 day-entries and 100 item-entries — roughly three months either way. The build has enough data for far more (20 meetings per tab across 16 tabs), but most readers import every entry in the file on first subscribe, and a new subscriber's first experience should not be three hundred unread items dating back a year. The archive stays on the site; the feed is a notification channel, not a mirror.
 
 An entry links to `/meeting/<meeting_id>.html#item-<item_id>` and uses that URL as its `id`. That anchor did not exist — deep links were `?t=<ms>` only, which Consent Items cannot use — so the feed closes `TODO.md` item 7 as a side effect. The `id` is only as stable as eSCRIBE's `item_id`, which the summaries cache has been keyed on all along; if it churned, cached summaries would have detached from old meetings long ago.
+
+## Reversal, 2026-08-28
+
+The decision above was reversed: the default feed (`/feed.xml`) is now
+one entry per meeting, not per day. A busy Tuesday on which Planning
+and Transportation both sat is two entries, not one.
+
+The original argument for a day stood on the granularity being close to
+irreversible: change what an entry is, and every `id` changes, so
+every entry reappears as unread. That cost is real, and it is being
+paid here. Every entry's `id` moves from `/feed/day/<day>` to
+`/feed/meeting/<meeting_id>`, so every subscriber sees the whole feed
+as unread once. That is the price of the change, accepted, and it
+happens one time.
+
+Why the call flipped. The day framing was a convenience, not a promise
+a reader depends on. A reader who wants each body as its own thing
+reaches for the second feed anyway, and a reader who wants a day's
+news can see the day's meetings side by side in the reader's list. A
+per-meeting entry names one body in its title, links to one meeting's
+page, and carries that meeting's items and topics, so a reader that
+filters by body or links back never has to guess which of several
+bodies an item came from. The day entry needed a body heading and a
+home link only because it could not say that.
+
+The two settled feeds still differ only in granularity, the
+constraint from ADR 0018 that is untouched. The meeting feed is one
+entry per meeting and the item feed one entry per qualifying item, and
+both build from the same settled days and the same gate, ranking, and
+cap. A meeting whose video has not arrived still holds its day in both
+feeds, not just the day feed.

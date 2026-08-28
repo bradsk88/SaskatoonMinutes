@@ -1,4 +1,4 @@
-"""The Atom feeds: what qualifies, when a day publishes, and valid XML."""
+"""The Atom feeds: what qualifies, when a meeting publishes, and valid XML."""
 
 import os
 import re
@@ -152,14 +152,14 @@ class Settling(unittest.TestCase):
         day = [meeting("a", day="2026-07-01", has_summaries=False)]
         self.assertTrue(feeds.is_settled(day, date(2026, 7, 20)))
 
-    def test_an_unsettled_day_publishes_nothing(self):
+    def test_an_unsettled_meeting_publishes_nothing(self):
         meetings = [meeting("a", has_summaries=False,
                             items=[item(1, "A", description=["x"])])]
-        xml = feeds.build_day_feed(meetings, date(2026, 7, 21))
+        xml = feeds.build_meeting_feed(meetings, date(2026, 7, 21))
         self.assertEqual(0, len(ET.fromstring(xml).findall(f"{ATOM}entry")))
 
 
-class DayEntries(unittest.TestCase):
+class MeetingEntries(unittest.TestCase):
     def setUp(self):
         self.meetings = [
             meeting("council-1", day="2026-07-20", body="City Council",
@@ -180,68 +180,75 @@ class DayEntries(unittest.TestCase):
         ]
 
     def feed(self):
-        return ET.fromstring(feeds.build_day_feed(self.meetings, date(2026, 7, 27)))
+        return ET.fromstring(
+            feeds.build_meeting_feed(self.meetings, date(2026, 7, 27)))
 
-    def test_a_day_entry_carries_the_union_of_its_items_topics(self):
-        entry = self.feed().findall(f"{ATOM}entry")[0]
-        terms = [c.get("term") for c in entry.findall(f"{ATOM}category")]
-        self.assertEqual(["council", "planning", "Debate Highlight"], terms)
+    def entries(self):
+        return self.feed().findall(f"{ATOM}entry")
 
-    def test_two_bodies_on_one_day_are_one_entry(self):
-        entries = self.feed().findall(f"{ATOM}entry")
-        self.assertEqual(2, len(entries))
+    def test_each_meeting_is_its_own_entry(self):
+        """Two bodies on one day are two entries, not one.
 
-    def test_the_title_names_the_day_and_its_bodies(self):
-        first = self.feed().findall(f"{ATOM}entry")[0]
+        A busy Tuesday is three entries, not a single day entry.
+        """
+        self.assertEqual(3, len(self.entries()))
+
+    def test_a_meeting_entry_carries_its_items_topics(self):
+        first = self.entries()[0]
+        terms = [c.get("term") for c in first.findall(f"{ATOM}category")]
+        self.assertEqual(["council", "Debate Highlight"], terms)
+
+    def test_the_title_names_the_meeting_and_its_body(self):
+        first = self.entries()[0]
         self.assertEqual(
-            "July 20, 2026 · City Council, Planning & Dev",
+            "July 20, 2026 · City Council",
             first.find(f"{ATOM}title").text,
         )
 
-    def test_newest_day_first(self):
-        titles = [e.find(f"{ATOM}title").text
-                  for e in self.feed().findall(f"{ATOM}entry")]
+    def test_newest_meeting_first(self):
+        titles = [e.find(f"{ATOM}title").text for e in self.entries()]
         self.assertTrue(titles[0].startswith("July 20"))
-        self.assertTrue(titles[1].startswith("July 13"))
+        self.assertTrue(titles[-1].startswith("July 13"))
 
-    def test_a_day_entry_carries_every_body_as_a_heading(self):
-        content = self.feed().findall(f"{ATOM}entry")[0].find(f"{ATOM}content").text
-        self.assertIn("<h3>City Council</h3>", content)
-        self.assertIn("<h3>Planning &amp; Dev</h3>", content)
+    def test_same_day_meetings_order_by_body(self):
+        """Within a day the meetings run in body order, not as one entry."""
+        titles = [e.find(f"{ATOM}title").text for e in self.entries()]
+        self.assertTrue(titles[0].startswith("July 20, 2026 · City Council"))
+        self.assertTrue(titles[1].startswith("July 20, 2026 · Planning & Dev"))
 
-    def test_a_single_body_day_does_not_repeat_its_body_as_a_heading(self):
-        """The body is already in the title, so a heading that repeats it
+    def test_no_entry_carries_a_body_heading(self):
+        """The body is in the title, so no entry repeats it as a heading.
 
-        spends a line a preview cannot spare, and cuts off the item's
-        gist beneath it.  A day with one body leads straight to the item.
+        A heading that repeats it spends a line a preview cannot spare,
+        and cuts off the item's gist beneath it; a meeting leads straight
+        to its item.
         """
-        single = self.feed().findall(f"{ATOM}entry")[1]  # 2026-07-13, Council alone
-        content = single.find(f"{ATOM}content").text
-        self.assertNotIn("<h3>", content)
-        self.assertTrue(content.lstrip().startswith("<p><a"))
+        for entry in self.entries():
+            content = entry.find(f"{ATOM}content").text
+            self.assertNotIn("<h3>", content)
+            self.assertTrue(content.lstrip().startswith("<p><a"))
 
     def test_items_link_to_their_own_anchor(self):
-        content = self.feed().findall(f"{ATOM}entry")[0].find(f"{ATOM}content").text
+        content = self.entries()[0].find(f"{ATOM}content").text
         self.assertIn(
             "https://yxeminutes.ca/meeting/council-1.html#item-11", content,
         )
 
-    def test_a_multi_body_day_points_home_rather_than_at_one_meeting(self):
-        link = self.feed().findall(f"{ATOM}entry")[0].find(f"{ATOM}link")
-        self.assertEqual("https://yxeminutes.ca/", link.get("href"))
-
-    def test_a_single_meeting_day_points_at_that_meeting(self):
-        link = self.feed().findall(f"{ATOM}entry")[1].find(f"{ATOM}link")
+    def test_each_meeting_points_at_its_own_page(self):
+        links = [e.find(f"{ATOM}link").get("href") for e in self.entries()]
         self.assertEqual(
-            "https://yxeminutes.ca/meeting/council-2.html", link.get("href"),
+            ["https://yxeminutes.ca/meeting/council-1.html",
+             "https://yxeminutes.ca/meeting/planning-1.html",
+             "https://yxeminutes.ca/meeting/council-2.html"],
+            links,
         )
 
-    def test_every_day_entry_carries_the_ai_disclosure(self):
-        for entry in self.feed().findall(f"{ATOM}entry"):
+    def test_every_meeting_entry_carries_the_ai_disclosure(self):
+        for entry in self.entries():
             self.assertIn("AI-generated", entry.find(f"{ATOM}content").text)
 
     def test_timestamps_come_from_the_meeting_date_not_the_build(self):
-        first = self.feed().findall(f"{ATOM}entry")[0]
+        first = self.entries()[0]
         self.assertEqual(
             "2026-07-20T12:00:00-06:00", first.find(f"{ATOM}updated").text,
         )
@@ -249,15 +256,15 @@ class DayEntries(unittest.TestCase):
     def test_an_entry_lands_on_its_own_day_in_saskatoon(self):
         """Midnight UTC is the evening before here, and read a day early."""
         stamp = datetime.fromisoformat(
-            self.feed().findall(f"{ATOM}entry")[0].find(f"{ATOM}updated").text
+            self.entries()[0].find(f"{ATOM}updated").text
         )
         local = stamp.astimezone(timezone(timedelta(hours=-6)))
         self.assertEqual(date(2026, 7, 20), local.date())
 
     def test_rebuilding_on_a_later_day_changes_nothing(self):
         """The deploy runs six times a day; subscribers must see one entry."""
-        first = feeds.build_day_feed(self.meetings, date(2026, 7, 27))
-        later = feeds.build_day_feed(self.meetings, date(2026, 8, 3))
+        first = feeds.build_meeting_feed(self.meetings, date(2026, 7, 27))
+        later = feeds.build_meeting_feed(self.meetings, date(2026, 8, 3))
         self.assertEqual(first, later)
 
 
@@ -326,15 +333,15 @@ class ItemEntries(unittest.TestCase):
 
 
 class Retention(unittest.TestCase):
-    def test_day_feed_is_capped(self):
+    def test_meeting_feed_is_capped(self):
         meetings = [
             meeting(f"m{n}", day=f"2026-0{1 + n // 28}-{1 + n % 28:02d}",
                     items=[item(1, "A", description=["x"])])
             for n in range(50)
         ]
-        xml = feeds.build_day_feed(meetings, date(2026, 12, 1))
+        xml = feeds.build_meeting_feed(meetings, date(2026, 12, 1))
         self.assertEqual(
-            feeds.MAX_DAY_ENTRIES,
+            feeds.MAX_MEETING_ENTRIES,
             len(ET.fromstring(xml).findall(f"{ATOM}entry")),
         )
 

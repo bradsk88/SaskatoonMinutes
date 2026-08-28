@@ -286,8 +286,8 @@ this is the way to pay it down.
 
 Built 2026-07-28. Two files, written by `app/feeds.py` on every build:
 
-- `/feed.xml` — one entry per calendar day the city sat, bodies as
-  headings inside it. The default.
+- `/feed.xml` — one entry per meeting the city sat, that meeting's
+  qualifying items as its body. The default.
 - `/feed-items.xml` — one entry per qualifying item.
 
 The gate held: an item earns an entry with a Description or an

@@ -703,10 +703,10 @@ def main():
         shutil.copy2(cname_path, os.path.join(OUTPUT_DIR, "CNAME"))
 
     # The feeds are regenerated from scratch on every build and keep no
-    # record of what they published.  That is safe because entry ids and
-    # timestamps come from the meeting date rather than from build time,
-    # so a rebuild whose data has not moved is byte-identical and no
-    # subscriber sees anything (ADR 0019).
+    # record of what they published.  That is safe because entry ids come
+    # from the meeting id and timestamps from the meeting date, neither
+    # from build time, so a rebuild whose data has not moved is
+    # byte-identical and no subscriber sees anything (ADR 0019).
     feeds = build_feeds(feed_meetings, date.today())
     # The Future Feed is built separately: its input is Scheduled
     # Meetings, not the settled-meeting dicts the other two read

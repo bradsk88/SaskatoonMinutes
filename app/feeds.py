@@ -1,10 +1,10 @@
 """Atom feeds for the static site.
 
-Two feeds, differing only in granularity and never in what qualifies
-(ADR ``0019``):
+Two settled feeds, differing only in granularity and never in what
+qualifies (ADR ``0019``):
 
-- ``/feed.xml`` — one entry per calendar day the city sat, with the
-  bodies that sat that day as headings inside it.  The default.
+- ``/feed.xml`` — one entry per meeting the city sat, that meeting's
+  qualifying items as its body.  The default.
 - ``/feed-items.xml`` — one entry per qualifying agenda item.
 
 An item qualifies by having something to say — a Description or an
@@ -37,7 +37,7 @@ SITE_URL = "https://yxeminutes.ca"
 FEED_TITLE = "YXEMinutes"
 FEED_SUBTITLE = "What Saskatoon city council actually decided"
 
-DAY_FEED_PATH = "feed.xml"
+MEETING_FEED_PATH = "feed.xml"
 ITEM_FEED_PATH = "feed-items.xml"
 FUTURE_FEED_PATH = "feed-future.xml"
 
@@ -52,7 +52,7 @@ NO_AGENDA_FALLBACK_DAYS = 3
 # someone subscribes, and a new subscriber's first experience should not
 # be three hundred unread items dating back a year.  The archive is on
 # the site; the feed is a notification channel, not a mirror.
-MAX_DAY_ENTRIES = 30
+MAX_MEETING_ENTRIES = 30
 MAX_ITEM_ENTRIES = 100
 
 # Per meeting, not per day: a day on which four committees sat has more
@@ -200,9 +200,10 @@ def _parse_date(iso: str | None) -> date | None:
 def days_to_publish(meetings: list[dict], today: date) -> list[tuple[str, list[dict]]]:
     """Settled days, newest first, each with the meetings that sat on it.
 
-    A day, not a meeting: committees stack, and a Tuesday on which
-    Planning and Transportation both sat is one reading session rather
-    than two entries (ADR ``0019``).
+    Both settled feeds build from this same grouping, so they publish
+    the same meetings at the same time and differ only in granularity
+    (ADR ``0019``): the default one entry per meeting, the item feed
+    one entry per qualifying item.
     """
     by_day: dict[str, list[dict]] = {}
     for meeting in meetings:
@@ -333,60 +334,40 @@ def _esc(text: str) -> str:
     )
 
 
-def _day_content_html(meetings: list[dict]) -> str:
-    """A day's meetings, bodies as headings only when more than one sat.
+def _meeting_content_html(meeting: dict, items: list[dict]) -> str:
+    """A meeting's qualifying items, each a linked line plus its body.
 
-    A single-body day names its body in the entry title already, so a
-    heading that repeats it spends a line a preview cannot spare -- and
-    a reader that shows only the top line or two never reaches the item
-    beneath it. When several bodies sat, the heading stays: it keeps the
-    one body's items apart from another's, both for a reader that cuts
-    off after the first and for one that expands to see the rest.
+    No body heading: the body is already in the entry title, so a heading
+    that repeats it spends a line a preview cannot spare -- and a reader
+    that shows only the top line or two never reaches the item beneath it.
     """
-    rows = [
-        (meeting, qualifying_items(meeting.get("agenda_items") or []))
-        for meeting in sorted(meetings, key=lambda m: (m.get("body") or ""))
-    ]
-    rows = [(meeting, items) for meeting, items in rows if items]
-    heading = len(rows) > 1
     parts = []
-    for meeting, items in rows:
-        body = meeting.get("body") or meeting.get("title") or "Meeting"
-        if heading:
-            parts.append(f"<h3>{_esc(body)}</h3>")
-        for item in items:
-            url = item_url(meeting["meeting_id"], item)
-            outcome = item_outcome(item)
-            line = f'<p><a href="{_esc(url)}">{_esc(item_title(item))}</a>'
-            if outcome:
-                line += f" — {_esc(outcome)}"
-            parts.append(line + "</p>")
-            parts.append(item_content_html(meeting, item, include_context=False))
+    for item in items:
+        url = item_url(meeting["meeting_id"], item)
+        outcome = item_outcome(item)
+        line = f'<p><a href="{_esc(url)}">{_esc(item_title(item))}</a>'
+        if outcome:
+            line += f" — {_esc(outcome)}"
+        parts.append(line + "</p>")
+        parts.append(item_content_html(meeting, item, include_context=False))
     parts.append(f"<p><small>{_esc(AI_DISCLOSURE)} {_esc(_SOURCE_NOTE)}</small></p>")
     return "".join(parts)
 
 
-def _day_title(day: str, meetings: list[dict]) -> str:
-    bodies = []
-    for meeting in sorted(meetings, key=lambda m: (m.get("body") or "")):
-        body = (meeting.get("body") or "").strip()
-        if body and body not in bodies:
-            bodies.append(body)
-    if not bodies:
-        return readable_date(day)
-    return f"{readable_date(day)} · {', '.join(bodies)}"
+def _meeting_title(meeting: dict) -> str:
+    """``December 17, 2025 · Planning & Development``.
 
-
-def _day_link(meetings: list[dict]) -> str:
-    """Where a day entry points.
-
-    One meeting, and it points at that meeting's page.  More than one,
-    and there is no single page to send a reader to -- every item inside
-    the entry is linked individually, so the entry itself points home.
+    The date leads and the body follows; a meeting with no body falls
+    back to the date alone.
     """
-    if len(meetings) == 1:
-        return f"{SITE_URL}/meeting/{meetings[0]['meeting_id']}.html"
-    return f"{SITE_URL}/"
+    body = (meeting.get("body") or "").strip()
+    day = (meeting.get("date") or "").strip()
+    return f"{readable_date(day)} · {body}" if body else readable_date(day)
+
+
+def _meeting_link(meeting: dict) -> str:
+    """Where a meeting entry points: that meeting's own detail page."""
+    return f"{SITE_URL}/meeting/{meeting['meeting_id']}.html"
 
 
 # --------------------------------------------------------------------------
@@ -458,28 +439,44 @@ def _serialize(feed: ET.Element) -> str:
     )
 
 
-def build_day_feed(meetings: list[dict], today: date) -> str:
-    """The default feed: one entry per calendar day the city sat."""
-    days = days_to_publish(meetings, today)[:MAX_DAY_ENTRIES]
-    updated = _timestamp(days[0][0]) if days else _timestamp("")
-    feed = _feed_root(FEED_TITLE, DAY_FEED_PATH, updated)
-    for day, day_meetings in days:
+def _meeting_categories(meeting: dict, items: list[dict]) -> list[str]:
+    """The meeting's body plus its items' topic tags, a reader's filters.
+
+    A category subscriber turns these into topic subscriptions -- every
+    item carrying a ``Cost & Funding`` chip is an item about money.
+    """
+    return [meeting.get("body_slug") or ""] + sorted({
+        topic
+        for item in items
+        for topic in item_topics(item)
+    })
+
+
+def build_meeting_feed(meetings: list[dict], today: date) -> str:
+    """The default feed: one entry per meeting the city sat.
+
+    A meeting is the unit, not a day: committees stack, and a Tuesday on
+    which Planning and Transportation both sat is two entries rather
+    than one, each naming the body that met (ADR ``0019``).
+    """
+    rows = []
+    for day, day_meetings in days_to_publish(meetings, today):
+        for meeting in sorted(day_meetings, key=lambda m: (m.get("body") or "")):
+            items = qualifying_items(meeting.get("agenda_items") or [])
+            if items:
+                rows.append((meeting, items, day))
+    rows = rows[:MAX_MEETING_ENTRIES]
+    updated = _timestamp(rows[0][2]) if rows else _timestamp("")
+    feed = _feed_root(FEED_TITLE, MEETING_FEED_PATH, updated)
+    for meeting, items, day in rows:
         _add_entry(
             feed,
-            entry_id=f"{SITE_URL}/feed/day/{day}",
-            title=_day_title(day, day_meetings),
-            link=_day_link(day_meetings),
+            entry_id=f"{SITE_URL}/feed/meeting/{meeting['meeting_id']}",
+            title=_meeting_title(meeting),
+            link=_meeting_link(meeting),
             updated=_timestamp(day),
-            content=_day_content_html(day_meetings),
-            categories=(
-                sorted({m.get("body_slug") or "" for m in day_meetings})
-                + sorted({
-                    topic
-                    for m in day_meetings
-                    for item in qualifying_items(m.get("agenda_items") or [])
-                    for topic in item_topics(item)
-                })
-            ),
+            content=_meeting_content_html(meeting, items),
+            categories=_meeting_categories(meeting, items),
         )
     return _serialize(feed)
 
@@ -487,10 +484,10 @@ def build_day_feed(meetings: list[dict], today: date) -> str:
 def build_item_feed(meetings: list[dict], today: date) -> str:
     """The second feed: one entry per qualifying item.
 
-    Same gate, same ranking, same cap as the day feed -- the two differ
-    only in granularity.  Two feeds with two thresholds would make one a
-    subset of the other, so anyone subscribed to both would see the
-    important items twice.
+    Same gate, same ranking, same cap as the meeting feed -- the two
+    differ only in granularity.  Two feeds with two thresholds would
+    make one a subset of the other, so anyone subscribed to both would
+    see the important items twice.
     """
     days = days_to_publish(meetings, today)
     entries: list[tuple[str, dict, dict]] = []
@@ -633,6 +630,6 @@ def build_feeds(meetings: list[dict], today: date) -> dict[str, str]:
     it renders, so the feeds cost no second fetch.
     """
     return {
-        DAY_FEED_PATH: build_day_feed(meetings, today),
+        MEETING_FEED_PATH: build_meeting_feed(meetings, today),
         ITEM_FEED_PATH: build_item_feed(meetings, today),
     }

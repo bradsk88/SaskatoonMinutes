@@ -8,7 +8,7 @@
     <!-- Root-relative rather than absolute: a meeting page sits one
          directory down, and the same markup has to be right on the Flask
          app as on the deployed site. -->
-    <link rel="alternate" type="application/atom+xml" title="YXEMinutes — daily" href="/feed.xml">
+    <link rel="alternate" type="application/atom+xml" title="YXEMinutes — meetings" href="/feed.xml">
     <link rel="alternate" type="application/atom+xml" title="YXEMinutes — every item" href="/feed-items.xml">
     <link rel="alternate" type="application/atom+xml" title="YXEMinutes — upcoming meetings" href="/feed-future.xml">
 </head>
@@ -19,7 +19,7 @@
             <!-- Before the tagline, because it shares the tagline's line
                  with nothing: the tagline takes a full line of its own,
                  so an icon written after it lands on a third line.
-                 The daily feed, not the per-item one -- the header has
+                 The meeting feed, not the per-item one -- the header has
                  room for one, and a reader who wants every item can find
                  the second in the footer. -->
             <a href="/feed.xml" class="feed-icon" aria-label="Subscribe by RSS" title="Subscribe by RSS">
@@ -49,7 +49,7 @@
              is for someone coming back, not for a first visit. -->
         <p class="footer-feeds">
             Follow by feed —
-            <a href="/feed.xml">a day at a time</a>
+            <a href="/feed.xml">a meeting at a time</a>
             or <a href="/feed-items.xml">every item</a>.
         </p>
     </footer>
