@@ -59,10 +59,9 @@ MAX_ITEM_ENTRIES = 100
 # genuinely happening in it than a day on which one did.
 MAX_ITEMS_PER_MEETING = 8
 
-# How long a day waits for the pipeline before publishing anyway.  A
-# meeting whose video never arrives must not hold its day hostage
-# forever, and a day missing from the feed is a worse error than a day
-# that later improves.
+# How long a meeting waits for the pipeline before publishing anyway.  A
+# meeting whose video never arrives must not wait forever, and a meeting
+# missing from the feed is a worse error than one that later improves.
 SETTLE_DAYS = 7
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
@@ -173,18 +172,20 @@ def takeaway(item: dict) -> dict | None:
     return chips[0] if chips else None
 
 
-def is_settled(meetings: list[dict], today: date) -> bool:
-    """Whether a day's meetings are done being summarized.
+def is_settled(meeting: dict, today: date) -> bool:
+    """Whether one meeting is done being summarized.
 
     Publishing on first qualification would send a thin entry that fills
     in later, and a reader who saw the thin one is never shown the full
     one -- most readers render a changed entry once and never resurface
-    it.  So a day waits until every meeting on it has summaries, or
-    until ``SETTLE_DAYS`` have passed and it is published as it stands.
+    it.  So a meeting waits until it has summaries, or until
+    ``SETTLE_DAYS`` have passed and it is published as it stands. A
+    meeting settles on its own and does not wait on a sibling that sat
+    the same day.
     """
-    if all(m.get("has_summaries") for m in meetings):
+    if meeting.get("has_summaries"):
         return True
-    day = _parse_date(meetings[0].get("date"))
+    day = _parse_date(meeting.get("date"))
     if day is None:
         return False
     return (today - day) >= timedelta(days=SETTLE_DAYS)
@@ -197,27 +198,27 @@ def _parse_date(iso: str | None) -> date | None:
         return None
 
 
-def days_to_publish(meetings: list[dict], today: date) -> list[tuple[str, list[dict]]]:
-    """Settled days, newest first, each with the meetings that sat on it.
+def meetings_to_publish(meetings: list[dict], today: date) -> list[dict]:
+    """Settled meetings that earn entries, newest first.
 
-    Both settled feeds build from this same grouping, so they publish
-    the same meetings at the same time and differ only in granularity
-    (ADR ``0019``): the default one entry per meeting, the item feed
-    one entry per qualifying item.
+    Each meeting settles on its own -- it publishes once it has
+    summaries or ``SETTLE_DAYS`` have passed, without waiting on a
+    sibling that sat the same day. Both settled feeds build from this
+    same list, so they publish the same meetings at the same time and
+    differ only in granularity (ADR ``0019``): the default one entry
+    per meeting, the item feed one entry per qualifying item.
     """
-    by_day: dict[str, list[dict]] = {}
-    for meeting in meetings:
-        day = (meeting.get("date") or "").strip()
-        if not day or _parse_date(day) is None:
-            continue
-        if not qualifying_items(meeting.get("agenda_items") or []):
-            continue
-        by_day.setdefault(day, []).append(meeting)
-    return [
-        (day, by_day[day])
-        for day in sorted(by_day, reverse=True)
-        if is_settled(by_day[day], today)
+    rows = [
+        meeting
+        for meeting in meetings
+        if (meeting.get("date") or "").strip()
+        and _parse_date(meeting.get("date")) is not None
+        and qualifying_items(meeting.get("agenda_items") or [])
+        and is_settled(meeting, today)
     ]
+    rows.sort(key=lambda m: (m.get("body") or ""))
+    rows.sort(key=lambda m: (m.get("date") or ""), reverse=True)
+    return rows
 
 
 # --------------------------------------------------------------------------
@@ -457,24 +458,21 @@ def build_meeting_feed(meetings: list[dict], today: date) -> str:
 
     A meeting is the unit, not a day: committees stack, and a Tuesday on
     which Planning and Transportation both sat is two entries rather
-    than one, each naming the body that met (ADR ``0019``).
+    than one, each naming the body that met (ADR ``0019``). Each
+    meeting publishes as soon as it is settled, without waiting on a
+    sibling that sat the same day.
     """
-    rows = []
-    for day, day_meetings in days_to_publish(meetings, today):
-        for meeting in sorted(day_meetings, key=lambda m: (m.get("body") or "")):
-            items = qualifying_items(meeting.get("agenda_items") or [])
-            if items:
-                rows.append((meeting, items, day))
-    rows = rows[:MAX_MEETING_ENTRIES]
-    updated = _timestamp(rows[0][2]) if rows else _timestamp("")
+    rows = meetings_to_publish(meetings, today)[:MAX_MEETING_ENTRIES]
+    updated = _timestamp(rows[0].get("date")) if rows else _timestamp("")
     feed = _feed_root(FEED_TITLE, MEETING_FEED_PATH, updated)
-    for meeting, items, day in rows:
+    for meeting in rows:
+        items = qualifying_items(meeting.get("agenda_items") or [])
         _add_entry(
             feed,
             entry_id=f"{SITE_URL}/feed/meeting/{meeting['meeting_id']}",
             title=_meeting_title(meeting),
             link=_meeting_link(meeting),
-            updated=_timestamp(day),
+            updated=_timestamp(meeting.get("date")),
             content=_meeting_content_html(meeting, items),
             categories=_meeting_categories(meeting, items),
         )
@@ -489,16 +487,15 @@ def build_item_feed(meetings: list[dict], today: date) -> str:
     make one a subset of the other, so anyone subscribed to both would
     see the important items twice.
     """
-    days = days_to_publish(meetings, today)
-    entries: list[tuple[str, dict, dict]] = []
-    for day, day_meetings in days:
-        for meeting in sorted(day_meetings, key=lambda m: (m.get("body") or "")):
-            for item in qualifying_items(meeting.get("agenda_items") or []):
-                entries.append((day, meeting, item))
+    rows = meetings_to_publish(meetings, today)
+    entries: list[tuple[dict, dict]] = []
+    for meeting in rows:
+        for item in qualifying_items(meeting.get("agenda_items") or []):
+            entries.append((meeting, item))
     entries = entries[:MAX_ITEM_ENTRIES]
-    updated = _timestamp(entries[0][0]) if entries else _timestamp("")
+    updated = _timestamp(entries[0][0].get("date")) if entries else _timestamp("")
     feed = _feed_root(f"{FEED_TITLE} — every item", ITEM_FEED_PATH, updated)
-    for day, meeting, item in entries:
+    for meeting, item in entries:
         url = item_url(meeting["meeting_id"], item)
         content = item_content_html(meeting, item, include_context=True)
         content += (
@@ -510,7 +507,7 @@ def build_item_feed(meetings: list[dict], today: date) -> str:
             entry_id=url,
             title=item_title(item),
             link=url,
-            updated=_timestamp(day),
+            updated=_timestamp(meeting.get("date")),
             content=content,
             categories=[meeting.get("body_slug") or ""] + item_topics(item),
         )

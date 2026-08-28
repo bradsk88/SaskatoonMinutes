@@ -140,17 +140,33 @@ class Takeaway(unittest.TestCase):
 
 
 class Settling(unittest.TestCase):
-    def test_a_day_waits_for_its_summaries(self):
-        day = [meeting("a", has_summaries=True), meeting("b", has_summaries=False)]
-        self.assertFalse(feeds.is_settled(day, date(2026, 7, 21)))
+    def test_a_meeting_waits_for_its_summaries(self):
+        self.assertFalse(
+            feeds.is_settled(meeting("a", has_summaries=False), date(2026, 7, 21)))
 
-    def test_a_day_publishes_once_every_meeting_is_summarized(self):
-        day = [meeting("a"), meeting("b")]
-        self.assertTrue(feeds.is_settled(day, date(2026, 7, 21)))
+    def test_a_meeting_publishes_once_it_is_summarized(self):
+        self.assertTrue(feeds.is_settled(meeting("a"), date(2026, 7, 21)))
 
-    def test_a_meeting_with_no_video_stops_holding_the_day_after_a_week(self):
-        day = [meeting("a", day="2026-07-01", has_summaries=False)]
-        self.assertTrue(feeds.is_settled(day, date(2026, 7, 20)))
+    def test_a_meeting_with_no_video_stops_waiting_after_a_week(self):
+        self.assertTrue(
+            feeds.is_settled(
+                meeting("a", day="2026-07-01", has_summaries=False),
+                date(2026, 7, 20)))
+
+    def test_a_meeting_does_not_wait_on_a_same_day_sibling(self):
+        """One summarized meeting publishes even if a sibling on the same
+        day lacks summaries: a meeting settles on its own, not with the
+        day.
+        """
+        ready = meeting("a", day="2026-07-20", has_summaries=True,
+                        items=[item(1, "A", description=["x"])])
+        waiting = meeting("b", day="2026-07-20", body="Planning & Dev",
+                          slug="planning", has_summaries=False,
+                          items=[item(1, "B", description=["x"])])
+        xml = feeds.build_meeting_feed([ready, waiting], date(2026, 7, 21))
+        titles = [e.find(f"{ATOM}title").text
+                  for e in ET.fromstring(xml).findall(f"{ATOM}entry")]
+        self.assertEqual(["July 20, 2026 · City Council"], titles)
 
     def test_an_unsettled_meeting_publishes_nothing(self):
         meetings = [meeting("a", has_summaries=False,

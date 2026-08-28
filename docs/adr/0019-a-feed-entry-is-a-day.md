@@ -67,6 +67,6 @@ home link only because it could not say that.
 The two settled feeds still differ only in granularity, the
 constraint from ADR 0018 that is untouched. The meeting feed is one
 entry per meeting and the item feed one entry per qualifying item, and
-both build from the same settled days and the same gate, ranking, and
-cap. A meeting whose video has not arrived still holds its day in both
-feeds, not just the day feed.
+both build from the same per-meeting settlement and the same gate,
+ranking, and cap. A meeting publishes as soon as its own summaries
+land, without waiting on a sibling that sat the same day.
