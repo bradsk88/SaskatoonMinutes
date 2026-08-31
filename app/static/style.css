@@ -288,6 +288,23 @@ nav {
     box-shadow: var(--shadow-sm);
 }
 
+/* The trailing feed box: a peer of the date squares, always last in the
+   row. Same 4.25rem box, but a link to the upcoming-meetings feed
+   (ADR 0024), not a toggle, so it carries the RSS glyph where a square
+   shows its day. Centered, since a square's inner content is not
+   stretched here. */
+.date-square-feed {
+    align-items: center;
+    justify-content: center;
+    color: var(--color-primary);
+}
+
+.date-square-feed svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+}
+
 .date-square-month {
     font-size: 0.65rem;
     font-weight: 600;

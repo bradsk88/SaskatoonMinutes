@@ -1058,7 +1058,7 @@
         grid.style.marginTop = '0';
 
         function select(idx) {
-            picker.querySelectorAll('.date-square').forEach((sq, i) => {
+            picker.querySelectorAll('.date-square:not(.date-square-feed)').forEach((sq, i) => {
                 sq.classList.toggle('date-square-active', i === idx);
                 sq.setAttribute('aria-pressed', i === idx ? 'true' : 'false');
             });
@@ -1089,6 +1089,21 @@
             picker.appendChild(sq);
         });
 
+        // The trailing feed box: a peer of the date squares, last in the
+        // row. Same box, no body strip or date, an RSS glyph where the day
+        // sits. A link, not a toggle, so select() skips it.
+        const feedBox = document.createElement('a');
+        feedBox.href = '/feed-future.xml';
+        feedBox.className = 'date-square date-square-feed';
+        feedBox.title = 'Follow upcoming meetings by RSS';
+        feedBox.setAttribute('aria-label', 'Follow upcoming meetings by RSS');
+        feedBox.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">'
+            + '<circle cx="6.18" cy="17.82" r="2.18"/>'
+            + '<path d="M4 10.1v2.9a7 7 0 0 1 7 7h2.9A9.9 9.9 0 0 0 4 10.1z"/>'
+            + '<path d="M4 4v2.9a13.1 13.1 0 0 1 13.1 13.1H20A16 16 0 0 0 4 4z"/>'
+            + '</svg>';
+        picker.appendChild(feedBox);
         container.appendChild(picker);
         container.appendChild(grid);
         select(0);
