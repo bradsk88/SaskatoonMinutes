@@ -1,0 +1,44 @@
+{
+  "d": [
+    {
+      "ID": "cal-001",
+      "MeetingType": "SPC-TRANSPORTATION - PUBLIC",
+      "StartDate": "2026/09/15 14:00:00",
+      "FormattedStart": "Tuesday, 15 September 2026 @ 2:00 PM",
+      "Location": "Council Chambers",
+      "HasAgenda": true,
+      "HasVideo": true,
+      "MeetingPassed": false
+    },
+    {
+      "ID": "cal-002",
+      "MeetingType": "SPC-FINANCE - PUBLIC",
+      "StartDate": "2026/09/10 14:00:00",
+      "FormattedStart": "Wednesday, 10 September 2026 @ 2:00 PM",
+      "Location": "Council Chambers",
+      "HasAgenda": true,
+      "HasVideo": true,
+      "MeetingPassed": true
+    },
+    {
+      "ID": "cal-003",
+      "MeetingType": "SPC-PLANNING, DEVELOPMENT AND COMMUNITY SERVICES - PUBLIC",
+      "StartDate": "2026/09/20 09:30:00",
+      "FormattedStart": "Monday, 20 September 2026 @ 9:30 AM",
+      "Location": "Committee Room",
+      "HasAgenda": true,
+      "HasVideo": false,
+      "MeetingPassed": false
+    },
+    {
+      "ID": "cal-004",
+      "MeetingType": "CITY COUNCIL AGENDA - REGULAR BUSINESS MEETING",
+      "StartDate": "2026/08/01 09:30:00",
+      "FormattedStart": "Monday, 1 August 2026 @ 9:30 AM",
+      "Location": "Council Chambers",
+      "HasAgenda": true,
+      "HasVideo": true,
+      "MeetingPassed": false
+    }
+  ]
+}

@@ -736,6 +736,43 @@ class EscribeMeetingSource:
         scheduled.sort(key=lambda s: (s.date, s.start_time))
         return scheduled
 
+    def list_recorded(self, start_date: str, end_date: str) -> list[Meeting]:
+        """Calendar meetings with a video, in ``[start_date, end_date]``.
+
+        The calendar (unlike ``list_past``) carries meetings the upstream
+        still marks not-passed, so this is where a recording that is up
+        before the meeting is flagged as passed becomes visible.  Passed
+        meetings are dropped: ``list_past`` already owns those.
+        """
+        raw = self._transport.fetch_calendar_meetings_json(start_date, end_date)
+
+        meetings: list[Meeting] = []
+        for m in raw:
+            if not m.get("HasVideo"):
+                continue
+            if m.get("MeetingPassed"):
+                continue
+            meeting_id = m.get("ID", "")
+            if not meeting_id:
+                continue
+            date = (m.get("StartDate") or "").replace("/", "-").split(" ")[0]
+            # The live calendar already filters by range; re-checking keeps
+            # the method correct for a transport (fixtures) that does not.
+            if not (start_date <= date <= end_date):
+                continue
+            meetings.append(Meeting(
+                meeting_id=meeting_id,
+                title=titleize((m.get("MeetingType") or "Meeting").strip()),
+                date=date,
+                start_time=m.get("FormattedStart", ""),
+                location=(m.get("Location") or "").strip(),
+                has_video=True,
+                has_agenda=bool(m.get("HasAgenda")),
+                video_url=_build_video_url(meeting_id),
+            ))
+        meetings.sort(key=lambda m: (m.date, m.start_time))
+        return meetings
+
     def load_detail(self, meeting_id: str) -> MeetingDetail:
         html = self._transport.fetch_agenda_html(meeting_id)
 

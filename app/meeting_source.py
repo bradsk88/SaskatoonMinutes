@@ -28,6 +28,14 @@ class MeetingSource(Protocol):
     def list_scheduled(self, start_date: str, end_date: str) -> list[ScheduledMeeting]:
         """Scheduled Meetings in the date range, soonest first."""
 
+    def list_recorded(self, start_date: str, end_date: str) -> list[Meeting]:
+        """Calendar meetings with a video, in ``[start_date, end_date]``.
+
+        Catches the gap ``list_past`` misses: a meeting whose recording is
+        up but the upstream still marks it not-passed, so it never reaches
+        ``list_past`` and a job iterating only that would skip it.
+        """
+
 
 class InMemoryMeetingSource:
     """Test double backed by passive in-memory data.
@@ -41,10 +49,12 @@ class InMemoryMeetingSource:
         details: dict[str, MeetingDetail] | None = None,
         past: Sequence[Meeting] = (),
         scheduled: Sequence[ScheduledMeeting] = (),
+        recorded: Sequence[Meeting] = (),
     ):
         self.details: dict[str, MeetingDetail] = dict(details or {})
         self.past: list[Meeting] = list(past)
         self.scheduled: list[ScheduledMeeting] = list(scheduled)
+        self.recorded: list[Meeting] = list(recorded)
 
     def list_past(self, page: int = 1, meeting_type: str | None = None) -> tuple[list[Meeting], int]:
         return list(self.past), len(self.past)
@@ -56,4 +66,10 @@ class InMemoryMeetingSource:
         return [
             s for s in self.scheduled
             if start_date <= s.date <= end_date
+        ]
+
+    def list_recorded(self, start_date: str, end_date: str) -> list[Meeting]:
+        return [
+            m for m in self.recorded
+            if m.has_video and start_date <= m.date <= end_date
         ]

@@ -83,6 +83,31 @@ class TestEscribeMeetingSourceListPast:
         assert meetings[0].title == "Municipal Heritage Advisory Committee"
 
 
+class TestEscribeMeetingSourceListRecorded:
+    def test_list_recorded_returns_only_the_gap(self):
+        """The gap is a recording that is up but the upstream still marks
+        not-passed.  Passed meetings (list_past owns those), meetings with
+        no video, and meetings outside the window are all dropped."""
+        src = EscribeMeetingSource(FixtureEscribeTransport(FIXTURES))
+        recorded = src.list_recorded("2026-09-01", "2026-12-31")
+        # cal-002 is passed, cal-003 has no video, cal-004 is out of range.
+        assert [m.meeting_id for m in recorded] == ["cal-001"]
+        m = recorded[0]
+        assert m.has_video is True
+        assert m.video_url is not None
+        assert m.date == "2026-09-15"
+
+    def test_list_recorded_inmemory(self):
+        m = Meeting(
+            meeting_id="rec-001", title="t", date="2026-09-15", start_time="9:00",
+            location="hall", has_video=True, has_agenda=True,
+        )
+        src = InMemoryMeetingSource(recorded=[m])
+        assert src.list_recorded("2026-09-01", "2026-12-31") == [m]
+        # Outside the window is dropped.
+        assert src.list_recorded("2027-01-01", "2027-12-31") == []
+
+
 class TestEscribeMeetingSourceLoadDetail:
     def test_load_detail_returns_meeting_detail(self):
         src = EscribeMeetingSource(FixtureEscribeTransport(FIXTURES))
