@@ -2,7 +2,7 @@ name: Transcribe Meeting Videos
 
 on:
   schedule:
-    - cron: '30 5 * * *'   # daily at 05:30 UTC
+    - cron: '30 */4 * * *'   # every 4 hours (00:30, 04:30, 08:30, ...); the calendar pass catches recordings up before a meeting is passed
   workflow_dispatch:
     inputs:
       model:
