@@ -135,6 +135,11 @@ class ScheduledMeeting:
     start_time: str  # upstream formatted start, e.g. "Tuesday, 4 August 2026 @ 2:00 PM"
     location: str
     has_agenda: bool
+    # A recording that is up means the meeting has happened, so it is no
+    # longer "future": the site drops it from the Future tab and lands it
+    # on its body's past tab. The upstream MeetingPassed flag is not the
+    # truth here (see build_site) — this flag is.
+    has_video: bool = False
 
     @property
     def request_to_speak_deadline(self) -> str:

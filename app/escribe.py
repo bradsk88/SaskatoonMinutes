@@ -732,17 +732,29 @@ class EscribeMeetingSource:
                 start_time=m.get("FormattedStart", ""),
                 location=(m.get("Location") or "").strip(),
                 has_agenda=bool(m.get("HasAgenda")),
+                # Carried for the site, not the provisional path: a
+                # recording that is up means the meeting has happened, so
+                # it is no longer "future". build_site drops it from the
+                # Future tab and lands it on its body's past tab; this
+                # method stays inclusive so the summarize job's
+                # provisional path is unchanged.
+                has_video=bool(m.get("HasVideo")),
             ))
         scheduled.sort(key=lambda s: (s.date, s.start_time))
         return scheduled
 
-    def list_recorded(self, start_date: str, end_date: str) -> list[Meeting]:
+    def list_recorded(self, start_date: str, end_date: str,
+                      meeting_type: str | None = None) -> list[Meeting]:
         """Calendar meetings with a video, in ``[start_date, end_date]``.
 
         The calendar (unlike ``list_past``) carries meetings the upstream
         still marks not-passed, so this is where a recording that is up
         before the meeting is flagged as passed becomes visible.  Passed
         meetings are dropped: ``list_past`` already owns those.
+
+        ``meeting_type`` scopes the pass to one body, so a site build can
+        land each recorded meeting on its own body's past tab; ``None``
+        returns every body's gap (the transcribe job's use).
         """
         raw = self._transport.fetch_calendar_meetings_json(start_date, end_date)
 
@@ -751,6 +763,8 @@ class EscribeMeetingSource:
             if not m.get("HasVideo"):
                 continue
             if m.get("MeetingPassed"):
+                continue
+            if meeting_type and (m.get("MeetingType") or "").strip() != meeting_type:
                 continue
             meeting_id = m.get("ID", "")
             if not meeting_id:

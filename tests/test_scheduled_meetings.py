@@ -59,6 +59,22 @@ class TestListScheduled:
         assert s.date == "2026-08-04"
         assert s.has_agenda is True
 
+    def test_carries_has_video_for_the_future_tab_filter(self, tmp_path):
+        # The site reads has_video to drop a happened meeting from the
+        # Future tab; the method must carry it, not hide it, so the
+        # summarize job's provisional path is untouched.
+        payload = _calendar_payload([
+            _entry(ID="sched-video", MeetingType="SPC-TRANSPORTATION - PUBLIC",
+                   HasVideo=True),
+        ])
+        (tmp_path / "calendar_meetings_2026-01-01_2026-12-31.json").write_text(
+            json.dumps(payload), encoding="utf-8",
+        )
+        src = EscribeMeetingSource(FixtureEscribeTransport(tmp_path))
+        (s,) = src.list_scheduled("2026-01-01", "2026-12-31")
+        assert s.meeting_id == "sched-video"
+        assert s.has_video is True
+
 
 class TestDeadline:
     @pytest.mark.parametrize("meeting_day,expected_monday", [

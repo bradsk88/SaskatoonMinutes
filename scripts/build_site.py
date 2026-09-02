@@ -379,6 +379,27 @@ def _fetch_scheduled_details(source, scheduled, summaries_cache, gists_cache):
     return topics_data, details_data
 
 
+def _merge_recorded(past, recorded):
+    """Land a body's recorded-but-unpassed meetings on its past tab.
+
+    A recording that is up but the upstream still marks not-passed has
+    happened, so the meeting belongs on its body's past tab rather than
+    the Future tab. ``list_past`` returns only passed meetings, so the
+    calendar pass (``list_recorded``) supplies these. They are deduped
+    against the passed set (in case one slips into both) and ordered
+    most-recent first alongside the passed meetings.
+    """
+    seen = {m.meeting_id for m in past}
+    merged = list(past)
+    for m in recorded:
+        if m.meeting_id in seen:
+            continue
+        merged.append(m)
+        seen.add(m.meeting_id)
+    merged.sort(key=lambda m: (m.date, m.start_time), reverse=True)
+    return merged
+
+
 def fetch_all_data():
     """Fetch meetings list and per-meeting topics from eSCRIBE for all tabs."""
     source: MeetingSource = EscribeMeetingSource(LiveEscribeTransport())
@@ -409,6 +430,10 @@ def fetch_all_data():
         except Exception as exc:
             print(f"  WARNING: scheduled meetings unavailable: {exc}")
             scheduled = []
+        # A meeting with a recording has happened, so it is no longer
+        # "future": the Future tab (and its feed) must not carry it.
+        # Its body's past tab gets it below, via list_recorded.
+        scheduled = [s for s in scheduled if not s.has_video]
         print(f"  Got {len(scheduled)} scheduled meetings")
         all_tabs_meetings[FUTURE_TAB["slug"]] = {
             "meetings": [s.to_dict() for s in scheduled],
@@ -432,6 +457,14 @@ def fetch_all_data():
             d["agenda_items"] = detail.get("agenda_items") or []
             future_feed_meetings.append(d)
 
+        # The recorded-but-unpassed gap for the past tabs: a meeting
+        # with a recording has happened, so its date is at or before
+        # today; the lookback covers the days eSCRIBE can sit on the
+        # passed flag before it flips, and the forward slack matches the
+        # transcribe job in case eSCRIBE lists a recording a day late.
+        recorded_since = (today - timedelta(days=45)).isoformat()
+        recorded_until = (today + timedelta(days=15)).isoformat()
+
         for tab in MEETING_TABS:
             slug = tab["slug"]
             meeting_type = tab["type"]
@@ -439,6 +472,23 @@ def fetch_all_data():
             meetings, total_count = fetch_with_retry(
                 source.list_past, page=1, meeting_type=meeting_type,
             )
+            # A meeting whose recording is up but the upstream still
+            # marks not-passed has happened, so it belongs on its body's
+            # past tab, not the Future tab. list_past returns only
+            # passed meetings, so the calendar pass (list_recorded)
+            # fills the gap; the past feeds pick it up from here, and
+            # the future feed already dropped it above.
+            try:
+                recorded = fetch_with_retry(
+                    source.list_recorded, recorded_since, recorded_until,
+                    meeting_type=meeting_type,
+                )
+            except Exception as exc:
+                print(f"  WARNING: recorded meetings unavailable: {exc}")
+                recorded = []
+            past_count = len(meetings)
+            meetings = _merge_recorded(meetings, recorded)
+            total_count += len(meetings) - past_count
             meetings = meetings[:MEETINGS_PER_TAB]
             meetings_data = [m.to_dict() for m in meetings]
             print(f"  Got {len(meetings_data)} meetings (total: {total_count})")

@@ -1,6 +1,46 @@
 """Static-build glue: the parts that shape what the pages read."""
 
-from scripts.build_site import _start_time_24h
+from scripts.build_site import _start_time_24h, _merge_recorded
+from app.models import Meeting
+
+
+class TestMergeRecorded:
+    """A recorded-but-unpassed meeting is landed on its body's past tab.
+
+    The gap is a recording that is up but the upstream still marks
+    not-passed: it has happened, so it belongs on the past tab rather
+    than the Future tab. The merge dedupes against the passed set and
+    orders most-recent first, alongside the passed meetings.
+    """
+
+    def _m(self, meeting_id, date, **kw):
+        return Meeting(
+            meeting_id=meeting_id, title="t", date=date, start_time="09:00",
+            location="h", has_video=True, has_agenda=True, **kw,
+        )
+
+    def test_recorded_meeting_is_added(self):
+        past = [self._m("p1", "2026-08-01")]
+        recorded = [self._m("r1", "2026-09-01")]
+        merged = _merge_recorded(past, recorded)
+        assert [m.meeting_id for m in merged] == ["r1", "p1"]
+
+    def test_duplicate_is_deduped(self):
+        past = [self._m("p1", "2026-08-01")]
+        recorded = [self._m("p1", "2026-09-01")]
+        merged = _merge_recorded(past, recorded)
+        assert [m.meeting_id for m in merged] == ["p1"]
+
+    def test_ordering_is_most_recent_first(self):
+        past = [self._m("p1", "2026-08-01"), self._m("p2", "2026-07-01")]
+        recorded = [self._m("r1", "2026-09-01")]
+        merged = _merge_recorded(past, recorded)
+        assert [m.meeting_id for m in merged] == ["r1", "p1", "p2"]
+
+    def test_empty_recorded_is_a_noop(self):
+        past = [self._m("p1", "2026-08-01")]
+        merged = _merge_recorded(past, [])
+        assert [m.meeting_id for m in merged] == ["p1"]
 
 
 class TestStartTime24h:

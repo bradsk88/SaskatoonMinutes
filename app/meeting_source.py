@@ -28,12 +28,16 @@ class MeetingSource(Protocol):
     def list_scheduled(self, start_date: str, end_date: str) -> list[ScheduledMeeting]:
         """Scheduled Meetings in the date range, soonest first."""
 
-    def list_recorded(self, start_date: str, end_date: str) -> list[Meeting]:
+    def list_recorded(self, start_date: str, end_date: str,
+                      meeting_type: str | None = None) -> list[Meeting]:
         """Calendar meetings with a video, in ``[start_date, end_date]``.
 
         Catches the gap ``list_past`` misses: a meeting whose recording is
         up but the upstream still marks it not-passed, so it never reaches
         ``list_past`` and a job iterating only that would skip it.
+
+        ``meeting_type`` scopes the pass to one body; ``None`` returns
+        every body's gap.
         """
 
 
@@ -68,7 +72,12 @@ class InMemoryMeetingSource:
             if start_date <= s.date <= end_date
         ]
 
-    def list_recorded(self, start_date: str, end_date: str) -> list[Meeting]:
+    def list_recorded(self, start_date: str, end_date: str,
+                      meeting_type: str | None = None) -> list[Meeting]:
+        # The in-memory double's recorded list is the fixture itself, so a
+        # body filter is a no-op: tests supply exactly the meetings they
+        # want. The param keeps the double's signature matched to the
+        # protocol.
         return [
             m for m in self.recorded
             if m.has_video and start_date <= m.date <= end_date

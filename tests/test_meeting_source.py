@@ -107,6 +107,21 @@ class TestEscribeMeetingSourceListRecorded:
         # Outside the window is dropped.
         assert src.list_recorded("2027-01-01", "2027-12-31") == []
 
+    def test_list_recorded_filters_by_meeting_type(self):
+        """The type scope lands each recorded meeting on its own body's
+        past tab; a body with no recorded-but-unpassed meeting gets
+        nothing, and a passed body's recording is not the gap."""
+        src = EscribeMeetingSource(FixtureEscribeTransport(FIXTURES))
+        trans = src.list_recorded(
+            "2026-09-01", "2026-12-31", meeting_type="SPC-TRANSPORTATION - PUBLIC",
+        )
+        assert [m.meeting_id for m in trans] == ["cal-001"]
+        # Finance's recording is passed, so it is not the gap here.
+        finance = src.list_recorded(
+            "2026-09-01", "2026-12-31", meeting_type="SPC-FINANCE - PUBLIC",
+        )
+        assert finance == []
+
 
 class TestEscribeMeetingSourceLoadDetail:
     def test_load_detail_returns_meeting_detail(self):
