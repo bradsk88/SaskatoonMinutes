@@ -274,6 +274,100 @@ def gist_attachments(source, meeting_id: str, generator, gists_cache) -> int:
     return made
 
 
+def summarize_recorded_meetings(
+    source: MeetingSource,
+    extractor,
+    transcript_cache,
+    summaries_cache,
+    *,
+    since: str,
+    until: str,
+    limit: int,
+    force: bool,
+) -> tuple[int, int, int, bool]:
+    """Regenerate the full summary for a recorded but not-passed meeting.
+
+    The full pass walks ``list_past`` (passed meetings only) and the
+    provisional pass walks ``list_scheduled`` (the future window only), so
+    a meeting that happened, was recorded, and is now past-dated but the
+    upstream still marks not passed reaches neither: it never gets a full
+    summary, and the provisional cache written for it while it was in the
+    future window is not current (``is_current`` rejects provisional), so
+    no pass ever regenerates it. This is the summarize job's mirror of the
+    transcribe job's calendar pass (``scripts/transcribe_meetings.py``).
+
+    For each recorded meeting whose cached summary is not current, it
+    regenerates the full summary from the transcript (the flip ADR 0021
+    makes provisional coverage disposable). Capped at ``limit`` meetings
+    and quota-aware: the first quota rejection stops the run, as the full
+    pass does.
+
+    Returns ``(summarized, skipped, errors, quota_gone)``.
+    """
+    summarized = 0
+    skipped = 0
+    errors = 0
+    quota_gone = False
+
+    try:
+        recorded = source.list_recorded(since, until)
+    except Exception as exc:
+        print(f"  Recorded fetch failed: {exc}", flush=True)
+        return 0, 0, 0, False
+
+    for m in recorded:
+        if summarized >= limit:
+            break
+        if not m.has_video:
+            continue
+        mid = m.meeting_id
+        if not force and is_current(summaries_cache.load(mid)):
+            print(f"  [{m.date}] {mid[:8]}... already summarized")
+            skipped += 1
+            continue
+        if transcript_cache.load(mid) is None:
+            print(
+                f"  [{m.date}] {mid[:8]}... no transcript yet, skipping"
+            )
+            continue
+
+        print(f"  [{m.date}] {mid[:8]}... summarizing (recorded)...", flush=True)
+        try:
+            summaries = summarize_meeting(
+                source, mid, extractor, transcript_cache,
+            )
+            summaries_cache.save(mid, summaries)
+            summarized += 1
+            counted = sum(
+                1 for s in summaries.values()
+                if s.description or s.chips
+            )
+            print(
+                f"    Done: {counted}/{len(summaries)} items have chips",
+                flush=True,
+            )
+        except QuotaExhausted as exc:
+            # Every remaining call in this run would fail the same way.
+            # Stop here rather than spending the rest of the budget
+            # producing nothing.
+            print(f"    STOPPING: {exc}", flush=True)
+            errors += 1
+            quota_gone = True
+            break
+        except ExtractionFailed as exc:
+            # Not saved on purpose: a meeting with an unknown item is not
+            # a summarized meeting. is_current rejects the absent file, so
+            # the next run redoes it.
+            errors += 1
+            print(f"    ERROR: not saved — {exc}", flush=True)
+        except Exception as exc:
+            errors += 1
+            print(f"    ERROR: {exc}", flush=True)
+            traceback.print_exc()
+
+    return summarized, skipped, errors, quota_gone
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -419,6 +513,28 @@ def main() -> None:
                     errors += 1
                     print(f"    ERROR: {exc}", flush=True)
                     traceback.print_exc()
+
+        # Recorded but not passed: a meeting whose recording is up but the
+        # upstream still marks not passed reaches neither the full pass
+        # (list_past, passed only) nor the provisional pass (future window
+        # only), so it never gets a full summary. Mirror of the transcribe
+        # job's calendar pass. Higher priority than provisional — full
+        # summaries first — so it runs before the provisional pass below.
+        if not quota_gone:
+            from datetime import date, timedelta
+            since = (date.today() - timedelta(days=45)).isoformat()
+            until = (date.today() + timedelta(days=15)).isoformat()
+            print(f"\n--- Recorded (full summary: {since}..{until}) ---")
+            summarized_r, skipped_r, errors_r, quota_gone = (
+                summarize_recorded_meetings(
+                    source, extractor, transcript_cache, summaries_cache,
+                    since=since, until=until,
+                    limit=args.limit, force=args.force,
+                )
+            )
+            summarized += summarized_r
+            skipped += skipped_r
+            errors += errors_r
 
         # Provisional summaries for Scheduled Meetings — lower priority
         # than everything above: only run when post-meeting work finished
