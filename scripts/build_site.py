@@ -551,7 +551,7 @@ def fetch_all_data():
                 })
 
     return (all_tabs_meetings, all_topics, all_details, feed_meetings,
-            future_feed_meetings)
+            future_feed_meetings, now)
 
 
 def render_index_html(all_tabs_meetings, topics_data):
@@ -751,7 +751,7 @@ def main():
     os.makedirs(OUTPUT_DIR)
 
     (all_tabs_meetings, topics_data, details_data, feed_meetings,
-     future_feed_meetings) = fetch_all_data()
+     future_feed_meetings, now) = fetch_all_data()
 
     print("Rendering static index.html...")
     html = render_index_html(all_tabs_meetings, topics_data)
