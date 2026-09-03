@@ -364,14 +364,15 @@ def not_recorded_note(meeting: dict, *, per_item: bool = False) -> str:
         return ""
     if per_item:
         text = (
-            "This meeting was not recorded, so this description was "
-            "written from the published agenda rather than from the discussion."
+            "No recording of this meeting has been posted yet, so this "
+            "description was written from the published agenda rather than "
+            "from the discussion."
         )
     else:
         text = (
-            "This meeting was not recorded, so the item descriptions "
-            "were written from the published agenda rather than from the "
-            "discussion."
+            "No recording of this meeting has been posted yet, so the item "
+            "descriptions were written from the published agenda rather "
+            "than from the discussion."
         )
     return f"<p>{_esc(text)}</p>"
 

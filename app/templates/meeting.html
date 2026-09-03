@@ -182,7 +182,7 @@
                 // is what the site calls it once that week has passed.
                 const note = data.recording_state === 'pending'
                     ? "This meeting's recording is not available on eSCRIBE yet. When the City posts the video, we will transcribe it and publish the meeting's summaries."
-                    : "This meeting was not recorded. There is no video, and no transcript of the discussion.";
+                    : "No recording of this meeting has been posted yet. There is no video, and no transcript of the discussion.";
                 videoSection.innerHTML =
                     `<div class="video-absent-note">${note}</div>`;
                 videoSection.style.display = 'block';

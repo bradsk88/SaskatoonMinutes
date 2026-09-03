@@ -239,7 +239,7 @@ class NotRecorded(unittest.TestCase):
             [self._no_video()], _now("2026-07-01", 21, 0))
         content = ET.fromstring(xml).find(f"{ATOM}entry")\
             .find(f"{ATOM}content").text
-        self.assertIn("not recorded", content)
+        self.assertIn("has been posted", content)
 
     def test_no_video_within_twelve_hours_publishes_nothing(self):
         """The incident: it should have waited, not published thin."""
@@ -256,14 +256,14 @@ class NotRecorded(unittest.TestCase):
             _now("2026-07-01", 21, 0))
         content = ET.fromstring(xml).find(f"{ATOM}entry")\
             .find(f"{ATOM}content").text
-        self.assertNotIn("not recorded", content)
+        self.assertNotIn("has been posted", content)
 
     def test_item_feed_carries_the_note(self):
         xml = feeds.build_item_feed(
             [self._no_video()], _now("2026-07-01", 21, 0))
         content = ET.fromstring(xml).find(f"{ATOM}entry")\
             .find(f"{ATOM}content").text
-        self.assertIn("not recorded", content)
+        self.assertIn("has been posted", content)
 
 
 class MeetingEntries(unittest.TestCase):
