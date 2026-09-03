@@ -5,14 +5,16 @@ from app.models import (
     Chip,
     ItemSummary,
     Meeting,
-    RECORDING_GRACE_DAYS,
+    RECORDING_GRACE_HOURS,
+    SASKATOON_TZ,
     Segment,
     Transcript,
     has_current_summaries,
     meeting_recording_state,
+    meeting_start,
 )
 
-from datetime import date
+from datetime import datetime, timedelta
 
 
 def _seg(start_ms: int, end_ms: int, text: str = "x") -> Segment:
@@ -256,36 +258,74 @@ class TestMeeting:
 class TestRecordingState:
     """Where the video would be, says something when there is no video."""
 
-    def _s(self, has_video, is_cancelled, day, today):
+    def _s(self, has_video, is_cancelled, start, now):
         return meeting_recording_state(
-            has_video, is_cancelled, day, today)
+            has_video, is_cancelled, start, now)
+
+    def _at(self, day, hour=0, minute=0):
+        y, m, d = (int(part) for part in day.split("-"))
+        return datetime(y, m, d, hour, minute, tzinfo=SASKATOON_TZ)
 
     def test_a_video_says_nothing(self):
-        assert self._s(True, False, "2026-08-01", date(2026, 9, 2)) is None
+        start = meeting_start("2026-08-01", "09:00")
+        assert self._s(True, False, start, self._at("2026-09-02")) is None
 
     def test_a_cancelled_meeting_says_nothing(self):
-        assert self._s(False, True, "2026-08-01", date(2026, 9, 2)) is None
+        start = meeting_start("2026-08-01", "09:00")
+        assert self._s(False, True, start, self._at("2026-09-02")) is None
 
     def test_a_future_meeting_says_nothing(self):
-        assert self._s(False, False, "2026-09-05", date(2026, 9, 2)) is None
+        start = meeting_start("2026-09-05", "09:00")
+        assert self._s(False, False, start, self._at("2026-09-02")) is None
 
-    def test_an_unknown_date_says_nothing(self):
-        assert self._s(False, False, "", date(2026, 9, 2)) is None
+    def test_an_unknown_start_says_nothing(self):
+        assert self._s(False, False, None, self._at("2026-09-02")) is None
 
-    def test_yesterday_without_video_is_pending(self):
-        assert self._s(False, False, "2026-09-01", date(2026, 9, 2)) == "pending"
+    def test_within_twelve_hours_is_pending(self):
+        start = meeting_start("2026-08-01", "09:00")  # 09:00 that day
+        # 20:29 the same day is 11h29m after the start: still pending.
+        assert self._s(False, False, start, self._at("2026-08-01", 20, 29)) == "pending"
 
-    def test_inside_the_grace_period_is_pending(self):
-        assert self._s(False, False, "2026-08-27", date(2026, 9, 2)) == "pending"
+    def test_at_twelve_hours_it_is_not_recorded(self):
+        start = meeting_start("2026-08-01", "09:00")
+        assert self._s(False, False, start, self._at("2026-08-01", 21, 0)) == "not_recorded"
 
-    def test_at_the_grace_boundary_it_is_not_recorded(self):
-        # The same 7 days the feed settles on: the site calls it not
-        # recorded the week the feed stops waiting for the video.
-        assert RECORDING_GRACE_DAYS == 7
-        assert self._s(False, False, "2026-08-26", date(2026, 9, 2)) == "not_recorded"
+    def test_well_past_twelve_hours_is_not_recorded(self):
+        start = meeting_start("2026-08-01", "09:00")
+        assert self._s(False, False, start, self._at("2026-08-02")) == "not_recorded"
 
-    def test_well_past_the_grace_period_is_not_recorded(self):
-        assert self._s(False, False, "2026-08-23", date(2026, 9, 2)) == "not_recorded"
+
+class TestMeetingStart:
+    """The meeting's start as a Saskatchewan datetime."""
+
+    def _at(self, day, hour=0, minute=0):
+        y, m, d = (int(part) for part in day.split("-"))
+        return datetime(y, m, d, hour, minute, tzinfo=SASKATOON_TZ)
+
+    def test_date_and_time(self):
+        assert meeting_start("2026-08-01", "09:30") == self._at("2026-08-01", 9, 30)
+
+    def test_missing_time_is_midnight(self):
+        assert meeting_start("2026-08-01", "") == self._at("2026-08-01")
+
+    def test_none_time_is_midnight(self):
+        assert meeting_start("2026-08-01", None) == self._at("2026-08-01")
+
+    def test_garbage_time_is_midnight(self):
+        assert meeting_start("2026-08-01", "xx:yy") == self._at("2026-08-01")
+
+    def test_out_of_range_time_is_midnight(self):
+        assert meeting_start("2026-08-01", "99:99") == self._at("2026-08-01")
+
+    def test_missing_date_is_none(self):
+        assert meeting_start("", "09:00") is None
+
+    def test_garbage_date_is_none(self):
+        assert meeting_start("not-a-date", "09:00") is None
+
+    def test_timezone_is_saskatoon(self):
+        start = meeting_start("2026-08-01", "09:00")
+        assert start.utcoffset() == timedelta(hours=-6)
 
 
 class TestHasCurrentSummaries:

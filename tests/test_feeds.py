@@ -7,11 +7,18 @@ from datetime import date, datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
 from app import feeds
+from app.feeds import SASKATOON_TZ
 from app.summarizer import TAKEAWAY_ORDER
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _now(day: str, hour: int = 12, minute: int = 0) -> datetime:
+    """A Saskatoon datetime on an ISO day, for the settled feeds' clock."""
+    y, m, d = (int(part) for part in day.split("-"))
+    return datetime(y, m, d, hour, minute, tzinfo=SASKATOON_TZ)
 
 
 def item(item_id, title, *, description=None, chips=None, minutes=None,
@@ -39,13 +46,15 @@ def item(item_id, title, *, description=None, chips=None, minutes=None,
 
 
 def meeting(meeting_id="m1", *, day="2026-07-20", body="City Council",
-            slug="council", items=None, has_summaries=True, has_video=True):
+            slug="council", items=None, has_summaries=True, has_video=True,
+            start_time=""):
     return {
         "meeting_id": meeting_id,
         "title": "Regular Business Meeting of City Council",
         "body": body,
         "body_slug": slug,
         "date": day,
+        "start_time": start_time,
         "has_summaries": has_summaries,
         "has_video": has_video,
         "agenda_items": items or [],
@@ -141,66 +150,101 @@ class Takeaway(unittest.TestCase):
 
 
 class Settling(unittest.TestCase):
-    def test_a_meeting_waits_for_its_summaries(self):
-        self.assertFalse(
-            feeds.is_settled(meeting("a", has_summaries=False), date(2026, 7, 21)))
+    """When a meeting stops waiting and publishes.
 
-    def test_a_meeting_publishes_once_it_is_summarized(self):
-        self.assertTrue(feeds.is_settled(meeting("a"), date(2026, 7, 21)))
+    A meeting settles the instant it has real summaries, or 12 hours
+    after it sat with no recording (the site's not-recorded line), or
+    seven days after it sat with a recording but no summary (the
+    pipeline-broke escape).
+    """
 
-    def test_a_meeting_with_no_video_stops_waiting_after_a_week(self):
+    def test_a_no_video_meeting_waits_twelve_hours(self):
+        m = meeting("a", day="2026-07-20", start_time="09:00",
+                    has_summaries=False, has_video=False)
+        self.assertFalse(feeds.is_settled(m, _now("2026-07-20", 20, 29)))
+        self.assertTrue(feeds.is_settled(m, _now("2026-07-20", 21, 0)))
+
+    def test_a_no_video_meeting_without_a_time_settles_at_noon(self):
+        m = meeting("a", day="2026-07-20", start_time="",
+                    has_summaries=False, has_video=False)
+        self.assertFalse(feeds.is_settled(m, _now("2026-07-20", 11, 59)))
+        self.assertTrue(feeds.is_settled(m, _now("2026-07-20", 12, 0)))
+
+    def test_a_meeting_publishes_once_it_has_real_summaries(self):
         self.assertTrue(
             feeds.is_settled(
-                meeting("a", day="2026-07-01", has_summaries=False),
-                date(2026, 7, 20)))
+                meeting("a", has_summaries=True), _now("2026-07-20", 10)))
+
+    def test_a_meeting_waits_without_real_summaries(self):
+        # Provisional coverage is not real summaries: the meeting keeps
+        # waiting for the video and the transcript.
+        m = meeting("a", day="2026-07-20", start_time="09:00",
+                    has_summaries=False, has_video=True)
+        self.assertFalse(feeds.is_settled(m, _now("2026-07-20", 20)))
+
+    def test_a_video_meeting_without_summaries_escapes_after_a_week(self):
+        m = meeting("a", day="2026-07-20", start_time="09:00",
+                    has_summaries=False, has_video=True)
+        # Seven days after the start (2026-07-27 09:00), not the date.
+        self.assertFalse(
+            feeds.is_settled(m, _now("2026-07-27", 8, 0)))
+        self.assertTrue(
+            feeds.is_settled(m, _now("2026-07-27", 9, 0)))
 
     def test_a_meeting_does_not_wait_on_a_same_day_sibling(self):
         """One summarized meeting publishes even if a sibling on the same
         day lacks summaries: a meeting settles on its own, not with the
         day.
         """
-        ready = meeting("a", day="2026-07-20", has_summaries=True,
+        ready = meeting("a", day="2026-07-20", start_time="09:00",
+                        has_summaries=True,
                         items=[item(1, "A", description=["x"])])
-        waiting = meeting("b", day="2026-07-20", body="Planning & Dev",
-                          slug="planning", has_summaries=False,
+        waiting = meeting("b", day="2026-07-20", start_time="09:00",
+                          body="Planning & Dev", slug="planning",
+                          has_summaries=False, has_video=False,
                           items=[item(1, "B", description=["x"])])
-        xml = feeds.build_meeting_feed([ready, waiting], date(2026, 7, 21))
+        # 11h30m after the meeting: the no-video sibling is still
+        # waiting, so only the summarized one publishes.
+        xml = feeds.build_meeting_feed([ready, waiting], _now("2026-07-20", 20, 30))
         titles = [e.find(f"{ATOM}title").text
                   for e in ET.fromstring(xml).findall(f"{ATOM}entry")]
         self.assertEqual(["July 20, 2026 · City Council"], titles)
 
     def test_an_unsettled_meeting_publishes_nothing(self):
-        meetings = [meeting("a", has_summaries=False,
+        meetings = [meeting("a", day="2026-07-20", start_time="09:00",
+                            has_summaries=False, has_video=False,
                             items=[item(1, "A", description=["x"])])]
-        xml = feeds.build_meeting_feed(meetings, date(2026, 7, 21))
+        xml = feeds.build_meeting_feed(meetings, _now("2026-07-20", 19))
         self.assertEqual(0, len(ET.fromstring(xml).findall(f"{ATOM}entry")))
 
 
 class NotRecorded(unittest.TestCase):
     """A meeting that settles without a recording says so in the feed.
 
-    Real summaries need a transcript and a transcript needs a video, so a
-    meeting that settles by the clock rather than by summaries is one the
-    City never posted a video for. Its entry leads with provisional,
+    Real summaries need a transcript and a transcript needs a video, so
+    a meeting that settles by the clock (12 hours after it sat) is one
+    the City had not posted a video for. Its entry carries provisional,
     agenda-derived content, and the note keeps it from reading as an
     account of the discussion.
     """
 
-    def _no_video(self, day="2026-07-01", **kw):
+    def _no_video(self, day="2026-07-01", start_time="09:00", **kw):
         return meeting(
-            "nv", day=day, has_video=False, has_summaries=False,
+            "nv", day=day, start_time=start_time, has_video=False,
+            has_summaries=False,
             items=[item(1, "A", description=["From the agenda."])], **kw)
 
     def test_no_video_settled_by_time_carries_the_note(self):
-        xml = feeds.build_meeting_feed([self._no_video()], date(2026, 7, 10))
+        xml = feeds.build_meeting_feed(
+            [self._no_video()], _now("2026-07-01", 21, 0))
         content = ET.fromstring(xml).find(f"{ATOM}entry")\
             .find(f"{ATOM}content").text
         self.assertIn("not recorded", content)
 
-    def test_no_video_within_the_window_publishes_nothing(self):
+    def test_no_video_within_twelve_hours_publishes_nothing(self):
         """The incident: it should have waited, not published thin."""
         xml = feeds.build_meeting_feed(
-            [self._no_video(day="2026-07-08")], date(2026, 7, 10))
+            [self._no_video(start_time="09:00")], _now("2026-07-01", 20, 30))
         self.assertEqual(
             0, len(ET.fromstring(xml).findall(f"{ATOM}entry")))
 
@@ -209,13 +253,14 @@ class NotRecorded(unittest.TestCase):
             [meeting("v", day="2026-07-01", has_video=True,
                      has_summaries=True,
                      items=[item(1, "A", description=["x"])])],
-            date(2026, 7, 10))
+            _now("2026-07-01", 21, 0))
         content = ET.fromstring(xml).find(f"{ATOM}entry")\
             .find(f"{ATOM}content").text
         self.assertNotIn("not recorded", content)
 
     def test_item_feed_carries_the_note(self):
-        xml = feeds.build_item_feed([self._no_video()], date(2026, 7, 10))
+        xml = feeds.build_item_feed(
+            [self._no_video()], _now("2026-07-01", 21, 0))
         content = ET.fromstring(xml).find(f"{ATOM}entry")\
             .find(f"{ATOM}content").text
         self.assertIn("not recorded", content)
@@ -243,7 +288,7 @@ class MeetingEntries(unittest.TestCase):
 
     def feed(self):
         return ET.fromstring(
-            feeds.build_meeting_feed(self.meetings, date(2026, 7, 27)))
+            feeds.build_meeting_feed(self.meetings, _now("2026-07-27")))
 
     def entries(self):
         return self.feed().findall(f"{ATOM}entry")
@@ -325,8 +370,8 @@ class MeetingEntries(unittest.TestCase):
 
     def test_rebuilding_on_a_later_day_changes_nothing(self):
         """The deploy runs six times a day; subscribers must see one entry."""
-        first = feeds.build_meeting_feed(self.meetings, date(2026, 7, 27))
-        later = feeds.build_meeting_feed(self.meetings, date(2026, 8, 3))
+        first = feeds.build_meeting_feed(self.meetings, _now("2026-07-27"))
+        later = feeds.build_meeting_feed(self.meetings, _now("2026-08-03"))
         self.assertEqual(first, later)
 
 
@@ -349,11 +394,11 @@ class ItemEntries(unittest.TestCase):
         ]
 
     def entry(self):
-        xml = feeds.build_item_feed(self.meetings, date(2026, 7, 27))
+        xml = feeds.build_item_feed(self.meetings, _now("2026-07-27"))
         return ET.fromstring(xml).findall(f"{ATOM}entry")[0]
 
     def test_one_entry_per_qualifying_item(self):
-        xml = feeds.build_item_feed(self.meetings, date(2026, 7, 27))
+        xml = feeds.build_item_feed(self.meetings, _now("2026-07-27"))
         self.assertEqual(1, len(ET.fromstring(xml).findall(f"{ATOM}entry")))
 
     def test_a_shouting_agenda_title_is_set_in_title_case(self):
@@ -401,7 +446,7 @@ class Retention(unittest.TestCase):
                     items=[item(1, "A", description=["x"])])
             for n in range(50)
         ]
-        xml = feeds.build_meeting_feed(meetings, date(2026, 12, 1))
+        xml = feeds.build_meeting_feed(meetings, _now("2026-12-01"))
         self.assertEqual(
             feeds.MAX_MEETING_ENTRIES,
             len(ET.fromstring(xml).findall(f"{ATOM}entry")),
@@ -414,7 +459,7 @@ class Retention(unittest.TestCase):
                            for i in range(1, 9)])
             for n in range(50)
         ]
-        xml = feeds.build_item_feed(meetings, date(2026, 12, 1))
+        xml = feeds.build_item_feed(meetings, _now("2026-12-01"))
         self.assertEqual(
             feeds.MAX_ITEM_ENTRIES,
             len(ET.fromstring(xml).findall(f"{ATOM}entry")),
@@ -434,16 +479,16 @@ class Escaping(unittest.TestCase):
         ])]
 
     def test_both_feeds_parse_with_hostile_text_everywhere(self):
-        for xml in feeds.build_feeds(self.meetings(), date(2026, 7, 27)).values():
+        for xml in feeds.build_feeds(self.meetings(), _now("2026-07-27")).values():
             ET.fromstring(xml)
 
     def test_the_ampersand_survives_the_round_trip(self):
-        xml = feeds.build_item_feed(self.meetings(), date(2026, 7, 27))
+        xml = feeds.build_item_feed(self.meetings(), _now("2026-07-27"))
         entry = ET.fromstring(xml).findall(f"{ATOM}entry")[0]
         self.assertIn("Parks & Rec", entry.find(f"{ATOM}title").text)
 
     def test_upstream_markup_does_not_become_markup_in_the_entry(self):
-        xml = feeds.build_item_feed(self.meetings(), date(2026, 7, 27))
+        xml = feeds.build_item_feed(self.meetings(), _now("2026-07-27"))
         entry = ET.fromstring(xml).findall(f"{ATOM}entry")[0]
         content = entry.find(f"{ATOM}content").text
         self.assertNotIn("<script>", content)
@@ -453,7 +498,7 @@ class Escaping(unittest.TestCase):
 class FeedDocument(unittest.TestCase):
     def test_both_feeds_declare_themselves(self):
         built = feeds.build_feeds([meeting(items=[item(1, "A", description=["x"])])],
-                                  date(2026, 7, 27))
+                                  _now("2026-07-27"))
         self.assertEqual({"feed.xml", "feed-items.xml"}, set(built))
         for path, xml in built.items():
             root = ET.fromstring(xml)
@@ -464,7 +509,7 @@ class FeedDocument(unittest.TestCase):
             )
 
     def test_an_empty_archive_still_produces_a_valid_feed(self):
-        for xml in feeds.build_feeds([], date(2026, 7, 27)).values():
+        for xml in feeds.build_feeds([], _now("2026-07-27")).values():
             root = ET.fromstring(xml)
             self.assertEqual(0, len(root.findall(f"{ATOM}entry")))
 

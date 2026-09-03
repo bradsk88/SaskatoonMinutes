@@ -8,36 +8,62 @@ segment dicts, so changing the segment representation is a one-file edit.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
-# The City posts recordings late: a meeting that sat yesterday may not
-# have a video for a week. A meeting without one is "recording pending"
-# for this long after it sat, then "not recorded". The settled feeds
-# settle a no-video meeting on the same count (feeds.SETTLE_DAYS), so
-# the feed stops waiting in the same week the site stops expecting the
-# video.
-RECORDING_GRACE_DAYS = 7
+# Saskatchewan keeps central standard time all year and never moves for
+# daylight saving, so one fixed offset is the whole rule -- no zone
+# database, and no date on which the answer changes.
+SASKATOON_TZ = timezone(timedelta(hours=-6))
+
+# The City posts a recording soon after a meeting: 12 hours without
+# one is the line. A no-video meeting settles in the feeds, and the
+# site calls it not recorded on the same clock, so the two surfaces
+# agree (ADR ``0027``).
+RECORDING_GRACE_HOURS = 12
+
+
+def meeting_start(date_iso: str, start_time: str) -> datetime | None:
+    """The meeting's start as a Saskatchewan datetime, or ``None``.
+
+    ``start_time`` is the 24-hour "HH:MM" the build normalizes from
+    eSCRIBE. A missing or malformed time means midnight on the meeting
+    date, so a meeting that has a date still settles 12 hours after
+    that rather than never.
+    """
+    try:
+        day = date.fromisoformat(date_iso or "")
+    except ValueError:
+        return None
+    hour = minute = 0
+    hhmm = (start_time or "").strip()
+    if len(hhmm) == 5 and hhmm[2:3] == ":":
+        try:
+            hour, minute = int(hhmm[:2]), int(hhmm[3:5])
+        except ValueError:
+            pass
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            hour = minute = 0
+    return datetime(
+        day.year, day.month, day.day, hour, minute, tzinfo=SASKATOON_TZ
+    )
 
 
 def meeting_recording_state(has_video: bool, is_cancelled: bool,
-                            date_iso: str, today: date) -> str | None:
+                            start: datetime | None, now: datetime) -> str | None:
     """The state to show where the video would be, or ``None``.
 
     ``None`` says nothing: the meeting has a video, was cancelled, has
-    not happened yet, or its date is unknown.  A cancelled meeting has
-    no recording by definition, and a future date says nothing about
-    the video.  Within the grace period the state is ``"pending"``
-    (recording not yet available); at or past it, ``"not_recorded"``.
+    not happened yet, or its start is unknown.  A cancelled meeting has
+    no recording by definition, and a future start says nothing about
+    the video.  Within the grace period (12 hours after the meeting's
+    start) the state is ``"pending"`` (recording not yet available);
+    at or past it, ``"not_recorded"``.
     """
-    if has_video or is_cancelled or not date_iso:
+    if has_video or is_cancelled or start is None:
         return None
-    try:
-        day = date.fromisoformat(date_iso)
-    except ValueError:
+    if start >= now:
         return None
-    if day >= today:
-        return None
-    if (today - day) >= timedelta(days=RECORDING_GRACE_DAYS):
+    if (now - start) >= timedelta(hours=RECORDING_GRACE_HOURS):
         return "not_recorded"
     return "pending"
 

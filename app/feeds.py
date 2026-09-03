@@ -19,12 +19,11 @@ can build a real feed from fixtures with no network and no site build.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from xml.etree import ElementTree as ET
 
 from app.agenda_items import format_outcome, is_procedural
 from app.agenda_text import plainify, readable_date, titleize
-from app.models import RECORDING_GRACE_DAYS, normalize_description
 from app.speakers import merge_remarks, organization_label
 from app.summarizer import (
     CARD_CHIP_CATEGORIES,
@@ -32,7 +31,12 @@ from app.summarizer import (
     discussion_minutes,
     item_summary,
 )
-from app.models import normalize_description
+from app.models import (
+    RECORDING_GRACE_HOURS,
+    SASKATOON_TZ,
+    meeting_start,
+    normalize_description,
+)
 
 SITE_URL = "https://yxeminutes.ca"
 FEED_TITLE = "YXEMinutes"
@@ -60,19 +64,13 @@ MAX_ITEM_ENTRIES = 100
 # genuinely happening in it than a day on which one did.
 MAX_ITEMS_PER_MEETING = 8
 
-# How long a meeting waits for the pipeline before publishing anyway.  A
-# meeting whose video never arrives must not wait forever, and a meeting
-# missing from the feed is a worse error than one that later improves.
-# The same count the site's recording state uses: a no-video meeting
-# stops waiting for the feed in the week the site calls it not recorded.
-SETTLE_DAYS = RECORDING_GRACE_DAYS
+# How long a meeting with a video but no real summary waits for the
+# pipeline before publishing anyway.  The recording is there, so the
+# only failure is our own: a meeting missing from the feed is a worse
+# error than one that later improves.
+SETTLE_DAYS = 7
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
-
-# Saskatchewan keeps central standard time all year and never moves for
-# daylight saving, so one fixed offset is the whole rule -- no zone
-# database, and no date on which the answer changes.
-SASKATOON_TZ = timezone(timedelta(hours=-6))
 
 AI_DISCLOSURE = (
     "Summaries are AI-generated from the meeting transcript and may "
@@ -175,29 +173,36 @@ def takeaway(item: dict) -> dict | None:
     return chips[0] if chips else None
 
 
-def is_settled(meeting: dict, today: date) -> bool:
+def is_settled(meeting: dict, now: datetime) -> bool:
     """Whether one meeting is done being summarized.
 
-    Publishing on first qualification would send a thin entry that fills
-    in later, and a reader who saw the thin one is never shown the full
-    one -- most readers render a changed entry once and never resurface
-    it.  So a meeting waits until it has summaries, or until
-    ``SETTLE_DAYS`` have passed and it is published as it stands.  A
-    meeting settles on its own and does not wait on a sibling that sat
-    the same day.
+    Publishing on first qualification would send a thin entry that
+    fills in later, and a reader who saw the thin one is never shown
+    the full one -- most readers render a changed entry once and never
+    resurface it.  A meeting settles on its own and does not wait on a
+    sibling that sat the same day.
 
     "Has summaries" means real, post-meeting summaries: a provisional
-    cache written before the meeting is not a summary of what happened,
-    and an entry settled on it would lead with the agenda (ADR ``0021``).
-    Such a meeting keeps waiting, and when the week runs out it
-    publishes with the note in ``not_recorded_note``.
+    cache written before the meeting is not a summary of what
+    happened, and an entry settled on it would lead with the agenda
+    (ADR ``0021``).
+
+    A meeting without a recording settles ``RECORDING_GRACE_HOURS``
+    after it sat: the City posts recordings soon, and 12 hours
+    without one is the line the site uses to call a meeting not
+    recorded, so the feed and the site flip together (ADR ``0027``).
+    Such an entry carries the note in ``not_recorded_note``.  A
+    meeting *with* a recording but no real summary still escapes at
+    ``SETTLE_DAYS``: the video is there, only the pipeline is behind.
     """
     if meeting.get("has_summaries"):
         return True
-    day = _parse_date(meeting.get("date"))
-    if day is None:
+    start = meeting_start(meeting.get("date"), meeting.get("start_time"))
+    if start is None:
         return False
-    return (today - day) >= timedelta(days=SETTLE_DAYS)
+    if meeting.get("has_video"):
+        return (now - start) >= timedelta(days=SETTLE_DAYS)
+    return (now - start) >= timedelta(hours=RECORDING_GRACE_HOURS)
 
 
 def _parse_date(iso: str | None) -> date | None:
@@ -207,15 +212,17 @@ def _parse_date(iso: str | None) -> date | None:
         return None
 
 
-def meetings_to_publish(meetings: list[dict], today: date) -> list[dict]:
+def meetings_to_publish(meetings: list[dict], now: datetime) -> list[dict]:
     """Settled meetings that earn entries, newest first.
 
     Each meeting settles on its own -- it publishes once it has
-    summaries or ``SETTLE_DAYS`` have passed, without waiting on a
-    sibling that sat the same day. Both settled feeds build from this
-    same list, so they publish the same meetings at the same time and
-    differ only in granularity (ADR ``0019``): the default one entry
-    per meeting, the item feed one entry per qualifying item.
+    summaries, or once 12 hours have passed since it sat with no
+    recording (or ``SETTLE_DAYS`` with a recording but no summary) --
+    without waiting on a sibling that sat the same day. Both settled
+    feeds build from this same list, so they publish the same meetings
+    at the same time and differ only in granularity (ADR ``0019``):
+    the default one entry per meeting, the item feed one entry per
+    qualifying item.
     """
     rows = [
         meeting
@@ -223,7 +230,7 @@ def meetings_to_publish(meetings: list[dict], today: date) -> list[dict]:
         if (meeting.get("date") or "").strip()
         and _parse_date(meeting.get("date")) is not None
         and qualifying_items(meeting.get("agenda_items") or [])
-        and is_settled(meeting, today)
+        and is_settled(meeting, now)
     ]
     rows.sort(key=lambda m: (m.get("body") or ""))
     rows.sort(key=lambda m: (m.get("date") or ""), reverse=True)
@@ -490,7 +497,7 @@ def _meeting_categories(meeting: dict, items: list[dict]) -> list[str]:
     })
 
 
-def build_meeting_feed(meetings: list[dict], today: date) -> str:
+def build_meeting_feed(meetings: list[dict], now: datetime) -> str:
     """The default feed: one entry per meeting the city sat.
 
     A meeting is the unit, not a day: committees stack, and a Tuesday on
@@ -499,7 +506,7 @@ def build_meeting_feed(meetings: list[dict], today: date) -> str:
     meeting publishes as soon as it is settled, without waiting on a
     sibling that sat the same day.
     """
-    rows = meetings_to_publish(meetings, today)[:MAX_MEETING_ENTRIES]
+    rows = meetings_to_publish(meetings, now)[:MAX_MEETING_ENTRIES]
     updated = _timestamp(rows[0].get("date")) if rows else _timestamp("")
     feed = _feed_root(FEED_TITLE, MEETING_FEED_PATH, updated)
     for meeting in rows:
@@ -516,7 +523,7 @@ def build_meeting_feed(meetings: list[dict], today: date) -> str:
     return _serialize(feed)
 
 
-def build_item_feed(meetings: list[dict], today: date) -> str:
+def build_item_feed(meetings: list[dict], now: datetime) -> str:
     """The second feed: one entry per qualifying item.
 
     Same gate, same ranking, same cap as the meeting feed -- the two
@@ -524,7 +531,7 @@ def build_item_feed(meetings: list[dict], today: date) -> str:
     make one a subset of the other, so anyone subscribed to both would
     see the important items twice.
     """
-    rows = meetings_to_publish(meetings, today)
+    rows = meetings_to_publish(meetings, now)
     entries: list[tuple[dict, dict]] = []
     for meeting in rows:
         for item in qualifying_items(meeting.get("agenda_items") or []):
@@ -656,15 +663,15 @@ def build_future_feed(meetings: list[dict], today: date) -> str:
     return _serialize(feed)
 
 
-def build_feeds(meetings: list[dict], today: date) -> dict[str, str]:
+def build_feeds(meetings: list[dict], now: datetime) -> dict[str, str]:
     """Both feeds, keyed by the filename they are written to.
 
     *meetings* is one dict per meeting: ``meeting_id``, ``title``,
-    ``body``, ``body_slug``, ``date``, ``has_summaries``,
+    ``body``, ``body_slug``, ``date``, ``start_time``, ``has_summaries``,
     ``has_video`` and ``agenda_items``.  ``build_site`` has all of it in
     hand by the time it renders, so the feeds cost no second fetch.
     """
     return {
-        MEETING_FEED_PATH: build_meeting_feed(meetings, today),
-        ITEM_FEED_PATH: build_item_feed(meetings, today),
+        MEETING_FEED_PATH: build_meeting_feed(meetings, now),
+        ITEM_FEED_PATH: build_item_feed(meetings, now),
     }

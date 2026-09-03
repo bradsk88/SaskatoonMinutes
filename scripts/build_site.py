@@ -17,7 +17,7 @@ import re
 import shutil
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 # Ensure the project root is on the path so we can import app.*
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,9 +27,11 @@ from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
 from app.models import (
+    SASKATOON_TZ,
     ScheduledMeeting,
     has_current_summaries,
     meeting_recording_state,
+    meeting_start,
 )
 from app.agenda_items import (
     count_agenda_items,
@@ -121,7 +123,7 @@ def _start_time_24h(formatted: str) -> str:
     return f"{hour:02d}:{match.group(2)}"
 
 
-def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache, summaries_cache):
+def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache, summaries_cache, now: datetime):
     """Fetch per-meeting topics and detail data for a list of Meeting objects."""
     topics_data: dict[str, list] = {}
     details_data: dict[str, dict] = {}
@@ -244,8 +246,12 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 # when there is no video: the recording is pending, or
                 # the meeting was not recorded.
                 "recording_state": meeting_recording_state(
-                    m.has_video, m.is_cancelled, detail.date or m.date,
-                    date.today(),
+                    m.has_video, m.is_cancelled,
+                    meeting_start(
+                        detail.date or m.date,
+                        detail.start_time or _start_time_24h(m.start_time),
+                    ),
+                    now,
                 ),
             }
         except Exception as exc:
@@ -263,12 +269,15 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 "item_count": 0,
                 "discussed_count": 0,
                 "consent_count": 0,
-                # No agenda means nothing to publish, and the day it sits
-                # on must not wait seven days for a meeting that will
-                # never arrive -- it has no qualifying items either way.
+                # No agenda means no qualifying items, so the feed
+                # never publishes this meeting however it settles.
+                # has_summaries is irrelevant here; it keeps the key
+                # present for the page.
                 "has_summaries": True,
                 "recording_state": meeting_recording_state(
-                    m.has_video, m.is_cancelled, m.date, date.today(),
+                    m.has_video, m.is_cancelled,
+                    meeting_start(m.date, _start_time_24h(m.start_time)),
+                    now,
                 ),
             }
     return topics_data, details_data
@@ -447,6 +456,7 @@ def fetch_all_data():
         except Exception as exc:
             print(f"  WARNING: scheduled meetings unavailable: {exc}")
             scheduled = []
+        now = datetime.now(SASKATOON_TZ)
         # A meeting with a recording has happened, so it is no longer
         # "future": the Future tab (and its feed) must not carry it.
         # Its body's past tab gets it below, via list_recorded.
@@ -516,7 +526,7 @@ def fetch_all_data():
             }
 
             topics, details = _fetch_topics_and_details(
-                source, meetings, transcript_cache, summaries_cache,
+                source, meetings, transcript_cache, summaries_cache, now,
             )
             all_topics.update(topics)
             all_details.update(details)
@@ -530,6 +540,9 @@ def fetch_all_data():
                     "body_slug": slug,
                     "date": detail.get("date") or m.date,
                     "has_summaries": detail.get("has_summaries", False),
+                    # The feed's clock settles 12 hours after the
+                    # meeting's start, so it reads the time too.
+                    "start_time": detail.get("start_time") or "",
                     # The feed's not-recorded note keys off this: an
                     # entry for a video-less meeting must say its
                     # descriptions come from the agenda.
@@ -778,7 +791,7 @@ def main():
     # from the meeting id and timestamps from the meeting date, neither
     # from build time, so a rebuild whose data has not moved is
     # byte-identical and no subscriber sees anything (ADR 0019).
-    feeds = build_feeds(feed_meetings, date.today())
+    feeds = build_feeds(feed_meetings, now)
     # The Future Feed is built separately: its input is Scheduled
     # Meetings, not the settled-meeting dicts the other two read
     # (ADR 0024).

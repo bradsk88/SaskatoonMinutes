@@ -4,6 +4,12 @@ status: accepted
 
 # A meeting without a recording settles by the clock, and both surfaces say so
 
+> Partially reversed 2026-09-02: the grace is 12 hours after the
+> meeting's start, not seven days after its date (ADR `0027`). The
+> rest of the decision stands: the feed waits for real summaries
+> instead of provisional ones, and the note and the page state tell
+> the same story on the same line.
+
 The feed published an entry for a meeting whose recording was not yet
 available, and the entry had no useful summary in it. Two things had
 lined up. The meeting had sat and been marked passed, but the City had

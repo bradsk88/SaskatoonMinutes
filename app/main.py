@@ -6,7 +6,7 @@ agenda items, and jump to specific timestamps in the meeting video.
 """
 
 import os
-from datetime import date
+from datetime import datetime
 from flask import Flask, current_app, render_template, jsonify, request
 from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
@@ -19,7 +19,7 @@ from app.agenda_items import (
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS, _SLUG_TO_TYPE
-from app.models import meeting_recording_state
+from app.models import SASKATOON_TZ, meeting_recording_state, meeting_start
 from app.summarizer import (
     summarize_agenda_items, extract_meeting_topics, extract_badges,
     speaker_roster,
@@ -109,7 +109,9 @@ def api_meeting_detail(meeting_id: str):
             # recorded.  The list's HasVideo is not in hand here, so the
             # detail's own video stands in for it.
             "recording_state": meeting_recording_state(
-                bool(detail.video_url), False, detail.date, date.today(),
+                bool(detail.video_url), False,
+                meeting_start(detail.date, detail.start_time),
+                datetime.now(SASKATOON_TZ),
             ),
             "title": detail.title,
             "date": detail.date,
