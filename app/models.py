@@ -8,6 +8,38 @@ segment dicts, so changing the segment representation is a one-file edit.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import date, timedelta
+
+# The City posts recordings late: a meeting that sat yesterday may not
+# have a video for a week. A meeting without one is "recording pending"
+# for this long after it sat, then "not recorded". The settled feeds
+# settle a no-video meeting on the same count (feeds.SETTLE_DAYS), so
+# the feed stops waiting in the same week the site stops expecting the
+# video.
+RECORDING_GRACE_DAYS = 7
+
+
+def meeting_recording_state(has_video: bool, is_cancelled: bool,
+                            date_iso: str, today: date) -> str | None:
+    """The state to show where the video would be, or ``None``.
+
+    ``None`` says nothing: the meeting has a video, was cancelled, has
+    not happened yet, or its date is unknown.  A cancelled meeting has
+    no recording by definition, and a future date says nothing about
+    the video.  Within the grace period the state is ``"pending"``
+    (recording not yet available); at or past it, ``"not_recorded"``.
+    """
+    if has_video or is_cancelled or not date_iso:
+        return None
+    try:
+        day = date.fromisoformat(date_iso)
+    except ValueError:
+        return None
+    if day >= today:
+        return None
+    if (today - day) >= timedelta(days=RECORDING_GRACE_DAYS):
+        return "not_recorded"
+    return "pending"
 
 
 @dataclass(frozen=True)
@@ -358,6 +390,31 @@ class ItemSummary:
         if self.provisional:
             payload["provisional"] = True
         return payload
+
+
+def has_current_summaries(cached: dict[str, ItemSummary] | None) -> bool:
+    """True when the cached summaries include a real, post-meeting one.
+
+    The summarize job's skip rule and the feeds' "has summaries" signal
+    share it.  A provisional summary was written before the meeting,
+    from official text alone, and is disposable: the flip to Meeting
+    regenerates everything with the transcript (ADR ``0021``).  A feed
+    entry settled on provisional coverage would say what the agenda
+    promised, not what happened.
+
+    ``any``, not ``all``: an *ineligible* item is stored as an empty
+    summary with no description, so a meeting is judged by whether
+    anything in it cleared the current bar.  A meeting summarized
+    without a Gemini key has no descriptions anywhere and is correctly
+    treated as not current: that run produced degraded output and should
+    be redone.
+    """
+    if not cached:
+        return False
+    return any(
+        not summary.is_legacy and not summary.provisional
+        for summary in cached.values()
+    )
 
 
 @dataclass(frozen=True)

@@ -24,6 +24,7 @@ from xml.etree import ElementTree as ET
 
 from app.agenda_items import format_outcome, is_procedural
 from app.agenda_text import plainify, readable_date, titleize
+from app.models import RECORDING_GRACE_DAYS, normalize_description
 from app.speakers import merge_remarks, organization_label
 from app.summarizer import (
     CARD_CHIP_CATEGORIES,
@@ -62,7 +63,9 @@ MAX_ITEMS_PER_MEETING = 8
 # How long a meeting waits for the pipeline before publishing anyway.  A
 # meeting whose video never arrives must not wait forever, and a meeting
 # missing from the feed is a worse error than one that later improves.
-SETTLE_DAYS = 7
+# The same count the site's recording state uses: a no-video meeting
+# stops waiting for the feed in the week the site calls it not recorded.
+SETTLE_DAYS = RECORDING_GRACE_DAYS
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
 
@@ -179,9 +182,15 @@ def is_settled(meeting: dict, today: date) -> bool:
     in later, and a reader who saw the thin one is never shown the full
     one -- most readers render a changed entry once and never resurface
     it.  So a meeting waits until it has summaries, or until
-    ``SETTLE_DAYS`` have passed and it is published as it stands. A
+    ``SETTLE_DAYS`` have passed and it is published as it stands.  A
     meeting settles on its own and does not wait on a sibling that sat
     the same day.
+
+    "Has summaries" means real, post-meeting summaries: a provisional
+    cache written before the meeting is not a summary of what happened,
+    and an entry settled on it would lead with the agenda (ADR ``0021``).
+    Such a meeting keeps waiting, and when the week runs out it
+    publishes with the note in ``not_recorded_note``.
     """
     if meeting.get("has_summaries"):
         return True
@@ -335,6 +344,31 @@ def _esc(text: str) -> str:
     )
 
 
+def not_recorded_note(meeting: dict, *, per_item: bool = False) -> str:
+    """A plain note for a published meeting that has no recording.
+
+    Only reachable for a meeting that settled on the clock rather than
+    on summaries: real summaries need a transcript, and a transcript
+    needs a video.  An entry settled without one carries provisional,
+    agenda-derived descriptions, and the note says so instead of letting
+    the entry read as an account of the discussion.
+    """
+    if meeting.get("has_video"):
+        return ""
+    if per_item:
+        text = (
+            "This meeting was not recorded, so this description was "
+            "written from the published agenda rather than from the discussion."
+        )
+    else:
+        text = (
+            "This meeting was not recorded, so the item descriptions "
+            "were written from the published agenda rather than from the "
+            "discussion."
+        )
+    return f"<p>{_esc(text)}</p>"
+
+
 def _meeting_content_html(meeting: dict, items: list[dict]) -> str:
     """A meeting's qualifying items, each a linked line plus its body.
 
@@ -343,6 +377,9 @@ def _meeting_content_html(meeting: dict, items: list[dict]) -> str:
     that shows only the top line or two never reaches the item beneath it.
     """
     parts = []
+    note = not_recorded_note(meeting)
+    if note:
+        parts.append(note)
     for item in items:
         url = item_url(meeting["meeting_id"], item)
         outcome = item_outcome(item)
@@ -498,6 +535,7 @@ def build_item_feed(meetings: list[dict], today: date) -> str:
     for meeting, item in entries:
         url = item_url(meeting["meeting_id"], item)
         content = item_content_html(meeting, item, include_context=True)
+        content += not_recorded_note(meeting, per_item=True)
         content += (
             f"<p><small>{_esc(AI_DISCLOSURE)} "
             f'<a href="{_esc(url)}">Read the original agenda item</a>.</small></p>'
@@ -622,9 +660,9 @@ def build_feeds(meetings: list[dict], today: date) -> dict[str, str]:
     """Both feeds, keyed by the filename they are written to.
 
     *meetings* is one dict per meeting: ``meeting_id``, ``title``,
-    ``body``, ``body_slug``, ``date``, ``has_summaries`` and
-    ``agenda_items``.  ``build_site`` has all of it in hand by the time
-    it renders, so the feeds cost no second fetch.
+    ``body``, ``body_slug``, ``date``, ``has_summaries``,
+    ``has_video`` and ``agenda_items``.  ``build_site`` has all of it in
+    hand by the time it renders, so the feeds cost no second fetch.
     """
     return {
         MEETING_FEED_PATH: build_meeting_feed(meetings, today),

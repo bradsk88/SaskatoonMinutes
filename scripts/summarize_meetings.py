@@ -60,7 +60,7 @@ from app.attachment_gists_cache import AttachmentGistsCache
 from app.item_summaries_cache import ItemSummariesCache
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
-from app.models import ItemSummary
+from app.models import ItemSummary, has_current_summaries
 from app.speakers import group_window, mark_jointly_heard
 from app.transcript_cache import TranscriptCache
 
@@ -74,22 +74,11 @@ def is_current(cached: dict[str, ItemSummary] | None) -> bool:
     the skip off entirely and made each dispatch redo the meetings the
     last one paid for instead of moving on.
 
-    ``any``, not ``all``: an *ineligible* item is stored as an empty
-    summary with no description, so a meeting is judged by whether
-    anything in it cleared the current bar.  A meeting summarized without
-    a Gemini key has no descriptions anywhere and is correctly treated as
-    not current — that run produced degraded output and should be redone.
+    The provisional / legacy / empty-item rules live in
+    ``has_current_summaries``, which the site's feed flag shares: both
+    call sites must agree on what "summarized" means.
     """
-    if not cached:
-        return False
-    # A provisional summary was written before the meeting, from official
-    # text alone.  Once the meeting has happened it is disposable: the
-    # flip to Meeting regenerates everything with the transcript
-    # (ADR 0021), so provisional coverage does not count as current.
-    return any(
-        not summary.is_legacy and not summary.provisional
-        for summary in cached.values()
-    )
+    return has_current_summaries(cached)
 
 
 def summarize_meeting(

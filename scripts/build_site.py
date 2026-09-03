@@ -26,7 +26,11 @@ sys.path.insert(0, PROJECT_ROOT)
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
-from app.models import ScheduledMeeting
+from app.models import (
+    ScheduledMeeting,
+    has_current_summaries,
+    meeting_recording_state,
+)
 from app.agenda_items import (
     count_agenda_items,
     count_consent_items,
@@ -227,12 +231,22 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 # header used to report 43 above 73 rendered cards.
                 "discussed_count": count_discussed_items(items),
                 "consent_count": count_consent_items(items),
-                # Whether a summarize run has reached this meeting at
-                # all.  The feed waits on it: a day publishes once every
-                # meeting on it is summarized, so that a subscriber gets
-                # one complete entry late rather than a thin one that
-                # quietly fills in afterwards (ADR 0019).
-                "has_summaries": bool(item_summaries),
+                # The feed's wait flag: whether a real, post-meeting
+                # summarize run has reached this meeting.  Provisional
+                # coverage does not count -- it is written before the
+                # meeting from the agenda alone, and an entry settled on
+                # it would say what the agenda promised, not what
+                # happened (ADR ``0021``).  A no-video meeting so kept
+                # waiting settles on the clock and publishes with the
+                # not-recorded note.
+                "has_summaries": has_current_summaries(item_summaries),
+                # Where the video would be, on this page, says something
+                # when there is no video: the recording is pending, or
+                # the meeting was not recorded.
+                "recording_state": meeting_recording_state(
+                    m.has_video, m.is_cancelled, detail.date or m.date,
+                    date.today(),
+                ),
             }
         except Exception as exc:
             print(f"    WARNING: Failed to get topics: {exc}")
@@ -253,6 +267,9 @@ def _fetch_topics_and_details(source: MeetingSource, meetings, transcript_cache,
                 # on must not wait seven days for a meeting that will
                 # never arrive -- it has no qualifying items either way.
                 "has_summaries": True,
+                "recording_state": meeting_recording_state(
+                    m.has_video, m.is_cancelled, m.date, date.today(),
+                ),
             }
     return topics_data, details_data
 
@@ -513,6 +530,10 @@ def fetch_all_data():
                     "body_slug": slug,
                     "date": detail.get("date") or m.date,
                     "has_summaries": detail.get("has_summaries", False),
+                    # The feed's not-recorded note keys off this: an
+                    # entry for a video-less meeting must say its
+                    # descriptions come from the agenda.
+                    "has_video": m.has_video,
                     "agenda_items": detail.get("agenda_items") or [],
                 })
 

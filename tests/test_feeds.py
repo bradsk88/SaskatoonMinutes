@@ -39,7 +39,7 @@ def item(item_id, title, *, description=None, chips=None, minutes=None,
 
 
 def meeting(meeting_id="m1", *, day="2026-07-20", body="City Council",
-            slug="council", items=None, has_summaries=True):
+            slug="council", items=None, has_summaries=True, has_video=True):
     return {
         "meeting_id": meeting_id,
         "title": "Regular Business Meeting of City Council",
@@ -47,6 +47,7 @@ def meeting(meeting_id="m1", *, day="2026-07-20", body="City Council",
         "body_slug": slug,
         "date": day,
         "has_summaries": has_summaries,
+        "has_video": has_video,
         "agenda_items": items or [],
     }
 
@@ -173,6 +174,51 @@ class Settling(unittest.TestCase):
                             items=[item(1, "A", description=["x"])])]
         xml = feeds.build_meeting_feed(meetings, date(2026, 7, 21))
         self.assertEqual(0, len(ET.fromstring(xml).findall(f"{ATOM}entry")))
+
+
+class NotRecorded(unittest.TestCase):
+    """A meeting that settles without a recording says so in the feed.
+
+    Real summaries need a transcript and a transcript needs a video, so a
+    meeting that settles by the clock rather than by summaries is one the
+    City never posted a video for. Its entry leads with provisional,
+    agenda-derived content, and the note keeps it from reading as an
+    account of the discussion.
+    """
+
+    def _no_video(self, day="2026-07-01", **kw):
+        return meeting(
+            "nv", day=day, has_video=False, has_summaries=False,
+            items=[item(1, "A", description=["From the agenda."])], **kw)
+
+    def test_no_video_settled_by_time_carries_the_note(self):
+        xml = feeds.build_meeting_feed([self._no_video()], date(2026, 7, 10))
+        content = ET.fromstring(xml).find(f"{ATOM}entry")\
+            .find(f"{ATOM}content").text
+        self.assertIn("not recorded", content)
+
+    def test_no_video_within_the_window_publishes_nothing(self):
+        """The incident: it should have waited, not published thin."""
+        xml = feeds.build_meeting_feed(
+            [self._no_video(day="2026-07-08")], date(2026, 7, 10))
+        self.assertEqual(
+            0, len(ET.fromstring(xml).findall(f"{ATOM}entry")))
+
+    def test_a_video_meeting_carries_no_note(self):
+        xml = feeds.build_meeting_feed(
+            [meeting("v", day="2026-07-01", has_video=True,
+                     has_summaries=True,
+                     items=[item(1, "A", description=["x"])])],
+            date(2026, 7, 10))
+        content = ET.fromstring(xml).find(f"{ATOM}entry")\
+            .find(f"{ATOM}content").text
+        self.assertNotIn("not recorded", content)
+
+    def test_item_feed_carries_the_note(self):
+        xml = feeds.build_item_feed([self._no_video()], date(2026, 7, 10))
+        content = ET.fromstring(xml).find(f"{ATOM}entry")\
+            .find(f"{ATOM}content").text
+        self.assertIn("not recorded", content)
 
 
 class MeetingEntries(unittest.TestCase):

@@ -1,6 +1,18 @@
 """Tests for app.models — Transcript, Segment, ItemSummary, Meeting, AgendaItem."""
 
-from app.models import AgendaItem, Chip, ItemSummary, Meeting, Segment, Transcript
+from app.models import (
+    AgendaItem,
+    Chip,
+    ItemSummary,
+    Meeting,
+    RECORDING_GRACE_DAYS,
+    Segment,
+    Transcript,
+    has_current_summaries,
+    meeting_recording_state,
+)
+
+from datetime import date
 
 
 def _seg(start_ms: int, end_ms: int, text: str = "x") -> Segment:
@@ -239,3 +251,72 @@ class TestMeeting:
             "video_url": "https://example.com/v",
             "is_cancelled": False,
         }
+
+
+class TestRecordingState:
+    """Where the video would be, says something when there is no video."""
+
+    def _s(self, has_video, is_cancelled, day, today):
+        return meeting_recording_state(
+            has_video, is_cancelled, day, today)
+
+    def test_a_video_says_nothing(self):
+        assert self._s(True, False, "2026-08-01", date(2026, 9, 2)) is None
+
+    def test_a_cancelled_meeting_says_nothing(self):
+        assert self._s(False, True, "2026-08-01", date(2026, 9, 2)) is None
+
+    def test_a_future_meeting_says_nothing(self):
+        assert self._s(False, False, "2026-09-05", date(2026, 9, 2)) is None
+
+    def test_an_unknown_date_says_nothing(self):
+        assert self._s(False, False, "", date(2026, 9, 2)) is None
+
+    def test_yesterday_without_video_is_pending(self):
+        assert self._s(False, False, "2026-09-01", date(2026, 9, 2)) == "pending"
+
+    def test_inside_the_grace_period_is_pending(self):
+        assert self._s(False, False, "2026-08-27", date(2026, 9, 2)) == "pending"
+
+    def test_at_the_grace_boundary_it_is_not_recorded(self):
+        # The same 7 days the feed settles on: the site calls it not
+        # recorded the week the feed stops waiting for the video.
+        assert RECORDING_GRACE_DAYS == 7
+        assert self._s(False, False, "2026-08-26", date(2026, 9, 2)) == "not_recorded"
+
+    def test_well_past_the_grace_period_is_not_recorded(self):
+        assert self._s(False, False, "2026-08-23", date(2026, 9, 2)) == "not_recorded"
+
+
+class TestHasCurrentSummaries:
+    """What 'summarized' means, shared by the skip rule and the feeds."""
+
+    def _real(self):
+        return ItemSummary(description=["x"], chips=[])
+
+    def _provisional(self):
+        return ItemSummary(description=["x"], chips=[], provisional=True)
+
+    def _legacy(self):
+        return ItemSummary.from_dict({"chips": []})
+
+    def test_absent_cache_is_not_current(self):
+        assert has_current_summaries(None) is False
+
+    def test_empty_cache_is_not_current(self):
+        assert has_current_summaries({}) is False
+
+    def test_a_real_summary_is_current(self):
+        assert has_current_summaries({"1": self._real()}) is True
+
+    def test_provisional_only_is_not_current(self):
+        # Written before the meeting, from the agenda alone: it does not
+        # settle a feed entry or skip a backfill.
+        assert has_current_summaries({"1": self._provisional()}) is False
+
+    def test_legacy_only_is_not_current(self):
+        assert has_current_summaries({"1": self._legacy()}) is False
+
+    def test_any_real_summary_among_degraded_ones_counts(self):
+        cached = {"1": self._provisional(), "2": self._real()}
+        assert has_current_summaries(cached) is True

@@ -6,6 +6,7 @@ agenda items, and jump to specific timestamps in the meeting video.
 """
 
 import os
+from datetime import date
 from flask import Flask, current_app, render_template, jsonify, request
 from requests.exceptions import ConnectionError, SSLError
 from dotenv import load_dotenv
@@ -18,6 +19,7 @@ from app.agenda_items import (
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS, _SLUG_TO_TYPE
+from app.models import meeting_recording_state
 from app.summarizer import (
     summarize_agenda_items, extract_meeting_topics, extract_badges,
     speaker_roster,
@@ -102,6 +104,13 @@ def api_meeting_detail(meeting_id: str):
         return jsonify({
             "agenda_items": items,
             "video_url": detail.video_url,
+            # Where the video would be says something when there is no
+            # video: the recording is pending, or the meeting was not
+            # recorded.  The list's HasVideo is not in hand here, so the
+            # detail's own video stands in for it.
+            "recording_state": meeting_recording_state(
+                bool(detail.video_url), False, detail.date, date.today(),
+            ),
             "title": detail.title,
             "date": detail.date,
             "start_time": detail.start_time,
