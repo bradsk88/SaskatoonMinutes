@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Protocol, Sequence
 
@@ -25,7 +25,14 @@ import urllib3
 import requests
 
 from app.agenda_text import clean_entities, titleize
-from app.models import AgendaItem, Meeting, MeetingDetail, ScheduledMeeting
+from app.models import (
+    RECORDING_GRACE_HOURS,
+    AgendaItem,
+    Meeting,
+    MeetingDetail,
+    ScheduledMeeting,
+    meeting_start,
+)
 from app.speakers import extract_speakers
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -783,6 +790,64 @@ class EscribeMeetingSource:
                 has_video=True,
                 has_agenda=bool(m.get("HasAgenda")),
                 video_url=_build_video_url(meeting_id),
+            ))
+        meetings.sort(key=lambda m: (m.date, m.start_time))
+        return meetings
+
+    def list_settled_no_video(self, start_date: str, end_date: str,
+                              meeting_type: str | None = None,
+                              now: datetime | None = None) -> list[Meeting]:
+        """Calendar meetings that sat with no video and have settled.
+
+        The counterpart of :meth:`list_recorded` for a meeting the City
+        never recorded: with no video it is not in the recorded pass, and
+        the upstream marks it not-passed for a while, so it is not in
+        ``list_past`` either.  Without this pass such a meeting falls out
+        of every list and never reaches its body's past tab.
+
+        "Settled" is the same 12-hour clock the feeds and the detail
+        page's not-recorded indicator use (ADR ``0027``): a meeting is
+        returned only once ``RECORDING_GRACE_HOURS`` have passed since
+        its start, so the tab, the indicator, and the feed flip together.
+
+        ``meeting_type`` scopes the pass to one body, so a site build can
+        land each settled meeting on its own body's past tab; ``now`` is
+        the build's clock.
+        """
+        raw = self._transport.fetch_calendar_meetings_json(start_date, end_date)
+
+        meetings: list[Meeting] = []
+        for m in raw:
+            if m.get("HasVideo"):
+                continue
+            if m.get("MeetingPassed"):
+                continue
+            if meeting_type and (m.get("MeetingType") or "").strip() != meeting_type:
+                continue
+            meeting_id = m.get("ID", "")
+            if not meeting_id:
+                continue
+            start_date_field = m.get("StartDate") or ""
+            date_part, _, time_part = start_date_field.partition(" ")
+            date = date_part.replace("/", "-")
+            # The live calendar already filters by range; re-checking keeps
+            # the method correct for a transport (fixtures) that does not.
+            if not (start_date <= date <= end_date):
+                continue
+            start = meeting_start(date, (time_part or "")[:5])
+            if start is None or start >= now:
+                continue
+            if (now - start) < timedelta(hours=RECORDING_GRACE_HOURS):
+                continue
+            meetings.append(Meeting(
+                meeting_id=meeting_id,
+                title=titleize((m.get("MeetingType") or "Meeting").strip()),
+                date=date,
+                start_time=m.get("FormattedStart", ""),
+                location=(m.get("Location") or "").strip(),
+                has_video=False,
+                has_agenda=bool(m.get("HasAgenda")),
+                video_url=None,
             ))
         meetings.sort(key=lambda m: (m.date, m.start_time))
         return meetings

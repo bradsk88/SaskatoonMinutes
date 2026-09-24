@@ -7,9 +7,16 @@ wire :class:`InMemoryMeetingSource`.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Protocol, Sequence
 
-from app.models import Meeting, MeetingDetail, ScheduledMeeting
+from app.models import (
+    RECORDING_GRACE_HOURS,
+    Meeting,
+    MeetingDetail,
+    ScheduledMeeting,
+    meeting_start,
+)
 
 
 class MeetingSource(Protocol):
@@ -40,6 +47,18 @@ class MeetingSource(Protocol):
         every body's gap.
         """
 
+    def list_settled_no_video(self, start_date: str, end_date: str,
+                              meeting_type: str | None = None,
+                              now: datetime | None = None) -> list[Meeting]:
+        """Calendar meetings that sat with no video and have settled.
+
+        The counterpart of :meth:`list_recorded` for a meeting the City
+        never recorded: it is in neither ``list_past`` (not passed) nor
+        the recorded pass (no video), so without it a no-recording
+        meeting never reaches its body's past tab.  "Settled" is the
+        12-hour clock of ADR ``0027``; ``now`` is the build's clock.
+        """
+
 
 class InMemoryMeetingSource:
     """Test double backed by passive in-memory data.
@@ -54,11 +73,13 @@ class InMemoryMeetingSource:
         past: Sequence[Meeting] = (),
         scheduled: Sequence[ScheduledMeeting] = (),
         recorded: Sequence[Meeting] = (),
+        no_video: Sequence[Meeting] = (),
     ):
         self.details: dict[str, MeetingDetail] = dict(details or {})
         self.past: list[Meeting] = list(past)
         self.scheduled: list[ScheduledMeeting] = list(scheduled)
         self.recorded: list[Meeting] = list(recorded)
+        self.no_video: list[Meeting] = list(no_video)
 
     def list_past(self, page: int = 1, meeting_type: str | None = None) -> tuple[list[Meeting], int]:
         return list(self.past), len(self.past)
@@ -82,3 +103,21 @@ class InMemoryMeetingSource:
             m for m in self.recorded
             if m.has_video and start_date <= m.date <= end_date
         ]
+
+    def list_settled_no_video(self, start_date: str, end_date: str,
+                              meeting_type: str | None = None,
+                              now: datetime | None = None) -> list[Meeting]:
+        # The no_video list is the fixture, but the date window and the
+        # settle clock still apply, so a test cannot quietly publish a
+        # meeting that has not sat long enough.
+        settled = []
+        for m in self.no_video:
+            if m.has_video or not (start_date <= m.date <= end_date):
+                continue
+            start = meeting_start(m.date, m.start_time)
+            if start is None or start >= now:
+                continue
+            if (now - start) < timedelta(hours=RECORDING_GRACE_HOURS):
+                continue
+            settled.append(m)
+        return settled

@@ -1,12 +1,13 @@
 """Tests for MeetingSource Protocol implementations."""
 
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 from app.escribe import EscribeMeetingSource, FixtureEscribeTransport
 from app.meeting_source import InMemoryMeetingSource
-from app.models import AgendaItem, Meeting, MeetingDetail
+from app.models import AgendaItem, Meeting, MeetingDetail, SASKATOON_TZ
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "escribe"
@@ -121,6 +122,82 @@ class TestEscribeMeetingSourceListRecorded:
             "2026-09-01", "2026-12-31", meeting_type="SPC-FINANCE - PUBLIC",
         )
         assert finance == []
+
+
+class TestEscribeMeetingSourceListSettledNoVideo:
+    """The no-recording gap: a meeting that sat with no video and the
+    upstream still marks not-passed is in neither ``list_past`` nor the
+    recorded pass, so without this pass it would never reach its body's
+    past tab (the 2026-09-23 council meeting was exactly this)."""
+
+    def _src(self):
+        return EscribeMeetingSource(FixtureEscribeTransport(FIXTURES))
+
+    def test_returns_only_the_no_video_gap(self):
+        """Recorded meetings (list_recorded owns those), passed meetings,
+        and meetings outside the window are all dropped."""
+        got = self._src().list_settled_no_video(
+            "2026-09-01", "2026-12-31",
+            "SPC-PLANNING, DEVELOPMENT AND COMMUNITY SERVICES - PUBLIC",
+            datetime(2026, 9, 22, 9, 30, tzinfo=SASKATOON_TZ),
+        )
+        # cal-001 and cal-002 have videos, cal-004 is out of range.
+        assert [m.meeting_id for m in got] == ["cal-003"]
+        m = got[0]
+        assert m.has_video is False
+        assert m.video_url is None
+        assert m.date == "2026-09-20"
+
+    def test_settles_exactly_at_the_grace_boundary(self):
+        # cal-003 started 09:30 on 2026-09-20: in at 21:30 that same
+        # evening, out one minute before, per the 12-hour clock (ADR 0027).
+        src = self._src()
+        settled = src.list_settled_no_video(
+            "2026-09-01", "2026-12-31", None,
+            datetime(2026, 9, 20, 21, 30, tzinfo=SASKATOON_TZ),
+        )
+        assert [m.meeting_id for m in settled] == ["cal-003"]
+        pending = src.list_settled_no_video(
+            "2026-09-01", "2026-12-31", None,
+            datetime(2026, 9, 20, 21, 29, tzinfo=SASKATOON_TZ),
+        )
+        assert pending == []
+
+    def test_not_yet_held_is_never_settled(self):
+        got = self._src().list_settled_no_video(
+            "2026-09-01", "2026-12-31", None,
+            datetime(2026, 9, 20, 8, 0, tzinfo=SASKATOON_TZ),
+        )
+        assert got == []
+
+    def test_filters_by_meeting_type(self):
+        # cal-003 is a Planning meeting, so a Finance scope gets nothing.
+        got = self._src().list_settled_no_video(
+            "2026-09-01", "2026-12-31", "SPC-FINANCE - PUBLIC",
+            datetime(2026, 9, 22, 9, 30, tzinfo=SASKATOON_TZ),
+        )
+        assert got == []
+
+    def test_inmemory(self):
+        m = Meeting(
+            meeting_id="nv-001", title="t", date="2026-09-20", start_time="09:30",
+            location="hall", has_video=False, has_agenda=True,
+        )
+        src = InMemoryMeetingSource(no_video=[m])
+        assert src.list_settled_no_video(
+            "2026-09-01", "2026-12-31",
+            now=datetime(2026, 9, 21, 10, 0, tzinfo=SASKATOON_TZ),
+        ) == [m]
+        # Not settled yet at 21:29 that same evening.
+        assert src.list_settled_no_video(
+            "2026-09-01", "2026-12-31",
+            now=datetime(2026, 9, 20, 21, 29, tzinfo=SASKATOON_TZ),
+        ) == []
+        # Outside the window is dropped.
+        assert src.list_settled_no_video(
+            "2027-01-01", "2027-12-31",
+            now=datetime(2026, 9, 21, 10, 0, tzinfo=SASKATOON_TZ),
+        ) == []
 
 
 class TestEscribeMeetingSourceLoadDetail:

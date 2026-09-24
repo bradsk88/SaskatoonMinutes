@@ -513,8 +513,26 @@ def fetch_all_data():
             except Exception as exc:
                 print(f"  WARNING: recorded meetings unavailable: {exc}")
                 recorded = []
+            # The no-recording counterpart of the recorded pass: a
+            # meeting the City never recorded is in neither list_past
+            # (not passed) nor the recorded pass (no video), so without
+            # this it would fall out of every list. It lands here once
+            # it settles on the 12-hour clock, the same clock the
+            # detail page's not-recorded indicator and the feeds use
+            # (ADR 0027), so the tab, the indicator, and the feed flip
+            # together; the past feeds pick it up from the merged list.
+            try:
+                no_video = fetch_with_retry(
+                    source.list_settled_no_video,
+                    recorded_since, recorded_until,
+                    meeting_type=meeting_type, now=now,
+                )
+            except Exception as exc:
+                print(f"  WARNING: no-recording meetings unavailable: {exc}")
+                no_video = []
             past_count = len(meetings)
             meetings = _merge_recorded(meetings, recorded)
+            meetings = _merge_recorded(meetings, no_video)
             total_count += len(meetings) - past_count
             meetings = meetings[:MEETINGS_PER_TAB]
             meetings_data = [m.to_dict() for m in meetings]
