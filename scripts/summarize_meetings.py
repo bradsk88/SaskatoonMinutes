@@ -51,6 +51,7 @@ from app.item_categorizer import (
     extract_item_summaries,
     item_transcript_text,
     is_eligible_for_summary,
+    needs_topic_segments,
     ExtractionFailed,
     GeminiExtractor,
     QuotaExhausted,
@@ -121,7 +122,7 @@ def summarize_meeting(
                 flush=True,
             )
         try:
-            return item, extract_item_summaries(
+            payload = extract_item_summaries(
                 item, transcript_segments,
                 gemini_extractor=extractor,
                 transcript_text=item_transcript_text(
@@ -135,6 +136,23 @@ def summarize_meeting(
                 f"item {item.get('item_id')} "
                 f"({(item.get('title') or '')[:60]!r}): {exc}"
             ) from exc
+        # ADR 0029: an item the gate admits gets its topic breakdown, a
+        # third call beside the description and the speaker pass. It is
+        # adornment: a failure costs the topics, never the summary, so
+        # it does not propagate the way the description call's does.
+        if extractor.enabled and needs_topic_segments(item):
+            try:
+                payload["segments"] = extractor.extract_segments(
+                    item, transcript_segments, window=window,
+                )
+            except (ExtractionFailed, QuotaExhausted) as exc:
+                print(
+                    f"    Item {item.get('item_id')}: segments skipped "
+                    f"({exc})",
+                    flush=True,
+                )
+                payload["segments"] = []
+        return item, payload
 
     missing_description = 0
     with ThreadPoolExecutor(max_workers=EXTRACT_WORKERS) as pool:

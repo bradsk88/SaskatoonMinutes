@@ -421,6 +421,42 @@ Narrow the `try` to fetching and parsing, and let the presentational
 setup fail on its own. **Lowest priority of the numbered items**: nothing
 in production reaches it today.
 
+## 17. Break long agenda items into timestamped segments — built
+
+Built 2026-09-26. ADR `0029` has the design. The line is a topic or presentation the body moved through
+inside the item, not a speaker — speakers keep their own rows, and a
+budget debate's findable units are the issues it walked through.
+
+- **The gate** is 30+ minutes of the item's own span, not recess,
+  not procedural, not the partner side of a jointly-heard pair, and
+  the span has to carry transcript — a broken span can run five hours
+  while saying nothing.
+- **One LLM pass** per qualifying item: a third Gemini call beside
+  the description and the speaker passes, on the item's transcript
+  slice with a timestamp on every line. Each topic comes back with a
+  short title, its start, and a one-sentence takeaway. It rides in
+  the item's cached summary; an empty list is an ordinary short item,
+  not a failure.
+- **Timestamps snap.** The model copies a time it was shown; an off
+  or invented one lands on the nearest real segment start, so a deep
+  link always reaches audio that is the topic's.
+- **The card explodes.** The parent keeps title, outcome, description
+  and chips; the topics draw beneath it as timestamped rows bound by
+  a rail that says one item, opened up. Index and feeds do not
+  change.
+
+Left for the next run: a summarization pass to populate the archive's
+long items, and a look over the first page it produces.
+
+## 18. Let a reader enter any timestamp to navigate the video
+
+The player controls only support seeking by clicking the progress bar
+or by using the arrow keys. A resident who knows the moment they want
+— "the mayor's remarks at 42:30" — has no direct path.
+
+Add a timestamp input beside the player controls: minutes:seconds or
+hours:minutes:seconds, parsed and seeked on submit.
+
 ## Noted, not scheduled
 
 - Speaker stance chips ("Support", "Concern") name a direction but not

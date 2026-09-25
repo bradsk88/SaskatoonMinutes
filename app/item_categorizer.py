@@ -37,6 +37,7 @@ of ``extract_item_summaries``.
 
 from __future__ import annotations
 
+import bisect
 import json
 import os
 import re
@@ -565,6 +566,22 @@ class GeminiExtractor:
         )
         return response.text or "{}"
 
+    def _call_segments(self, prompt: str, allowed) -> str:
+        """The topic-breakdown pass.  Same client and retry path, different schema."""
+        if self._generate is not None:
+            return self._generate(prompt, allowed)
+        client = self._get_client()
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": _segments_schema(),
+                "temperature": 0.0,
+            },
+        )
+        return response.text or "{}"
+
     def _call_with_retry(
         self, prompt: str, allowed_cats: list[str], caller=None,
     ) -> str:
@@ -735,6 +752,68 @@ class GeminiExtractor:
                 "expected an object"
             )
         return _sanitize_speakers(parsed.get("speakers"), speakers)
+
+    def extract_segments(
+        self, item: dict, transcript_segments: list[dict],
+        window: tuple[int, int] | None = None,
+    ) -> list[dict]:
+        """The topics a long item moved through, each anchored to a moment.
+
+        A third call beside the description and the speaker call, and
+        it fires only when ``needs_topic_segments`` admits the item, so
+        a meeting costs a call for the one long item that needs it.
+        Returns ``[{"title", "start_ms", "takeaway"}]`` in video
+        order.  An empty list is a valid answer — the discussion had
+        no distinct topics to split into — not a failure.
+
+        ``window`` is the jointly-heard group's union span; the topics
+        live on the primary's card, and the primary's discussion is
+        the group's whole conversation, not just its own bookmark.
+        """
+        target = item
+        if window is not None:
+            target = {
+                **item,
+                "time_start_ms": window[0],
+                "time_end_ms": window[1],
+                "timestamp_inherited": False,
+            }
+        sl = _slice_transcript(transcript_segments, target)
+        word_count = sum(len(s.get("text", "").split()) for s in sl)
+        if word_count < SEGMENT_MIN_WORDS:
+            # The duration gate ran on the bookmark, and the bookmark
+            # lies: a "Recess" span that inherits five hours, a 235-
+            # minute placeholder with silence in it. No transcript in
+            # the span is no topics.
+            return []
+        lines, known = _segment_lines(sl)
+        if len(known) < 2:
+            return []
+        prompt = _build_segments_prompt(item, "\n".join(lines))
+        try:
+            raw = self._call_with_retry(
+                prompt, None, caller=self._call_segments,
+            )
+        except QuotaExhausted:
+            raise
+        except Exception as exc:
+            print(f"    Gemini segments failed: {exc}", flush=True)
+            raise ExtractionFailed(
+                f"Gemini segments call failed: {exc}"
+            ) from exc
+
+        try:
+            parsed = json.loads(raw)
+        except Exception as exc:
+            raise ExtractionFailed(
+                f"Gemini returned unparseable JSON for segments: {exc}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ExtractionFailed(
+                "Gemini returned "
+                f"{type(parsed).__name__} for segments, expected an object"
+            )
+        return _sanitize_segments(parsed.get("segments"), known)
 
 
 def item_transcript_text(
@@ -1414,6 +1493,188 @@ def _sanitize_description(value) -> list[str] | None:
     return bullets[:MAX_DESCRIPTION_BULLETS] or None
 
 
+def _segment_lines(
+    segments: list[dict],
+) -> tuple[list[str], list[int]]:
+    """The item's slice, one timestamped line per transcript segment.
+
+    The model must answer with a time it can copy, so it sees the
+    transcript the way the page shows it: a moment and its words.
+    """
+    lines: list[str] = []
+    starts: list[int] = []
+    for s in segments:
+        text = s.get("text", "").strip()
+        if not text:
+            continue
+        lines.append(f"[{_format_ts(s['start_ms'])}] {text}")
+        starts.append(int(s["start_ms"]))
+    return lines, starts
+
+
+def _format_ts(ms: int) -> str:
+    total = int(ms) // 1000
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+_TS_RE = re.compile(r"^\s*(\d+):([0-5]?\d)\s*$")
+_TS_HMS_RE = re.compile(r"^\s*(\d+):([0-5]?\d):([0-5]?\d)\s*$")
+
+
+def _parse_ts(value) -> int | None:
+    """A timestamp the model answered with, in milliseconds.
+
+    The prompt shows times the way the page shows them — M:SS under an
+    hour, H:MM:SS above — so the answer can be either.  A bare number is
+    accepted as milliseconds: the schema says string, and a model
+    occasionally answers numbers.
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return int(value)
+    s = str(value or "").strip()
+    m = _TS_HMS_RE.match(s)
+    if m:
+        h, mi, sec = (int(g) for g in m.groups())
+        return (h * 3600 + mi * 60 + sec) * 1000
+    m = _TS_RE.match(s)
+    if m:
+        mi, sec = (int(g) for g in m.groups())
+        return (mi * 60 + sec) * 1000
+    return None
+
+
+def _segments_schema() -> dict:
+    """Response schema for the topic-breakdown pass.
+
+    ``start`` is a string: the model copies the timestamp of the first
+    line of the topic from the transcript it was shown, and a time not
+    in that set snaps to the nearest real one at sanitize time.
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "segments": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "start": {"type": "string"},
+                        "takeaway": {"type": "string"},
+                    },
+                    "required": ["title", "start", "takeaway"],
+                },
+            },
+        },
+        "required": ["segments"],
+    }
+
+
+def _build_segments_prompt(item: dict, transcript: str) -> str:
+    title = item.get("title") or "(untitled)"
+    return "\n".join([
+        "Saskatoon city council or committee took up the agenda item "
+        "below and spent a long time on it. A long item is one agenda "
+        "item that the body moved through as a series of distinct "
+        "topics or presentations.",
+        "",
+        "Your job is to split it into those topics so that a resident "
+        "who wants one part of the discussion can jump straight to it. "
+        "This is not a summary of the whole item — that is already "
+        "written.",
+        "",
+        f"Agenda item title: {title}",
+        "",
+        "A topic is where the body moved the discussion: a new "
+        "presentation, a new subject within the item, a separate "
+        "motion (including amend, delete-and-replace, or a second "
+        "vote), or a distinct phase of a public hearing (staff report, "
+        "public comments, questions for the committee).",
+        "",
+        "It is not a topic when the chair moves to the next item, when "
+        "one speaker finishes and another begins, or when a minor "
+        "point is raised inside a presentation.",
+        "",
+        "<<<TRANSCRIPT — rough automatic speech-to-text, may contain "
+        "errors. Each line opens with its timestamp.>>>",
+        transcript,
+        "<<<END TRANSCRIPT>>>",
+        "",
+        "Return a `segments` list. Rules:",
+        "",
+        "- **Only split when the discussion split.** If the body took "
+        "the item up as one continuous discussion — one presentation, "
+        "one round of questions — return an empty list. Do not force "
+        "a split: an empty list is a correct and expected answer, not "
+        "a failure.",
+        "- `title` is a short name for the topic, sentence case, in "
+        "the resident's terms: \"Police budget increase\", not "
+        "\"Topic 2\" and not the item's title.",
+        "- `start` is the timestamp of the topic's first line, copied "
+        "exactly from the transcript above. Do not invent or round "
+        "times. If you are unsure which line a topic starts at, use "
+        "the nearest line you are sure about.",
+        "- `takeaway` is one sentence, at most about 30 words: what "
+        "that part did — the motion, the decision, the key numbers. "
+        "What the body did, not who said it.",
+        "- The topics are in chronological order, and each topic's "
+        "`start` is where the previous one ends.",
+    ])
+
+
+def _sanitize_segments(parsed, known_starts: list[int]) -> list[dict]:
+    """What the model's topic list survives meeting the record with.
+
+    ``known_starts`` is the set of transcript segment starts the model
+    was shown; a `start` must be one of them.  A time off by a few
+    seconds snaps to the nearest real one; an invented time snaps too; "
+    "a topic with no time is dropped.  Order is restored, overlaps are
+    collapsed, and the list is capped — the last topic is always kept, "
+    "because that is where the motion lands.
+    """
+    if not isinstance(parsed, list) or not known_starts:
+        return []
+    known = sorted(set(known_starts))
+    results: list[dict] = []
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            continue
+        title = re.sub(r"\s+", " ", clean_entities(str(entry.get("title") or ""))).strip()
+        takeaway = re.sub(r"\s+", " ", clean_entities(str(entry.get("takeaway") or ""))).strip()
+        if not title or not takeaway:
+            continue
+        ms = _parse_ts(entry.get("start"))
+        if ms is None:
+            continue
+        i = bisect.bisect_left(known, ms)
+        if i >= len(known):
+            snapped = known[-1]
+        elif i == 0:
+            snapped = known[0]
+        else:
+            snapped = (
+                known[i - 1]
+                if ms - known[i - 1] <= known[i] - ms
+                else known[i]
+            )
+        results.append({
+            "title": title[:SEGMENT_MAX_TITLE],
+            "start_ms": snapped,
+            "takeaway": takeaway[:SEGMENT_MAX_TAKEAWAY],
+        })
+    results.sort(key=lambda r: r["start_ms"])
+    deduped: list[dict] = []
+    for r in results:
+        if deduped and r["start_ms"] <= deduped[-1]["start_ms"]:
+            continue
+        deduped.append(r)
+    if len(deduped) > SEGMENT_MAX_TOPICS:
+        deduped = deduped[: SEGMENT_MAX_TOPICS - 1] + [deduped[-1]]
+    return deduped
+
+
 def _sanitize_chips(parsed, allowed_cats: list[str]) -> list[dict]:
     """Filter the LLM output down to clean, high-usefulness chips."""
     if not isinstance(parsed, list):
@@ -1502,6 +1763,56 @@ def is_eligible_for_summary(item: dict) -> bool:
     if end - start < MIN_DISCUSSED_MS:
         return False
     return True
+
+
+# ADR 0029: when a long item is worth its topic breakdown.
+#
+# 30 minutes: measured over 100 meetings, 292 items ran over 25
+# minutes, and the long tail was broken spans doing the running.  30
+# keeps the real debates while the word-count floor below keeps the
+# broken ones out.
+SEGMENT_MIN_MINUTES = 30
+# The word-count floor in the span.  The duration gate runs on the
+# bookmark, and the bookmark lies: a "Recess" that inherits five hours
+# of span carries nearly no words; a 30-minute real discussion carries
+# thousands.
+SEGMENT_MIN_WORDS = 500
+# A 4-hour item can yield 20 topics; the card is a budget, not a feed.
+# The cap keeps the first topics plus the last, which is where the
+# motion lands.
+SEGMENT_MAX_TOPICS = 12
+SEGMENT_MAX_TITLE = 80
+SEGMENT_MAX_TAKEAWAY = 200
+
+
+def needs_topic_segments(item: dict) -> bool:
+    """Whether a long item is worth the topic-breakdown pass.
+
+    The bar is 30+ minutes of the item's own span (ADR ``0029``).
+    Excluded, because they would spend a call on nothing:
+
+    * An inherited span identifies no audio of its own.
+    * Recess and procedural items have no topics to split; they are
+      most of the long tail of 25+ minute items.
+    * The partner side of a jointly-heard pair: the discussion is
+      recorded on the primary's card (ADR ``0025``), and splitting it
+      twice would record the same argument twice.
+    """
+    if item.get("is_recess"):
+        return False
+    if is_procedural(item.get("title") or ""):
+        return False
+    if item.get("timestamp_inherited"):
+        return False
+    heard = item.get("heard_with")
+    if isinstance(heard, dict) and \
+            heard.get("primary_item_id") != item.get("item_id"):
+        return False
+    start = item.get("time_start_ms")
+    end = item.get("time_end_ms")
+    if start is None or end is None:
+        return False
+    return end - start >= SEGMENT_MIN_MINUTES * 60 * 1000
 
 
 def extract_item_summaries(

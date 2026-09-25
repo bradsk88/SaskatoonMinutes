@@ -680,6 +680,28 @@
         return el;
     }
 
+    // A long item plays as a series of topics (ADR 0029): the parent
+    // card keeps its identity, and these rows are the item opened up,
+    // each with the moment that topic began. The left rail is the
+    // indication that they are one item, not a new agenda.
+    function buildSegmentsHtml(item) {
+        const segs = (item.summary && item.summary.segments) || [];
+        if (!segs.length) return '';
+        const rows = segs.map(s => `
+            <li class="item-segment">
+                <button class="timestamp-link segment-start"
+                    onclick="seekVideo(${s.start_ms})"
+                    data-tooltip="Jump to this topic in the video">
+                    ${formatTimestamp(s.start_ms)}
+                </button>
+                <div class="segment-body">
+                    <span class="segment-title">${escapeHtml(s.title)}</span>
+                    <span class="segment-takeaway">${escapeHtml(s.takeaway)}</span>
+                </div>
+            </li>`).join('');
+        return `<ul class="item-segments">${rows}</ul>`;
+    }
+
     function buildItemEl(item, outOfOrder, idx, byId) {
         if (item.is_recess) return buildRecessEl(item);
         if (item.is_heading) return buildHeadingEl(item);
@@ -797,6 +819,7 @@
                     &#9654; ${formatTimestamp(questionsMs)} &middot; what council had to say
                 </button>
             </div>` : ''}
+            ${buildSegmentsHtml(item)}
             ${toggleHtml}
             ${chipsHtml}
             <div class="item-notes-view">${transcriptHtml}</div>

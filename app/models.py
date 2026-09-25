@@ -346,6 +346,38 @@ def normalize_description(value) -> list[str] | None:
 
 
 @dataclass(frozen=True)
+class ItemSegment:
+    """One topic or presentation a long agenda item moved through.
+
+    A long item — a budget debate, a public hearing — is one card with
+    one takeaway, but it plays as a series of distinct topics, each with
+    the moment it began and its own takeaway, as if it were a full agenda
+    item (ADR ``0029``).  ``start_ms`` is snapped to a real transcript
+    segment start, so a deep link always lands on audio that is this
+    topic's.
+    """
+
+    title: str
+    start_ms: int
+    takeaway: str
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ItemSegment":
+        return cls(
+            title=data.get("title") or "",
+            start_ms=int(data.get("start_ms") or 0),
+            takeaway=data.get("takeaway") or "",
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "title": self.title,
+            "start_ms": self.start_ms,
+            "takeaway": self.takeaway,
+        }
+
+
+@dataclass(frozen=True)
 class ItemSummary:
     """The summary of one agenda item: a Description plus its Chips.
 
@@ -379,6 +411,12 @@ class ItemSummary:
     # speakers existed, which loads as an empty list — the roster
     # roster still renders, just without substance.
     speakers: list[Speaker] = field(default_factory=list)
+    # The topics a long item moved through, in the order the council did
+    # (ADR ``0029``).  Only an item the gate admits ever earns one, so
+    # most entries have none; an entry with no topics is an ordinary
+    # short item, not a failure.  Absent from every entry cached before
+    # segments existed, which loads as an empty list.
+    segments: list[ItemSegment] = field(default_factory=list)
 
     @property
     def is_legacy(self) -> bool:
@@ -398,6 +436,9 @@ class ItemSummary:
                 Speaker.from_dict(p) for p in data.get("speakers") or []
             ],
             provisional=bool(data.get("provisional")),
+            segments=[
+                ItemSegment.from_dict(s) for s in data.get("segments") or []
+            ],
         )
 
     def to_dict(self) -> dict:
@@ -411,6 +452,11 @@ class ItemSummary:
         # record that nothing happened.
         if self.speakers:
             payload["speakers"] = [p.to_dict() for p in self.speakers]
+        # Same reasoning as speakers: an empty list is the ordinary case,
+        # and rewriting every cached file to record that nothing happened
+        # would buy nothing.
+        if self.segments:
+            payload["segments"] = [s.to_dict() for s in self.segments]
         # Same reasoning as speakers: most entries are post-meeting, so
         # the flag is written only when it distinguishes this one.
         if self.provisional:
