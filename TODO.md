@@ -433,17 +433,22 @@ budget debate's findable units are the issues it walked through.
   while saying nothing.
 - **One LLM pass** per qualifying item: a third Gemini call beside
   the description and the speaker passes, on the item's transcript
-  slice with a timestamp on every line. Each topic comes back with a
-  short title, its start, and a one-sentence takeaway. It rides in
+  slice with a timestamp on every line. Each topic comes back as a
+  mini item: a short title, its start, and its own aggregate
+  (description bullets and chips, drawn from the item's chip
+  vocabulary) — a 15-minute topic holds as many facts as a typical
+  item. It rides in
   the item's cached summary; an empty list is an ordinary short item,
   not a failure.
 - **Timestamps snap.** The model copies a time it was shown; an off
   or invented one lands on the nearest real segment start, so a deep
   link always reaches audio that is the topic's.
 - **The card explodes.** The parent keeps title, outcome, description
-  and chips; the topics draw beneath it as timestamped rows bound by
-  a rail that says one item, opened up. Index and feeds do not
-  change.
+  and chips; each topic draws as a card of its own — the same chrome,
+  a timestamp where the section number would be — flat and
+  chronological beneath the parent, not nested. The topics inherit
+  the parent's categories so a filter moves them together. Index and
+  feeds do not change.
 - **The skip rule learns about segments.** A current meeting is not
   current while a long item of its has not had the segment pass and
   its span carries real transcript; the run converges because an item

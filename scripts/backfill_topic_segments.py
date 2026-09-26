@@ -10,8 +10,8 @@ topics, and runs *only* the segment pass for those items.  The
 description and chips that are already cached stay untouched — one
 Gemini call per long item, not one per item.
 
-It is safe to re-run: an item that has segments is skipped, and a
-meeting with nothing to add is left alone (no commit).  A quota
+It is safe to re-run: an item whose topic passes are done is skipped,
+and a meeting with nothing to add is left alone (no commit).  A quota
 rejection stops the run; whatever finished before it is pushed on
 exit, so the next dispatch resumes where this one stopped.
 
@@ -37,7 +37,7 @@ from app.item_categorizer import (
     needs_topic_segments,
 )
 from app.item_summaries_cache import ItemSummariesCache
-from app.models import ItemSegment, ItemSummary, has_current_summaries
+from app.models import ItemSegment, ItemSummary, has_current_summaries, segments_fully_current
 from app.speakers import group_window, mark_jointly_heard
 from app.transcript_cache import TranscriptCache
 
@@ -65,9 +65,13 @@ def backfill_meeting(
     for item in items:
         iid = str(item.get("item_id"))
         summary = updated.get(iid)
-        # Done: has topics, or the model has already read the span and
-        # found nothing to split (an explicit empty list on disk).
-        if summary is not None and summary.segments is not None:
+        # Done: every topic has been through the chip pass (a fully
+        # populated list, or an explicit empty list where the model
+        # found nothing to split).  Pending: never asked, a failed
+        # pass, or the pre-chips archive shape (a topic whose chips
+        # key is absent) — re-asked here, same as before the chips
+        # existed.
+        if summary is not None and segments_fully_current(summary.segments):
             continue
         if not needs_topic_segments(item):
             continue

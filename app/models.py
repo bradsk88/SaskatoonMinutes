@@ -347,34 +347,65 @@ def normalize_description(value) -> list[str] | None:
 
 @dataclass(frozen=True)
 class ItemSegment:
-    """One topic or presentation a long agenda item moved through.
+    """One topic a long agenda item moved through, as a mini item summary.
 
-    A long item — a budget debate, a public hearing — is one card with
-    one takeaway, but it plays as a series of distinct topics, each with
-    the moment it began and its own takeaway, as if it were a full agenda
-    item (ADR ``0029``).  ``start_ms`` is snapped to a real transcript
-    segment start, so a deep link always lands on audio that is this
-    topic's.
+    A long item — a budget debate, a public hearing — plays as a series
+    of distinct topics, and each topic draws as a card of its own: title,
+    the moment it began, description bullets and chips, the same aggregate
+    an item earns, because a 15-minute topic holds as many facts as a
+    typical item (ADR ``0029``).  ``start_ms`` is snapped to a real
+    transcript segment start, so a deep link always lands on audio that
+    is this topic's.
+
+    ``chips`` keeps the three-state discipline the segment pass uses
+    (``ItemSummary.segments`` at the item level): ``None`` is the
+    on-disk shape before topics carried chips — or a pass that failed,
+    which retries as never — and ``[]`` is an honest finding that the
+    topic earned none.  Only the backfill cares about the difference;
+    the page reads both the same.
     """
 
     title: str
     start_ms: int
-    takeaway: str
+    description: list[str] = field(default_factory=list)
+    chips: list[Chip] | None = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "ItemSegment":
+        # The pre-chips on-disk shape is {title, start_ms, takeaway}.
+        # A takeaway loads as one bullet so the archive renders until
+        # the backfill re-asks it, rather than reading as empty.
+        raw_desc = data.get("description")
+        if raw_desc is None and data.get("takeaway"):
+            raw_desc = [data["takeaway"]]
+        bullets = [
+            b.strip() for b in (raw_desc or [])
+            if isinstance(b, str) and b.strip()
+        ]
+        raw_chips = data.get("chips")
         return cls(
             title=data.get("title") or "",
             start_ms=int(data.get("start_ms") or 0),
-            takeaway=data.get("takeaway") or "",
+            description=bullets,
+            chips=(
+                [Chip.from_dict(c) for c in raw_chips]
+                if raw_chips is not None
+                else None
+            ),
         )
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "title": self.title,
             "start_ms": self.start_ms,
-            "takeaway": self.takeaway,
+            "description": list(self.description),
         }
+        # Written whenever the chip pass has run: an empty list is the
+        # "earned none" finding the backfill relies on, while None stays
+        # absent so pre-chips entries keep their old shape until re-asked.
+        if self.chips is not None:
+            payload["chips"] = [c.to_dict() for c in self.chips]
+        return payload
 
 
 @dataclass(frozen=True)
@@ -471,6 +502,27 @@ class ItemSummary:
         if self.provisional:
             payload["provisional"] = True
         return payload
+
+
+def segments_fully_current(segs) -> bool:
+    """A topic list the segment pass is done with (ADR 0029).
+
+    ``None`` is never had the pass (or the last one failed, which
+    retries as never).  An empty list is the model declining to split —
+    done, nothing to chip.  A populated list is done only when every
+    topic carries chips: a missing chips key is the pre-chips on-disk
+    shape, or a pass that fell over, and it re-asks; an explicit list,
+    even empty, is a finding.
+
+    The walk's skip rule and the one-off backfill both call this, so
+    both agree on what "done" means — the same contract as
+    ``has_current_summaries``.
+    """
+    if segs is None:
+        return False
+    if not segs:
+        return True
+    return all(s.chips is not None for s in segs)
 
 
 def has_current_summaries(cached: dict[str, ItemSummary] | None) -> bool:

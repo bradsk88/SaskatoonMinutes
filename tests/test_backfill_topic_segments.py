@@ -101,13 +101,15 @@ def _run(result=None, raise_exc=None, items=None, cached=None):
 
 class TestCandidateSelection:
     def test_only_the_long_item_is_asked(self):
-        topics = [{"title": "Staff", "start_ms": 0, "takeaway": "T."}]
+        topics = [{"title": "Staff", "start_ms": 0,
+                   "description": ["Laid out the budget."], "chips": []}]
         out, extractor = _run(result=topics)
         assert extractor.calls == [1]
         assert out["1"].segments[0].title == "Staff"
 
     def test_the_existing_summary_is_preserved(self):
-        topics = [{"title": "Staff", "start_ms": 0, "takeaway": "T."}]
+        topics = [{"title": "Staff", "start_ms": 0,
+                   "description": ["Laid out the budget."], "chips": []}]
         out, _ = _run(result=topics)
         assert out["1"].description == ["A thing."]
         assert [c.category for c in out["1"].chips] == ["Outcome"]
@@ -126,15 +128,42 @@ class TestCandidateSelection:
         cached = _cached()
         cached["1"] = ItemSummary(
             description=["A thing."], chips=[],
-            segments=[ItemSegment("Staff", 0, "Laid out the budget.")],
+            segments=[ItemSegment(
+                title="Staff", start_ms=0,
+                description=["Laid out the budget."], chips=[],
+            )],
         )
         out, extractor = _run(items=[_long_item(), _short_item()],
                               cached=cached)
         assert out is None
         assert extractor.calls == []
 
+    def test_pre_chips_topics_are_resent(self):
+        # The archive shape before topics carried chips: an absent
+        # chips key means the chip pass never ran, so the item is
+        # asked again and its topics are replaced.
+        cached = _cached()
+        cached["1"] = ItemSummary(
+            description=["A thing."], chips=[],
+            segments=[ItemSegment(
+                title="Staff", start_ms=0,
+                description=["Laid out the budget."], chips=None,
+            )],
+        )
+        topics = [{"title": "Staff", "start_ms": 0,
+                   "description": ["Laid out the budget."],
+                   "chips": [{"category": "Outcome", "text": "Adopted",
+                              "usefulness": "high"}]}]
+        out, extractor = _run(items=[_long_item(), _short_item()],
+                              result=topics, cached=cached)
+        assert extractor.calls == [1]
+        assert out["1"].segments[0].chips == [Chip(
+            category="Outcome", text="Adopted",
+        )]
+
     def test_an_item_with_no_cached_entry_gets_one(self):
-        topics = [{"title": "Staff", "start_ms": 0, "takeaway": "T."}]
+        topics = [{"title": "Staff", "start_ms": 0,
+                   "description": ["Laid out the budget."], "chips": []}]
         out, _ = _run(result=topics, cached={"2": ItemSummary(None, [])})
         assert out["1"].segments[0].title == "Staff"
         assert out["1"].description is None

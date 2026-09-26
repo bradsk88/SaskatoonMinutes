@@ -762,9 +762,10 @@ class GeminiExtractor:
         A third call beside the description and the speaker call, and
         it fires only when ``needs_topic_segments`` admits the item, so
         a meeting costs a call for the one long item that needs it.
-        Returns ``[{"title", "start_ms", "takeaway"}]`` in video
-        order.  An empty list is a valid answer — the discussion had
-        no distinct topics to split into — not a failure.
+        Returns ``[{"title", "start_ms", "description", "chips"}]``
+        in video order: each topic is a mini item summary.  An empty
+        list is a valid answer — the discussion had no distinct topics
+        to split into — not a failure.
 
         ``window`` is the jointly-heard group's union span; the topics
         live on the primary's card, and the primary's discussion is
@@ -1558,9 +1559,28 @@ def _segments_schema() -> dict:
                     "properties": {
                         "title": {"type": "string"},
                         "start": {"type": "string"},
-                        "takeaway": {"type": "string"},
+                        "description": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 1,
+                            "maxItems": MAX_DESCRIPTION_BULLETS,
+                        },
+                        "chips": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "category": {"type": "string"},
+                                    "text": {"type": "string"},
+                                    "usefulness": {"type": "string"},
+                                },
+                                "required": ["category", "text", "usefulness"],
+                            },
+                        },
                     },
-                    "required": ["title", "start", "takeaway"],
+                    "required": [
+                        "title", "start", "description", "chips",
+                    ],
                 },
             },
         },
@@ -1570,7 +1590,7 @@ def _segments_schema() -> dict:
 
 def _build_segments_prompt(item: dict, transcript: str) -> str:
     title = item.get("title") or "(untitled)"
-    return "\n".join([
+    lines = [
         "Saskatoon city council or committee took up the agenda item "
         "below and spent a long time on it. A long item is one agenda "
         "item that the body moved through as a series of distinct "
@@ -1612,12 +1632,39 @@ def _build_segments_prompt(item: dict, transcript: str) -> str:
         "exactly from the transcript above. Do not invent or round "
         "times. If you are unsure which line a topic starts at, use "
         "the nearest line you are sure about.",
-        "- `takeaway` is one sentence, at most about 30 words: what "
-        "that part did — the motion, the decision, the key numbers. "
-        "What the body did, not who said it.",
+        "- Each topic is a mini item. Besides its `title` and `start`, "
+        "it carries a `description` (bullets) and `chips` of its own — "
+        "the same aggregate the item's own summary carries, because a "
+        "15-minute topic holds as much material as a typical agenda item.",
+        "- `description` is 1 to 4 short bullets, one per DISTINCT fact "
+        "this topic did, decided, or heard: the motion, the numbers, who "
+        "is affected, what the body did with it. One bullet per fact; "
+        f"each at most {MAX_BULLET_WORDS} words; each stands alone — a "
+        "bullet opening with \"It\", \"This\" or \"The\" is a sentence "
+        "chopped in half. Keep the specifics (amounts, dates, names); "
+        "never restate the topic title or the item title; state only "
+        "what the transcript between this topic's start and the next "
+        "topic's start supports. A topic with one fact gets one bullet.",
+        "- `chips` for that topic: at most ONE per category, each a "
+        f"self-contained phrase of at most {MAX_SUMMARY_WORDS} words, "
+        "each adding a fact the description does not already carry, "
+        "each traceable to the transcript. A topic the body VOTED on "
+        "earns its Outcome chip — that topic is the vote's unit, which "
+        "is exactly why the item-level rule against tallies in chips "
+        "does not apply here. A topic can earn no chip at all: an empty "
+        "`chips` list is a correct answer. Rate each chip you emit with "
+        "an honest `usefulness` (\"high\", \"medium\" or \"low\").",
+        "- Categories:",
+    ]
+    for cat in SEGMENT_CHIP_CATEGORIES:
+        lines.append(
+            f"- {cat}: {_SEGMENT_CHIP_DEFINITIONS[cat]}"
+        )
+    lines.extend([
         "- The topics are in chronological order, and each topic's "
         "`start` is where the previous one ends.",
     ])
+    return "\n".join(lines)
 
 
 def _sanitize_segments(parsed, known_starts: list[int]) -> list[dict]:
@@ -1638,8 +1685,19 @@ def _sanitize_segments(parsed, known_starts: list[int]) -> list[dict]:
         if not isinstance(entry, dict):
             continue
         title = re.sub(r"\s+", " ", clean_entities(str(entry.get("title") or ""))).strip()
-        takeaway = re.sub(r"\s+", " ", clean_entities(str(entry.get("takeaway") or ""))).strip()
-        if not title or not takeaway:
+        # The description is the topic's lede, so it is required: a topic
+        # with facts but no sentence has nowhere to put them, and the
+        # page draws the card from it.
+        raw_bullets = entry.get("description")
+        bullets = []
+        if isinstance(raw_bullets, list):
+            for b in raw_bullets:
+                if isinstance(b, str):
+                    b = re.sub(r"\s+", " ", clean_entities(b)).strip()
+                    if b:
+                        bullets.append(b)
+        bullets = bullets[:MAX_DESCRIPTION_BULLETS]
+        if not title or not bullets:
             continue
         ms = _parse_ts(entry.get("start"))
         if ms is None:
@@ -1655,10 +1713,15 @@ def _sanitize_segments(parsed, known_starts: list[int]) -> list[dict]:
                 if ms - known[i - 1] <= known[i] - ms
                 else known[i]
             )
+        # The chip pass is part of the same call: every topic that
+        # survives here has one, and an empty list is the "earned none"
+        # finding the backfill's done-check reads.
+        chips = _sanitize_chips(entry.get("chips"), SEGMENT_CHIP_CATEGORIES)
         results.append({
             "title": title[:SEGMENT_MAX_TITLE],
             "start_ms": snapped,
-            "takeaway": takeaway[:SEGMENT_MAX_TAKEAWAY],
+            "description": bullets,
+            "chips": chips,
         })
     results.sort(key=lambda r: r["start_ms"])
     deduped: list[dict] = []
@@ -1778,7 +1841,23 @@ SEGMENT_MIN_WORDS = 500
 # motion lands.
 SEGMENT_MAX_TOPICS = 12
 SEGMENT_MAX_TITLE = 80
-SEGMENT_MAX_TAKEAWAY = 200
+
+# Topics draw from the full chip vocabulary, not just the 13 semantic
+# categories: a topic that is a separate motion has its own outcome, and
+# the item-level determinism (Outcome taken from the vote metadata)
+# cannot say what happened at the topic's moment.
+SEGMENT_CHIP_CATEGORIES: list[str] = list(CATEGORIES)
+_SEGMENT_CHIP_DEFINITIONS: dict[str, str] = {
+    **SEMANTIC_DEFINITIONS,
+    "Outcome": "what happened when the body acted at this moment — "
+    "adopted, defeated, amended, tabled, or referred",
+    "Vote Breakdown": "how the vote at this moment went — the tally "
+    "or the split",
+    "Amendment Made": "a specific amendment that was adopted at this "
+    "moment",
+    "Procedural Note": "how the body handled the item at this moment "
+    "— a referral, a tabled motion, a reading, a committee assignment",
+}
 
 
 def has_segment_content(

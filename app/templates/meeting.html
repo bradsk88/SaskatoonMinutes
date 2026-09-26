@@ -684,22 +684,48 @@
     // card keeps its identity, and these rows are the item opened up,
     // each with the moment that topic began. The left rail is the
     // indication that they are one item, not a new agenda.
-    function buildSegmentsHtml(item) {
+    // A long item's topics are drawn as sibling cards of the item's
+    // own, in the order the body moved the discussion (ADR 0029).
+    // A topic is a mini item — a 15-minute debate topic holds as many
+    // facts as a typical agenda item — so it draws as a card of its
+    // own: the moment it began, its title, and the same aggregate an
+    // item earns (description bullets, chips). Not a nested rail: the
+    // reader's job is to scan the list and pick a moment.
+    //
+    // Each card carries the parent's categories, so a category filter
+    // shows or hides a topic together with the item it belongs to.
+    function buildSegmentEls(item) {
         const segs = (item.summary && item.summary.segments) || [];
-        if (!segs.length) return '';
-        const rows = segs.map(s => `
-            <li class="item-segment">
-                <button class="timestamp-link segment-start"
-                    onclick="seekVideo(${s.start_ms})"
-                    data-tooltip="Jump to this topic in the video">
-                    ${formatTimestamp(s.start_ms)}
-                </button>
-                <div class="segment-body">
-                    <span class="segment-title">${escapeHtml(s.title)}</span>
-                    <span class="segment-takeaway">${escapeHtml(s.takeaway)}</span>
+        if (!segs.length) return [];
+        const catSlugs = (item.badges || [])
+            .filter(b => b.type && b.type.startsWith('cat-'))
+            .map(b => b.type);
+        const els = [];
+        for (const s of segs) {
+            // Pre-chips on-disk shape: the old takeaway is one bullet.
+            const desc = Array.isArray(s.description)
+                ? s.description.filter(Boolean)
+                : (s.takeaway ? [s.takeaway] : []);
+            const chips = s.chips || [];
+            if (!desc.length && !chips.length) continue;
+            const el = document.createElement('div');
+            el.className = 'agenda-item agenda-item-segment';
+            if (catSlugs.length) el.dataset.categories = catSlugs.join(' ');
+            el.innerHTML = `
+                <div class="item-header">
+                    <button class="timestamp-link" onclick="seekVideo(${s.start_ms})"
+                        data-tooltip="Jump to this topic in the video">
+                        &#9654; ${formatTimestamp(s.start_ms)}
+                    </button>
+                    <span class="item-title">${escapeHtml(s.title)}</span>
                 </div>
-            </li>`).join('');
-        return `<ul class="item-segments">${rows}</ul>`;
+                ${buildChipViewHtml({
+                    summary: { description: desc, chips: chips },
+                })}
+            `;
+            els.push(el);
+        }
+        return els;
     }
 
     function buildItemEl(item, outOfOrder, idx, byId) {
@@ -819,7 +845,6 @@
                     &#9654; ${formatTimestamp(questionsMs)} &middot; what council had to say
                 </button>
             </div>` : ''}
-            ${buildSegmentsHtml(item)}
             ${toggleHtml}
             ${chipsHtml}
             <div class="item-notes-view">${transcriptHtml}</div>
@@ -901,6 +926,16 @@
                 el.style.transform = 'translateY(-20px)';
             }
             container.appendChild(el);
+            // A long item's topics draw as sibling cards, in the order
+            // the body moved the discussion, directly beneath the item
+            // they belong to.
+            for (const segEl of buildSegmentEls(item)) {
+                if (animate) {
+                    segEl.style.opacity = '0';
+                    segEl.style.transform = 'translateY(-20px)';
+                }
+                container.appendChild(segEl);
+            }
         });
         if (routine.length) container.appendChild(buildRoutineStripEl(routine));
         applyTranscriptClamps();

@@ -23,9 +23,14 @@ findable units are the issues the council moved through inside the item.
   count in the span catches what the duration check cannot.
 - **One LLM pass.** A second Gemini call beside the description call, on
   the item's transcript slice with a timestamp on every line. It returns
-  the distinct topics in order, each with a short title, the moment the
-  topic began, and a one-sentence takeaway. It fires only for an item the
-  gate admits, so the archive is untouched and a meeting costs a call for
+  the distinct topics in order, each a mini item: a short title, the
+  moment the topic began, and its own aggregate — description bullets
+  and chips drawn from the item's chip vocabulary, because a 15-minute
+  topic holds as many facts as a typical agenda item. A topic the body
+  voted on earns its own Outcome chip: the topic is that vote's unit,
+  which is exactly the case the item-level rule against tallies cannot
+  cover. It fires only for an item the gate admits, so the archive is
+  untouched and a meeting costs a call for
   the long item that needs it. The result rides in the item's cached
   summary next to the description, and an entry with no topics is an
   ordinary short item, not a failure.
@@ -35,9 +40,12 @@ findable units are the issues the council moved through inside the item.
   starts, and a time the model invented or fumbled snaps to the nearest
   real one. Order is enforced and duplicates dropped.
 - **Presentation.** The parent card keeps its title, outcome, description
-  and chips. Beneath it, the topics draw as their own rows — timestamp,
-  topic, takeaway — bound by a spine that says they are one item opened
-  up, not a new agenda.
+  and chips. The topics draw as sibling cards of the item's own — the
+  same card chrome, a timestamp where the section number would be,
+  description bullets and chips through the item's own summary view — in
+  the order the body moved the discussion, flat and chronological rather
+  than nested. Each card carries the parent's categories, so a category
+  filter moves a topic with the item it belongs to.
 - **The skip rule learns about segments, so the run converges.** The
   summarize walk skips a meeting whose summaries are current, and every
   archive meeting is current: without an exception the long items would
@@ -47,8 +55,12 @@ findable units are the issues the council moved through inside the item.
   pass" is one of three on-disk states, and the distinction is what makes
   the walk stop: a missing key is *never* (or the last attempt failed,
   which retries as never), an explicit empty list is *attempted, nothing
-  to split*, and a populated list is the topics. An item the model read
-  and declined to split is done, not pending, or the walk would re-do
+  to split*, and a populated list is the topics. The topic level keeps
+  the same discipline for the chip pass: a topic whose chips key is
+  absent (the archive shape before topics carried chips, or a failed
+  pass) retries as never, and an explicit empty list is a finding. An
+  item the model read and declined to split is done, not pending, or the
+  walk would re-do
   that meeting on every dispatch. Thin-span items never flag: re-doing
   them would produce nothing, and the meeting would stay not-current
   forever.

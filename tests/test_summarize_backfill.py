@@ -155,12 +155,31 @@ class TestNeedsSegmentBackfill:
     def test_topics_present_means_done(self):
         cached = {"1": ItemSummary(
             description=["A thing."], chips=[],
-            segments=[ItemSegment("Staff", 0, "Laid out the budget.")],
+            segments=[ItemSegment(
+                title="Staff", start_ms=0,
+                description=["Laid out the budget."], chips=[],
+            )],
         )}
         assert needs_segment_backfill(
             _source([_long_item(), _short_item()]), "m1", cached,
             _rich_transcript(),
         ) is False
+
+    def test_pre_chips_topics_are_pending_again(self):
+        """The archive shape before topics carried chips: the walk keeps
+        flagging the meeting until the backfill re-asks the item, and
+        the re-asked topics carry chips."""
+        cached = {"1": ItemSummary(
+            description=["A thing."], chips=[],
+            segments=[ItemSegment(
+                title="Staff", start_ms=0,
+                description=["Laid out the budget."], chips=None,
+            )],
+        )}
+        assert needs_segment_backfill(
+            _source([_long_item(), _short_item()]), "m1", cached,
+            _rich_transcript(),
+        ) is True
 
     def test_attempted_and_empty_means_done(self):
         """The model read the span and found nothing to split.

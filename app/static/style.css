@@ -1090,38 +1090,11 @@ main {
     text-align: right;
 }
 
-/* A long item's topics (ADR 0029). The left rail is the indication
-   that these rows are one item opened up, not a new agenda. */
-.item-segments {
-    list-style: none;
-    margin: 0.75rem 0 0;
-    padding: 0 0 0.1rem 0.9rem;
-    border-left: 3px solid var(--color-border);
-    display: flex;
-    flex-direction: column;
-    gap: 0.7rem;
-}
-
-.item-segment {
-    display: flex;
-    align-items: baseline;
-    gap: 0.7rem;
-}
-
-.segment-start {
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
-}
-
-.segment-title {
-    display: block;
-    font-weight: 600;
-}
-
-.segment-takeaway {
-    display: block;
-    color: var(--color-text-muted);
-}
+/* A long item's topics (ADR 0029) draw as sibling cards of the item's
+   own: the same .agenda-item chrome, no section number, a timestamp
+   where the number would be. They are deliberately not visually nested
+   — the list is chronological and a topic card is read as a moment in
+   it, not as part of a parent. */
 
 .item-duration {
     color: var(--color-muted);
@@ -2552,12 +2525,6 @@ footer a:hover {
 
 /* === Responsive === */
 @media (max-width: 640px) {
-    /* A long item's topics stack: the timestamp over its text, so a
-       390px screen never truncates either. */
-    .item-segment {
-        flex-direction: column;
-        gap: 0.2rem;
-    }
     .meetings-grid {
         grid-template-columns: 1fr;
     }

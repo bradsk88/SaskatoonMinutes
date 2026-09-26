@@ -62,7 +62,7 @@ from app.attachment_gists_cache import AttachmentGistsCache
 from app.item_summaries_cache import ItemSummariesCache
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
-from app.models import ItemSummary, has_current_summaries
+from app.models import ItemSummary, has_current_summaries, segments_fully_current
 from app.speakers import group_window, mark_jointly_heard
 from app.transcript_cache import TranscriptCache
 
@@ -97,7 +97,11 @@ def needs_segment_backfill(source, mid, cached, transcript) -> bool:
     it would produce no segments, and the meeting would stay "not
     current" on every dispatch forever.  Likewise an item the model has
     already read and found nothing to split into (segments persisted as
-    an empty list) is done, not pending.
+    an empty list) is done, not pending.  So is a long item whose topics
+    have all been through the chip pass: the pre-chips archive shape is
+    pending again until the backfill re-asks it, and the walk's exception
+    keeps it eligible in the meantime — ``segments_fully_current`` is
+    what "done" means for both.
     """
     if not is_current(cached):
         return False
@@ -113,9 +117,10 @@ def needs_segment_backfill(source, mid, cached, transcript) -> bool:
     transcript_segs = transcript.to_dict()
     for item in items:
         summary = cached.get(str(item.get("item_id")))
-        # None = never had the segment pass (or the last attempt
-        # failed); [] and populated lists = done.
-        if summary is not None and summary.segments is not None:
+        # Pending: never had the pass (segments None), the last attempt
+        # failed, or the topics predate the chip pass (a segment whose
+        # chips key is absent). [] and fully-chipped lists = done.
+        if summary is not None and segments_fully_current(summary.segments):
             continue
         if not needs_topic_segments(item):
             continue

@@ -19,7 +19,7 @@ from app.item_categorizer import (
     has_segment_content,
     needs_topic_segments,
 )
-from app.models import ItemSegment, ItemSummary
+from app.models import Chip, ItemSegment, ItemSummary, segments_fully_current
 
 MIN = 60 * 1000
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -137,8 +137,15 @@ class TestSanitize:
 
     KNOWN = [0, 60_000, 120_000, 180_000]
 
-    def _seg(self, title, start, takeaway="It did a thing."):
-        return {"title": title, "start": start, "takeaway": takeaway}
+    def _seg(self, title, start, bullets=("It did a thing.",), chips=None):
+        if chips is None:
+            chips = []
+        return {
+            "title": title,
+            "start": start,
+            "description": list(bullets),
+            "chips": chips,
+        }
 
     def test_copied_timestamp_passes_through(self):
         out = _sanitize_segments(
@@ -146,7 +153,8 @@ class TestSanitize:
         )
         assert [s["start_ms"] for s in out] == [60_000]
         assert out[0]["title"] == "Staff presentation"
-        assert out[0]["takeaway"] == "It did a thing."
+        assert out[0]["description"] == ["It did a thing."]
+        assert out[0]["chips"] == []
 
     def test_off_by_seconds_snaps_to_nearest(self):
         # 61,000 ms is 1 s from 60,000 and 59 s from 120,000.
@@ -169,11 +177,73 @@ class TestSanitize:
         )
         assert out == []
 
-    def test_empty_takeaway_is_dropped(self):
+    def test_empty_description_is_dropped(self):
         out = _sanitize_segments(
-            [self._seg("No words", "1:00:00", takeaway="  ")], self.KNOWN,
+            [self._seg("No words", "1:00:00", bullets=["  "])], self.KNOWN,
         )
         assert out == []
+
+    def test_topic_without_bullets_is_dropped(self):
+        out = _sanitize_segments(
+            [self._seg("No words", "1:00:00", bullets=[])], self.KNOWN,
+        )
+        assert out == []
+
+    def test_bullets_are_trimmed_and_capped(self):
+        out = _sanitize_segments(
+            [self._seg("Chatty", "1:00", bullets=[
+                "  First fact.  ", "", "Second fact.",
+                "Third fact.", "Fourth fact.", "Fifth fact.",
+            ])], self.KNOWN,
+        )
+        assert out[0]["description"] == [
+            "First fact.", "Second fact.", "Third fact.", "Fourth fact.",
+        ]
+
+    def test_chip_is_kept_when_it_earns_it(self):
+        out = _sanitize_segments(
+            [self._seg("Police numbers", "1:00", chips=[
+                {"category": "Cost & Funding",
+                 "text": "A 9% increase, $4.2M",
+                 "usefulness": "high"},
+            ])], self.KNOWN,
+        )
+        assert out[0]["chips"] == [
+            {"category": "Cost & Funding", "text": "A 9% increase, $4.2M"},
+        ]
+
+    def test_chip_outside_the_vocabulary_is_dropped(self):
+        out = _sanitize_segments(
+            [self._seg("Off-book", "1:00", chips=[
+                {"category": "Fun Fact", "text": "A thing",
+                 "usefulness": "high"},
+            ])], self.KNOWN,
+        )
+        assert out[0]["chips"] == []
+
+    def test_low_usefulness_chip_is_dropped(self):
+        out = _sanitize_segments(
+            [self._seg("Soft", "1:00", chips=[
+                {"category": "Procedural Note", "text": "A thing",
+                 "usefulness": "low"},
+            ])], self.KNOWN,
+        )
+        assert out[0]["chips"] == []
+
+    def test_one_chip_per_category(self):
+        out = _sanitize_segments(
+            [self._seg("Twice", "1:00", chips=[
+                {"category": "Debate Highlight",
+                 "text": "First version",
+                 "usefulness": "high"},
+                {"category": "Debate Highlight",
+                 "text": "Second version",
+                 "usefulness": "high"},
+            ])], self.KNOWN,
+        )
+        assert out[0]["chips"] == [
+            {"category": "Debate Highlight", "text": "First version"},
+        ]
 
     def test_order_restored_and_overlaps_collapsed(self):
         # The model answered out of order, and two topics snapped onto
@@ -253,9 +323,12 @@ class TestExtractorSegments:
         ex = self._stub({
             "segments": [
                 {"title": "Staff presentation", "start": "0:00:00",
-                 "takeaway": "Staff laid out the budget."},
+                 "description": ["Staff laid out the budget."],
+                 "chips": []},
                 {"title": "Police numbers", "start": "26:59",
-                 "takeaway": "A 9% increase was proposed."},
+                 "description": ["A 9% increase was proposed."],
+                 "chips": [{"category": "Cost & Funding",
+                            "text": "A 9% increase", "usefulness": "high"}]},
             ],
         }, captured)
         out = ex.extract_segments(_item(), self._long_transcript())
@@ -263,6 +336,10 @@ class TestExtractorSegments:
         # segment 59's (26:33), so it snaps to 27:00.
         assert [s["start_ms"] for s in out] == [0, 27 * MIN]
         assert out[0]["title"] == "Staff presentation"
+        assert out[1]["description"] == ["A 9% increase was proposed."]
+        assert out[1]["chips"] == [
+            {"category": "Cost & Funding", "text": "A 9% increase"},
+        ]
 
     def test_prompt_carries_title_and_timestamped_lines(self):
         captured = {}
@@ -311,10 +388,41 @@ class TestExtractorSegments:
 
 
 class TestModelRoundTrip:
+    def _chip(self):
+        return Chip(category="Cost & Funding", text="A 9% increase")
+
     def test_segment_round_trips(self):
-        s = ItemSegment(title="Police numbers", start_ms=60_000,
-                        takeaway="A 9% increase.")
+        s = ItemSegment(
+            title="Police numbers", start_ms=60_000,
+            description=["A 9% increase."], chips=[self._chip()],
+        )
         assert ItemSegment.from_dict(s.to_dict()) == s
+
+    def test_legacy_takeaway_loads_as_one_bullet_without_chips(self):
+        # The pre-chips on-disk shape: the takeaway is the one bullet,
+        # and the absent chips key says the chip pass never ran — the
+        # backfill's re-ask trigger.
+        s = ItemSegment.from_dict({
+            "title": "Police numbers", "start_ms": 60_000,
+            "takeaway": "A 9% increase.",
+        })
+        assert s.description == ["A 9% increase."]
+        assert s.chips is None
+
+    def test_segment_chips_three_state(self):
+        # None = never (key absent); [] = asked, earned none; both are
+        # real on-disk states the backfill must tell apart.
+        never = ItemSegment.from_dict({
+            "title": "T", "start_ms": 0, "description": ["A thing."],
+        })
+        declined = ItemSegment.from_dict({
+            "title": "T", "start_ms": 0, "description": ["A thing."],
+            "chips": [],
+        })
+        assert never.chips is None
+        assert "chips" not in never.to_dict()
+        assert declined.chips == []
+        assert declined.to_dict()["chips"] == []
 
     def test_absent_segments_load_as_never(self):
         # Three states (ADR 0029): no key is "never had the segment
@@ -339,11 +447,17 @@ class TestModelRoundTrip:
     def test_to_dict_writes_segments_when_present(self):
         s = ItemSummary(
             description=["A thing."],
-            segments=[ItemSegment("Police numbers", 60_000, "A 9% increase.")],
+            segments=[ItemSegment(
+                title="Police numbers", start_ms=60_000,
+                description=["A 9% increase."],
+                chips=[self._chip()],
+            )],
         )
         assert s.to_dict()["segments"] == [
             {"title": "Police numbers", "start_ms": 60_000,
-             "takeaway": "A 9% increase."},
+             "description": ["A 9% increase."],
+             "chips": [{"category": "Cost & Funding",
+                        "text": "A 9% increase"}]},
         ]
 
     def test_segments_load_from_cache_shape(self):
@@ -356,6 +470,41 @@ class TestModelRoundTrip:
         })
         assert s.segments[0].title == "Police numbers"
         assert s.segments[0].start_ms == 60_000
+        assert s.segments[0].description == ["A 9% increase."]
+        assert s.segments[0].chips is None
+
+
+class TestSegmentsFullyCurrent:
+    """What done means for the backfill, at the topic level."""
+
+    def _seg(self, chips):
+        return ItemSegment(title="T", start_ms=0,
+                           description=["A thing."], chips=chips)
+
+    def _chip(self):
+        return Chip(category="Outcome", text="Adopted")
+
+    def test_never_is_not_done(self):
+        assert not segments_fully_current(None)
+
+    def test_declined_split_is_done(self):
+        assert segments_fully_current([])
+
+    def test_pre_chips_topics_are_pending(self):
+        assert not segments_fully_current([self._seg(None)])
+
+    def test_earned_none_is_done(self):
+        assert segments_fully_current([self._seg([])])
+
+    def test_populated_is_done(self):
+        assert segments_fully_current([self._seg([self._chip()])])
+
+    def test_mixed_is_pending(self):
+        # One topic still pre-chips means the pass did not finish.
+        assert not segments_fully_current([
+            self._seg([self._chip()]),
+            self._seg(None),
+        ])
 
 
 class TestPageContract:
@@ -372,13 +521,23 @@ class TestPageContract:
     def test_topics_are_escaped(self):
         src = self._read(MEETING)
         assert "${escapeHtml(s.title)}" in src
-        assert "${escapeHtml(s.takeaway)}" in src
 
     def test_every_topic_seeks_the_video(self):
         src = self._read(MEETING)
         assert "onclick=\"seekVideo(${s.start_ms})\"" in src
 
-    def test_topics_share_a_spine(self):
-        css = self._read(CSS)
-        assert ".item-segments" in css
-        assert "border-left" in css
+    def test_topics_draw_as_sibling_cards(self):
+        # A topic is a mini item, so it draws as a card of its own —
+        # the item's chrome, not a nested row — and it shares the
+        # parent's categories so a filter moves them together.
+        src = self._read(MEETING)
+        assert "agenda-item-segment" in src
+        assert "buildSegmentEls" in src
+        assert "catSlugs.join(' ')" in src
+
+    def test_topics_earn_the_chip_view(self):
+        # The topic's description and chips draw through the same view
+        # the item's own summary does, so the page keeps one vocabulary
+        # for both.
+        src = self._read(MEETING)
+        assert "buildChipViewHtml({" in src
