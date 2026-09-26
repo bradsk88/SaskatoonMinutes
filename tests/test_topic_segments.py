@@ -16,6 +16,7 @@ from app.item_categorizer import (
     _build_segments_prompt,
     _parse_ts,
     _sanitize_segments,
+    has_segment_content,
     needs_topic_segments,
 )
 from app.models import ItemSegment, ItemSummary
@@ -80,6 +81,55 @@ class TestGate:
             "primary_section": "7.1",
             "partners": ["9.1"],
         }))
+
+
+class TestHasSegmentContent:
+    """The word floor the skip rule and the call site share.
+
+    The duration gate runs on the eSCRIBE bookmark, which lies: a
+    "Recess" span that inherits five hours, a 235-minute placeholder of
+    silence.  The transcript is the only witness to whether there is
+    anything to split, and the walk's backfill check must not flag a
+    meeting whose long items are like that, or it would re-do that
+    meeting on every dispatch.
+    """
+
+    def _rich(self):
+        # 100 segments of 6 words: over the 500-word floor.
+        return [
+            {
+                "start_ms": i * 27_000,
+                "end_ms": i * 27_000 + 26_000,
+                "text": (
+                    "the council discussed the next part of the "
+                    "budget this way today"
+                ),
+            }
+            for i in range(100)
+        ]
+
+    def test_a_rich_span_has_content(self):
+        assert has_segment_content(_item(), self._rich())
+
+    def test_an_empty_span_does_not(self):
+        assert not has_segment_content(_item(), [])
+
+    def test_a_single_segment_does_not(self):
+        assert not has_segment_content(
+            _item(), [{"start_ms": 0, "end_ms": 1000, "text": "hi."}],
+        )
+
+    def test_a_thin_span_does_not(self):
+        assert not has_segment_content(
+            _item(), [{"start_ms": 0, "end_ms": 1000, "text": "hello there"}],
+        )
+
+    def test_the_window_is_the_span_when_given(self):
+        # The item's bookmark is empty, but the jointly-heared group's
+        # union window carries the discussion.
+        item = _item(time_start_ms=None, time_end_ms=None)
+        assert not has_segment_content(item, self._rich())
+        assert has_segment_content(item, self._rich(), window=(0, 45 * MIN))
 
 
 class TestSanitize:
@@ -266,13 +316,25 @@ class TestModelRoundTrip:
                         takeaway="A 9% increase.")
         assert ItemSegment.from_dict(s.to_dict()) == s
 
-    def test_legacy_entry_loads_without_segments(self):
+    def test_absent_segments_load_as_never(self):
+        # Three states (ADR 0029): no key is "never had the segment
+        # pass" — the backfill's work queue, distinct from "attempted,
+        # nothing to split" below.
         s = ItemSummary.from_dict({"description": ["A thing."]})
+        assert s.segments is None
+
+    def test_explicit_empty_segments_load_as_attempted(self):
+        s = ItemSummary.from_dict({"description": ["A thing."], "segments": []})
         assert s.segments == []
 
-    def test_to_dict_omits_empty_segments(self):
+    def test_to_dict_omits_never(self):
         s = ItemSummary(description=["A thing."])
+        assert s.segments is None
         assert "segments" not in s.to_dict()
+
+    def test_to_dict_writes_attempted_empty(self):
+        s = ItemSummary(description=["A thing."], segments=[])
+        assert s.to_dict()["segments"] == []
 
     def test_to_dict_writes_segments_when_present(self):
         s = ItemSummary(

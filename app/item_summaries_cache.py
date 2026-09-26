@@ -47,6 +47,10 @@ class ItemSummariesCache:
             for item_id, entry in raw.items()
         }
 
+    def keys(self) -> list[str]:
+        """Every meeting id that has a cached summary, sorted."""
+        return self._inner.keys()
+
     def save(
         self,
         meeting_id: str,

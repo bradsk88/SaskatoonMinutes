@@ -444,9 +444,16 @@ budget debate's findable units are the issues it walked through.
   and chips; the topics draw beneath it as timestamped rows bound by
   a rail that says one item, opened up. Index and feeds do not
   change.
-
-Left for the next run: a summarization pass to populate the archive's
-long items, and a look over the first page it produces.
+- **The skip rule learns about segments.** A current meeting is not
+  current while a long item of its has not had the segment pass and
+  its span carries real transcript; the run converges because an item
+  the model read and declined to split records an explicit empty list
+  ("attempted, nothing to split"), which is done, not pending.
+- **A one-off backfill does the archive.**
+  `backfill-topics.yml` (manual dispatch) walks the summaries branch
+  and asks the segment pass only the long items that lack it — one
+  Gemini call per item, descriptions and chips untouched, re-runs
+  safe. After it runs, check the first page it produces.
 
 ## 18. Let a reader enter any timestamp to navigate the video
 

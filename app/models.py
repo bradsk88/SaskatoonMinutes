@@ -412,11 +412,14 @@ class ItemSummary:
     # roster still renders, just without substance.
     speakers: list[Speaker] = field(default_factory=list)
     # The topics a long item moved through, in the order the council did
-    # (ADR ``0029``).  Only an item the gate admits ever earns one, so
-    # most entries have none; an entry with no topics is an ordinary
-    # short item, not a failure.  Absent from every entry cached before
-    # segments existed, which loads as an empty list.
-    segments: list[ItemSegment] = field(default_factory=list)
+    # (ADR ``0029``).  Three states, because the skip rule must tell
+    # "never had the segment pass" apart from "had it, and the model
+    # found nothing to split": the first is backfill work, the second is
+    # done.  ``None`` (the key absent on disk) is never — or the last
+    # attempt failed, which retries as never; ``[]`` is attempted and
+    # empty; a populated list is the topics themselves.  Only an item
+    # the gate admits earns the pass, so most entries stay ``None``.
+    segments: list[ItemSegment] | None = None
 
     @property
     def is_legacy(self) -> bool:
@@ -436,9 +439,14 @@ class ItemSummary:
                 Speaker.from_dict(p) for p in data.get("speakers") or []
             ],
             provisional=bool(data.get("provisional")),
-            segments=[
-                ItemSegment.from_dict(s) for s in data.get("segments") or []
-            ],
+            # Three states (ADR 0029): the key absent loads as None
+            # (never had the segment pass, or the last attempt failed);
+            # an explicit empty list is "attempted, nothing to split".
+            segments=(
+                None
+                if data.get("segments") is None
+                else [ItemSegment.from_dict(s) for s in data["segments"]]
+            ),
         )
 
     def to_dict(self) -> dict:
@@ -452,10 +460,11 @@ class ItemSummary:
         # record that nothing happened.
         if self.speakers:
             payload["speakers"] = [p.to_dict() for p in self.speakers]
-        # Same reasoning as speakers: an empty list is the ordinary case,
-        # and rewriting every cached file to record that nothing happened
-        # would buy nothing.
-        if self.segments:
+        # Written whenever the item has had the segment pass: an empty
+        # list is a real state ("the model read the span and found
+        # nothing to split") that the skip rule relies on, while None
+        # stays absent so ordinary short items never gain the key.
+        if self.segments is not None:
             payload["segments"] = [s.to_dict() for s in self.segments]
         # Same reasoning as speakers: most entries are post-meeting, so
         # the flag is written only when it distinguishes this one.

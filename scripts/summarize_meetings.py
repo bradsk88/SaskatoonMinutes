@@ -49,6 +49,7 @@ from app.cache_git import PushAccessError, verify_push_access
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.item_categorizer import (
     extract_item_summaries,
+    has_segment_content,
     item_transcript_text,
     is_eligible_for_summary,
     needs_topic_segments,
@@ -80,6 +81,48 @@ def is_current(cached: dict[str, ItemSummary] | None) -> bool:
     call sites must agree on what "summarized" means.
     """
     return has_current_summaries(cached)
+
+
+def needs_segment_backfill(source, mid, cached, transcript) -> bool:
+    """The one exception to the skip rule (ADR 0029).
+
+    A meeting whose summaries are current but which carries a long item
+    that has not received its topic segments is not done: the archive
+    was summarized before segments existed, so without this the walk
+    would skip it forever.  A re-summarize adds the segments, the next
+    walk finds every long item has them, and the run converges.
+
+    A long item whose span is too thin for topics (a broken bookmark
+    running for hours without saying anything) does not count: re-doing
+    it would produce no segments, and the meeting would stay "not
+    current" on every dispatch forever.  Likewise an item the model has
+    already read and found nothing to split into (segments persisted as
+    an empty list) is done, not pending.
+    """
+    if not is_current(cached):
+        return False
+    if transcript is None or not transcript.segments:
+        return False
+    try:
+        detail = source.load_detail(mid)
+    except Exception as exc:
+        print(f"  [{mid[:8]}] segment check failed: {exc}", flush=True)
+        return False
+    items = [it.to_dict() for it in detail.agenda_items]
+    mark_jointly_heard(items)
+    transcript_segs = transcript.to_dict()
+    for item in items:
+        summary = cached.get(str(item.get("item_id")))
+        # None = never had the segment pass (or the last attempt
+        # failed); [] and populated lists = done.
+        if summary is not None and summary.segments is not None:
+            continue
+        if not needs_topic_segments(item):
+            continue
+        if not has_segment_content(item, transcript_segs):
+            continue
+        return True
+    return False
 
 
 def summarize_meeting(
@@ -146,12 +189,14 @@ def summarize_meeting(
                     item, transcript_segments, window=window,
                 )
             except (ExtractionFailed, QuotaExhausted) as exc:
+                # Leave the key unset (loads back as None, "never")
+                # rather than recording "attempted, empty": a failed
+                # call is not a finding, and the next walk retries it.
                 print(
                     f"    Item {item.get('item_id')}: segments skipped "
                     f"({exc})",
                     flush=True,
                 )
-                payload["segments"] = []
         return item, payload
 
     missing_description = 0
@@ -328,11 +373,14 @@ def summarize_recorded_meetings(
         if not m.has_video:
             continue
         mid = m.meeting_id
-        if not force and is_current(summaries_cache.load(mid)):
+        cached = summaries_cache.load(mid)
+        transcript = transcript_cache.load(mid)
+        if not force and is_current(cached) \
+                and not needs_segment_backfill(source, mid, cached, transcript):
             print(f"  [{m.date}] {mid[:8]}... already summarized")
             skipped += 1
             continue
-        if transcript_cache.load(mid) is None:
+        if transcript is None:
             print(
                 f"  [{m.date}] {mid[:8]}... no transcript yet, skipping"
             )
@@ -476,11 +524,16 @@ def main() -> None:
                     continue
 
                 mid = m.meeting_id
-                if not args.force and is_current(summaries_cache.load(mid)):
+                cached = summaries_cache.load(mid)
+                transcript = transcript_cache.load(mid)
+                if not args.force and is_current(cached) \
+                        and not needs_segment_backfill(
+                            source, mid, cached, transcript,
+                        ):
                     print(f"  [{m.date}] {mid[:8]}... already summarized")
                     skipped += 1
                     continue
-                if transcript_cache.load(mid) is None:
+                if transcript is None:
                     print(
                         f"  [{m.date}] {mid[:8]}... no transcript yet, skipping"
                     )

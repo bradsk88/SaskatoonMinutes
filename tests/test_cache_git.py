@@ -85,6 +85,17 @@ class TestGitBranchCacheLifecycle:
             c.save("k1", {"a": 1})
             assert c.load("missing") is None
 
+    def test_keys_lists_every_cached_meeting_sorted(self, repo_with_remote):
+        worker, remote = repo_with_remote
+        with GitBranchCache("test-cache", "data") as c:
+            c.save("bbb", {"x": 1})
+            c.save("aaa", {"x": 2})
+            assert c.keys() == ["aaa", "bbb"]
+
+    def test_keys_on_an_empty_branch_is_empty(self, repo_with_remote):
+        with GitBranchCache("test-cache", "data") as c:
+            assert c.keys() == []
+
     def test_n_saves_produce_n_commits_one_push(self, repo_with_remote):
         _, remote = repo_with_remote
         with GitBranchCache("test-cache", "data") as c:

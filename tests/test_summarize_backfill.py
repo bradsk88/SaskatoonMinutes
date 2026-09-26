@@ -6,8 +6,17 @@ the other and it declares 226 meetings done without summarizing any of
 them.
 """
 
-from app.models import Chip, ItemSummary
-from scripts.summarize_meetings import is_current
+from app.meeting_source import InMemoryMeetingSource
+from app.models import (
+    AgendaItem,
+    Chip,
+    ItemSegment,
+    ItemSummary,
+    MeetingDetail,
+    Segment,
+    Transcript,
+)
+from scripts.summarize_meetings import is_current, needs_segment_backfill
 
 
 def _current(text: str = "Council approved the thing.") -> ItemSummary:
@@ -78,3 +87,132 @@ class TestBackfillConverges:
         dispatch(limit=1)
         dispatch(limit=1)
         assert summarized == ["m1", "m2"]
+
+
+# ── The segments exception (ADR 0029) ─────────────────────────────
+
+
+def _long_item(item_id=1):
+    """A 45-minute item: over the 30-minute segment bar."""
+    return AgendaItem(
+        item_id=item_id,
+        title="2027 Operating and Capital Budget",
+        content="Report on the budget.",
+        section_number="1.",
+        time_start_ms=0,
+        time_end_ms=45 * 60 * 1000,
+    )
+
+
+def _short_item(item_id=2):
+    return AgendaItem(
+        item_id=item_id,
+        title="Funding Decision",
+        content="Report on the funding allocation.",
+        section_number="2.",
+        time_start_ms=0,
+        time_end_ms=10 * 60 * 1000,
+    )
+
+
+def _rich_transcript():
+    """100 x 6-word segments filling 45 minutes: over the word floor."""
+    return Transcript(segments=[
+        Segment(
+            start_ms=i * 27_000,
+            end_ms=i * 27_000 + 26_000,
+            text=(
+                "the council discussed the next part of the "
+                "budget this way today"
+            ),
+        )
+        for i in range(100)
+    ])
+
+
+def _thin_transcript():
+    return Transcript(segments=[
+        Segment(start_ms=0, end_ms=1000, text="hello there"),
+    ])
+
+
+def _source(items):
+    return InMemoryMeetingSource(
+        details={"m1": MeetingDetail(agenda_items=items)},
+    )
+
+
+class TestNeedsSegmentBackfill:
+    """The one exception to the skip rule, and why it converges."""
+
+    def test_a_long_item_without_segments_is_pending(self):
+        cached = {"1": ItemSummary(description=["A thing."], chips=[])}
+        assert needs_segment_backfill(
+            _source([_long_item(), _short_item()]), "m1", cached,
+            _rich_transcript(),
+        ) is True
+
+    def test_topics_present_means_done(self):
+        cached = {"1": ItemSummary(
+            description=["A thing."], chips=[],
+            segments=[ItemSegment("Staff", 0, "Laid out the budget.")],
+        )}
+        assert needs_segment_backfill(
+            _source([_long_item(), _short_item()]), "m1", cached,
+            _rich_transcript(),
+        ) is False
+
+    def test_attempted_and_empty_means_done(self):
+        """The model read the span and found nothing to split.
+
+        Treating this as pending would re-do the meeting on every
+        dispatch forever — the exact loop the skip rule exists to
+        break.
+        """
+        cached = {"1": ItemSummary(description=["A thing."], chips=[],
+                                   segments=[])}
+        assert needs_segment_backfill(
+            _source([_long_item(), _short_item()]), "m1", cached,
+            _rich_transcript(),
+        ) is False
+
+    def test_a_short_item_never_flags(self):
+        cached = {"2": ItemSummary(description=["A thing."], chips=[])}
+        assert needs_segment_backfill(
+            _source([_short_item()]), "m1", cached,
+            _rich_transcript(),
+        ) is False
+
+    def test_a_thin_span_never_flags(self):
+        """A 45-minute bookmark with 3 words is a broken bookmark, not
+        a meeting missing its topics."""
+        cached = {"1": ItemSummary(description=["A thing."], chips=[])}
+        assert needs_segment_backfill(
+            _source([_long_item()]), "m1", cached,
+            _thin_transcript(),
+        ) is False
+
+    def test_no_transcript_never_flags(self):
+        cached = {"1": ItemSummary(description=["A thing."], chips=[])}
+        assert needs_segment_backfill(
+            _source([_long_item()]), "m1", cached, None,
+        ) is False
+
+    def test_a_not_current_meeting_never_flags(self):
+        """The exception applies to current summaries only; everything
+        else the walk already re-does for its own reasons."""
+        legacy = {"1": ItemSummary(description=None, chips=[])}
+        assert not is_current(legacy)
+        assert needs_segment_backfill(
+            _source([_long_item()]), "m1", legacy,
+            _rich_transcript(),
+        ) is False
+
+    def test_an_uncached_long_item_flags(self):
+        """The item has no cached entry at all (the agenda changed after
+        the summary was written): its topics were never asked for."""
+        cached = {"2": ItemSummary(description=["A thing."], chips=[])}
+        assert needs_segment_backfill(
+            _source([_long_item(), _short_item()]), "m1", cached,
+            _rich_transcript(),
+        ) is True

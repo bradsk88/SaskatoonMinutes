@@ -156,6 +156,24 @@ class GitBranchCache:
         with open(path) as f:
             return json.load(f)
 
+    def keys(self) -> list[str]:
+        """Every cached key in this branch's worktree, sorted.
+
+        One-off passes walk the whole branch this way (the backfill of
+        topic segments, ADR 0029) instead of re-asking eSCRIBE which
+        meetings exist — the cache already knows.
+        """
+        if self._worktree is None:
+            raise RuntimeError("GitBranchCache used outside its context")
+        path = os.path.join(self._worktree, self.dir_name)
+        if not os.path.isdir(path):
+            return []
+        return sorted(
+            name[: -len(".json")]
+            for name in os.listdir(path)
+            if name.endswith(".json")
+        )
+
     def save(self, key: str, value: Any) -> None:
         if self._worktree is None:
             raise RuntimeError("GitBranchCache used outside its context")

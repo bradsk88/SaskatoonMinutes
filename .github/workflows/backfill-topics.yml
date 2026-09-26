@@ -1,0 +1,54 @@
+name: Backfill Topic Segments
+
+on:
+  # Manual only.  The walk in Summarize Meeting Items now re-does a
+  # meeting whose summaries are current but whose long item is missing
+  # its topics (ADR 0029), so this is a one-off for the archive:
+  # segments the long items the daily walk has not reached yet, at one
+  # Gemini call per long item instead of a full re-summarize.  Re-runs
+  # are safe and cheap: an item that has topics is skipped, and a
+  # meeting with nothing to add is left alone (no commit).
+  workflow_dispatch:
+
+concurrency:
+  group: summarize
+  # Shared with Summarize Meeting Items on purpose: the two walks write
+  # the same branch, and a second Gemini-heavy run starting into an
+  # already-spent quota wastes the quota.
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # push to summaries branch
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    # One call per long item in the archive (~100 for the current term),
+    # plus the eSCRIBE detail fetch per cached meeting.  Far inside the
+    # daily run's budget; the cap is a guard against a gate that
+    # misfires and flags every item.
+    timeout-minutes: 350
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for orphan-branch worktrees
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install google-genai
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Backfill segments
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/backfill_topic_segments.py

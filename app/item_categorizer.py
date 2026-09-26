@@ -770,6 +770,12 @@ class GeminiExtractor:
         live on the primary's card, and the primary's discussion is
         the group's whole conversation, not just its own bookmark.
         """
+        if not has_segment_content(item, transcript_segments, window):
+            # The duration gate ran on the bookmark, and the bookmark
+            # lies: a "Recess" span that inherits five hours, a 235-
+            # minute placeholder with silence in it. No transcript in
+            # the span is no topics.
+            return []
         target = item
         if window is not None:
             target = {
@@ -778,17 +784,7 @@ class GeminiExtractor:
                 "time_end_ms": window[1],
                 "timestamp_inherited": False,
             }
-        sl = _slice_transcript(transcript_segments, target)
-        word_count = sum(len(s.get("text", "").split()) for s in sl)
-        if word_count < SEGMENT_MIN_WORDS:
-            # The duration gate ran on the bookmark, and the bookmark
-            # lies: a "Recess" span that inherits five hours, a 235-
-            # minute placeholder with silence in it. No transcript in
-            # the span is no topics.
-            return []
-        lines, known = _segment_lines(sl)
-        if len(known) < 2:
-            return []
+        lines, known = _segment_lines(_slice_transcript(transcript_segments, target))
         prompt = _build_segments_prompt(item, "\n".join(lines))
         try:
             raw = self._call_with_retry(
@@ -1783,6 +1779,37 @@ SEGMENT_MIN_WORDS = 500
 SEGMENT_MAX_TOPICS = 12
 SEGMENT_MAX_TITLE = 80
 SEGMENT_MAX_TAKEAWAY = 200
+
+
+def has_segment_content(
+    item: dict,
+    transcript_segments: list[dict],
+    window: tuple[int, int] | None = None,
+) -> bool:
+    """Whether the item's span carries enough transcript for topics.
+
+    Shared by ``extract_segments`` (does the model call fire?) and the
+    skip rule's backfill check (ADR 0029, scripts/summarize_meetings.py
+    ``needs_segment_backfill``): a "long" item whose bookmark lies — a
+    five-hour recess span, a 235-minute placeholder of silence — has no
+    topics to split, and a meeting whose only long items are like that
+    must not be marked not-current forever, or the walk would re-do it
+    on every dispatch.
+    """
+    target = item
+    if window is not None:
+        target = {
+            **item,
+            "time_start_ms": window[0],
+            "time_end_ms": window[1],
+            "timestamp_inherited": False,
+        }
+    sl = _slice_transcript(transcript_segments, target)
+    word_count = sum(len(s.get("text", "").split()) for s in sl)
+    if word_count < SEGMENT_MIN_WORDS:
+        return False
+    _, known = _segment_lines(sl)
+    return len(known) >= 2
 
 
 def needs_topic_segments(item: dict) -> bool:

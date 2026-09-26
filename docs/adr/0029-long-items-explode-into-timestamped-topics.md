@@ -38,5 +38,30 @@ findable units are the issues the council moved through inside the item.
   and chips. Beneath it, the topics draw as their own rows — timestamp,
   topic, takeaway — bound by a spine that says they are one item opened
   up, not a new agenda.
+- **The skip rule learns about segments, so the run converges.** The
+  summarize walk skips a meeting whose summaries are current, and every
+  archive meeting is current: without an exception the long items would
+  wait for a re-summarize that never comes. The exception is narrow: a
+  meeting is not current while it carries a long item that has not had
+  the segment pass, and whose span carries real transcript. "Not had the
+  pass" is one of three on-disk states, and the distinction is what makes
+  the walk stop: a missing key is *never* (or the last attempt failed,
+  which retries as never), an explicit empty list is *attempted, nothing
+  to split*, and a populated list is the topics. An item the model read
+  and declined to split is done, not pending, or the walk would re-do
+  that meeting on every dispatch. Thin-span items never flag: re-doing
+  them would produce nothing, and the meeting would stay not-current
+  forever.
+- **A one-off backfill does the archive.** The daily walk re-does a
+  flagged meeting in full, which is right for meetings it meets as it
+  walks, but the archive sits at the far end of the walk. A separate
+  workflow (`backfill-topics.yml`, manual) walks the summaries branch,
+  asks the segment pass only the long items that lack it, one Gemini
+  call per item, and merges the answer into the existing cached
+  summary. Descriptions and chips are untouched, an item that already
+  has topics is skipped, and a meeting with nothing to add is left
+  alone. Re-running is safe: the three states above make the pass
+  idempotent, and a quota stop pushes its finished work, so the next
+  dispatch resumes.
 - **The index and feeds do not change.** The card skims, the details page
   proves.
