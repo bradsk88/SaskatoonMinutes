@@ -550,6 +550,35 @@ def has_current_summaries(cached: dict[str, ItemSummary] | None) -> bool:
     )
 
 
+def has_provisional_summaries(
+    cached: dict[str, ItemSummary] | None,
+) -> bool:
+    """True when *cached* holds provisional (pre-meeting) coverage.
+
+    The scheduled pass's skip rule, and the mirror of
+    ``has_current_summaries``.  A Scheduled Meeting's cache holds
+    provisional entries only, so the current check is always False for
+    it: ADR ``0021`` keeps provisional out of the current bar because a
+    provisional entry must never suppress the post-meeting regeneration
+    on the flip, and that distinction belongs to the flip, not to
+    "have we already paid for this meeting's provisional text?"  Without
+    this predicate the scheduled pass re-summarized every upcoming
+    meeting on every dispatch, a full second LLM pass per meeting per
+    run instead of once.
+
+    ``any``, not ``all``, for the same reason as
+    ``has_current_summaries``: an ineligible item is stored empty, and a
+    degraded run writes empty provisional entries everywhere, so a
+    meeting is judged by whether anything in it carries provisional text.
+    """
+    if not cached:
+        return False
+    return any(
+        summary.provisional and not summary.is_legacy
+        for summary in cached.values()
+    )
+
+
 @dataclass(frozen=True)
 class AttachmentGist:
     """The "5 Ws" gist of one agenda-item attachment PDF.

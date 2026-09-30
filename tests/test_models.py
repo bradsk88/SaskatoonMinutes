@@ -10,6 +10,7 @@ from app.models import (
     Segment,
     Transcript,
     has_current_summaries,
+    has_provisional_summaries,
     meeting_recording_state,
     meeting_start,
 )
@@ -360,3 +361,42 @@ class TestHasCurrentSummaries:
     def test_any_real_summary_among_degraded_ones_counts(self):
         cached = {"1": self._provisional(), "2": self._real()}
         assert has_current_summaries(cached) is True
+
+
+class TestHasProvisionalSummaries:
+    """The scheduled pass's skip rule (ADR 0021): provisional is its own current bar."""
+
+    def _real(self):
+        return ItemSummary(description=["x"], chips=[])
+
+    def _provisional(self):
+        return ItemSummary(description=["x"], chips=[], provisional=True)
+
+    def _empty_provisional(self):
+        # A degraded run (no Gemini key): provisional, no text anywhere.
+        return ItemSummary(description=None, chips=[], provisional=True)
+
+    def test_absent_cache_has_no_provisional(self):
+        assert has_provisional_summaries(None) is False
+
+    def test_empty_cache_has_no_provisional(self):
+        assert has_provisional_summaries({}) is False
+
+    def test_provisional_only_is_provisional(self):
+        # The scheduled pass must skip this meeting without re-paying for it.
+        assert has_provisional_summaries({"1": self._provisional()}) is True
+
+    def test_real_only_is_not_provisional(self):
+        assert has_provisional_summaries({"1": self._real()}) is False
+
+    def test_degraded_provisional_is_not_provisional(self):
+        # Empty provisional entries paid for nothing; the meeting is redone.
+        assert has_provisional_summaries({"1": self._empty_provisional()}) is False
+
+    def test_ineligible_empty_entries_do_not_block(self):
+        # An ineligible item is stored empty beside the provisional text.
+        cached = {
+            "1": self._empty_provisional(),
+            "2": self._provisional(),
+        }
+        assert has_provisional_summaries(cached) is True

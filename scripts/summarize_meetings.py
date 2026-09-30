@@ -62,7 +62,12 @@ from app.attachment_gists_cache import AttachmentGistsCache
 from app.item_summaries_cache import ItemSummariesCache
 from app.meeting_source import MeetingSource
 from app.meeting_types import MEETING_TABS
-from app.models import ItemSummary, has_current_summaries, segments_fully_current
+from app.models import (
+    ItemSummary,
+    has_current_summaries,
+    has_provisional_summaries,
+    segments_fully_current,
+)
 from app.speakers import group_window, mark_jointly_heard
 from app.transcript_cache import TranscriptCache
 
@@ -618,7 +623,15 @@ def main() -> None:
                 if not s.has_agenda:
                     continue
                 mid = s.meeting_id
-                if not args.force and is_current(summaries_cache.load(mid)):
+                cached = summaries_cache.load(mid)
+                # The current check rejects provisional by design (the flip
+                # must regenerate), so the provisional marker is the
+                # scheduled pass's own skip rule: the meeting's text was
+                # already paid for, and agenda revisions are ignored until
+                # the flip (ADR 0021).
+                if not args.force and (
+                    is_current(cached) or has_provisional_summaries(cached)
+                ):
                     # Summaries are done, but gists may predate the
                     # feature — backfill them independently.
                     try:
