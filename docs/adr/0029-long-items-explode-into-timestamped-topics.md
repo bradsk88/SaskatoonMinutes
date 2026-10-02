@@ -14,26 +14,37 @@ The line is a topic or presentation, not a speaker. Speakers already have
 their own rows with what they argued (ADR `0022`); a budget debate's
 findable units are the issues the council moved through inside the item.
 
-- **The gate.** An item qualifies when it runs 30 minutes or longer and
-  the span is its own (not inherited), not a recess, not procedural, and
-  not the partner side of a jointly-heard discussion. In a 100-meeting
-  sample, 292 items ran over 25 minutes, and the long tail was broken
-  spans doing the running: a "Recess" inheriting five hours, a "GIVING
-  NOTICE" placeholder at 235 minutes. A floor on the transcript's word
-  count in the span catches what the duration check cannot.
-- **One LLM pass.** A second Gemini call beside the description call, on
-  the item's transcript slice with a timestamp on every line. It returns
-  the distinct topics in order, each a mini item: a short title, the
-  moment the topic began, and its own aggregate — description bullets
-  and chips drawn from the item's chip vocabulary, because a 15-minute
-  topic holds as many facts as a typical agenda item. A topic the body
-  voted on earns its own Outcome chip: the topic is that vote's unit,
-  which is exactly the case the item-level rule against tallies cannot
-  cover. It fires only for an item the gate admits, so the archive is
-  untouched and a meeting costs a call for
-  the long item that needs it. The result rides in the item's cached
-  summary next to the description, and an entry with no topics is an
-  ordinary short item, not a failure.
+  **Current shape (2026-10).** The heavy breakdown runs as a dedicated
+  forward-only job, not inline in the light pass. That is the change from
+  the original design: we moved the heavy work off the light loop, because
+  that was the recurring cost we were trying to remove, and we made the
+  trigger a two-hour floor, so the pass lands only on the genuinely long
+  items.
+
+- **The trigger, not a gate.** An item earns the heavy breakdown when it
+  held the floor over two hours, its own start to the next item's start,
+  its own end if it is last. Measured how a resident feels length, the pass
+  lands on the genuinely long items only, at most a couple per meeting, once
+  each. Recess and procedural items, and the partner side of a jointly-heard
+  item, never qualify (ADR `0025`). The job still requires the span to
+  carry real transcript; a two-hour bookmark that says nothing is a broken
+  span or a recess, not a topic to split, so that stays a check the job
+  makes against the transcript, not the fire.
+- **A dedicated job, off the light pass.** The breakdown is one Gemini call
+  per long item, on the item's transcript slice, with a timestamp on every
+  line, run by a separate forward-only workflow (`heavy-breakdown.yml`), not
+  beside the description call. The summarize walk, whose job was reduced to
+  description and chips only, fires that workflow the moment it summarizes a
+  meeting that held over two hours on an item. The fire itself is an event,
+  not an LLM call, and stays in the recurring path only as that event, so
+  the heavy spend is never in the daily loop. The job returns the distinct
+  topics in order, each a mini item: a short title, the moment the topic
+  began, and its own aggregate, description bullets and chips drawn from the
+  item's chip vocabulary, because a fifteen-minute topic holds as many facts
+  as a typical agenda item. A topic the body voted on earns its own Outcome
+  chip, exactly the case the item-level rule against tallies cannot cover.
+  The result rides in the item's cached summary next to the description, and
+  an entry with no topics is an ordinary short item, not a failure.
 - **Timestamps snap, they are not trusted.** The prompt requires the model
   to copy the timestamp of the first line of a topic from the transcript
   it was shown. The code checks the answer against that same list of
@@ -46,34 +57,23 @@ findable units are the issues the council moved through inside the item.
   the order the body moved the discussion, flat and chronological rather
   than nested. Each card carries the parent's categories, so a category
   filter moves a topic with the item it belongs to.
-- **The skip rule learns about segments, so the run converges.** The
-  summarize walk skips a meeting whose summaries are current, and every
-  archive meeting is current: without an exception the long items would
-  wait for a re-summarize that never comes. The exception is narrow: a
-  meeting is not current while it carries a long item that has not had
-  the segment pass, and whose span carries real transcript. "Not had the
-  pass" is one of three on-disk states, and the distinction is what makes
-  the walk stop: a missing key is *never* (or the last attempt failed,
-  which retries as never), an explicit empty list is *attempted, nothing
-  to split*, and a populated list is the topics. The topic level keeps
-  the same discipline for the chip pass: a topic whose chips key is
-  absent (the archive shape before topics carried chips, or a failed
-  pass) retries as never, and an explicit empty list is a finding. An
-  item the model read and declined to split is done, not pending, or the
-  walk would re-do
-  that meeting on every dispatch. Thin-span items never flag: re-doing
-  them would produce nothing, and the meeting would stay not-current
-  forever.
-- **A one-off backfill does the archive.** The daily walk re-does a
-  flagged meeting in full, which is right for meetings it meets as it
-  walks, but the archive sits at the far end of the walk. A separate
-  workflow (`backfill-topics.yml`, manual) walks the summaries branch,
-  asks the segment pass only the long items that lack it, one Gemini
-  call per item, and merges the answer into the existing cached
-  summary. Descriptions and chips are untouched, an item that already
-  has topics is skipped, and a meeting with nothing to add is left
-  alone. Re-running is safe: the three states above make the pass
-  idempotent, and a quota stop pushes its finished work, so the next
-  dispatch resumes.
+- **The light pass converges; the heavy job is one-shot.** With the heavy
+  pass off it, the light pass's only current check is description-and-chips
+  coverage: a meeting whose summaries are current is skipped, and it stays
+  current, and the run covers the term in about ten days as before. The
+  heavy job has no recurring cost of its own. An item it has already broken
+  down, and an item it read and declined to split, both carry `segments`
+  and are skipped, so a call is spent at most once per long item, and only
+  an item that failed, its key unset, retries. That is the same three-state
+  record the chip pass uses, absent is never, empty is a finding, populated
+  is the topics, and it is what makes the job idempotent.
+- **Forward-only: the archive is not re-broken down.** The heavy job runs
+  only for a meeting the walk is summarizing now, and it reads the
+  meeting's existing description and chips, writing only the item's
+  `segments`. The old manual archive backfill (`backfill-topics.yml`) is
+  retired: a heavy pass over the whole term is a real charge, not a re-run,
+  and the lighter summary is what the archive carries. A meeting's long
+  item earns the heavy pass once, when that meeting is summarized, and
+  never again.
 - **The index and feeds do not change.** The card skims, the details page
   proves.

@@ -1,0 +1,83 @@
+name: Heavy Item Breakdown
+
+on:
+  # Fired by the summarize meeting job the moment it summarizes a meeting
+  # that held the floor over two hours on an item.  The fire is best-effort
+  # (best case: a local run with no token), so there is a manual fallback:
+  # name the meeting here to break it down by hand.
+  repository_dispatch:
+    types: [break-down-long-item]
+  workflow_dispatch:
+    inputs:
+      meeting-id:
+        description: 'eSCRIBE meeting id to break down (a meeting that just happened)'
+        required: true
+      item-id:
+        description: 'One agenda item to break down (empty = every over-two-hour item)'
+        required: false
+        default: ''
+      max:
+        description: 'Max items to break down this run'
+        required: false
+        default: '3'
+
+concurrency:
+  group: summarize
+  # Shared with Summarize Meeting Items on purpose: both write the summaries
+  # branch, and a second Gemini-heavy run starting into an already-spent
+  # quota would waste it.  Queue, don't cancel: a run killed mid-item loses
+  # the item in progress.
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # push to summaries branch
+
+jobs:
+  heavy:
+    runs-on: ubuntu-latest
+    # One call per over-two-hour item in the meeting, plus the eSCRIBE detail
+    # fetch and transcript load.  Far inside a single daily run's budget;
+    # the cap is a guard against a gate that misfires and flags every item.
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for orphan-branch worktrees
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install google-genai
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Break down long items
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          MEETING_ID="${{ github.event.client_payload.meeting_id || inputs['meeting-id'] }}"
+          if [ -z "$MEETING_ID" ]; then
+            echo "no meeting id supplied — nothing to break down"
+            exit 1
+          fi
+
+          ARGS="--meeting-id $MEETING_ID"
+          ITEM_ID="${{ github.event.client_payload.item_id }}"
+          if [ -z "$ITEM_ID" ]; then
+            ITEM_ID="${{ inputs['item-id'] }}"
+          fi
+          if [ -n "$ITEM_ID" ]; then
+            ARGS="$ARGS --item-id $ITEM_ID"
+          fi
+          MAX="${{ github.event.client_payload.max || inputs.max || '3' }}"
+          ARGS="$ARGS --max $MAX"
+
+          python scripts/heavy_breakdown.py $ARGS

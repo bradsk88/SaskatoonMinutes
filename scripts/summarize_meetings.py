@@ -26,8 +26,10 @@ a chip call each.
 """
 
 import argparse
+import json
 import os
 import re
+import subprocess
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -49,10 +51,9 @@ from app.cache_git import PushAccessError, verify_push_access
 from app.escribe import EscribeMeetingSource, LiveEscribeTransport
 from app.item_categorizer import (
     extract_item_summaries,
-    has_segment_content,
+    heavily_discussed_item_ids,
     item_transcript_text,
     is_eligible_for_summary,
-    needs_topic_segments,
     ExtractionFailed,
     GeminiExtractor,
     QuotaExhausted,
@@ -66,7 +67,6 @@ from app.models import (
     ItemSummary,
     has_current_summaries,
     has_provisional_summaries,
-    segments_fully_current,
 )
 from app.speakers import group_window, mark_jointly_heard
 from app.transcript_cache import TranscriptCache
@@ -88,51 +88,63 @@ def is_current(cached: dict[str, ItemSummary] | None) -> bool:
     return has_current_summaries(cached)
 
 
-def needs_segment_backfill(source, mid, cached, transcript) -> bool:
-    """The one exception to the skip rule (ADR 0029).
+def _fire_heavy_breakdown(meeting_id: str) -> None:
+    """Kick off the dedicated breakdown workflow (best-effort, once per meeting).
 
-    A meeting whose summaries are current but which carries a long item
-    that has not received its topic segments is not done: the archive
-    was summarized before segments existed, so without this the walk
-    would skip it forever.  A re-summarize adds the segments, the next
-    walk finds every long item has them, and the run converges.
-
-    A long item whose span is too thin for topics (a broken bookmark
-    running for hours without saying anything) does not count: re-doing
-    it would produce no segments, and the meeting would stay "not
-    current" on every dispatch forever.  Likewise an item the model has
-    already read and found nothing to split into (segments persisted as
-    an empty list) is done, not pending.  So is a long item whose topics
-    have all been through the chip pass: the pre-chips archive shape is
-    pending again until the backfill re-asks it, and the walk's exception
-    keeps it eligible in the meantime — ``segments_fully_current`` is
-    what "done" means for both.
+    An event, not a call: it costs nothing in the light pass, and a
+    failure never breaks the summarize run.  Where GITHUB_TOKEN is present
+    (a GitHub Actions job) the dispatch reaches the heavy job immediately;
+    from a local run there is no token, so the manual Heavy Item Breakdown
+    workflow is the hand-off.  Forward-only: fires only for a meeting the
+    walk is summarizing now, never against the archive.
     """
-    if not is_current(cached):
-        return False
-    if transcript is None or not transcript.segments:
-        return False
+    if not os.environ.get("GITHUB_TOKEN") or not os.environ.get("GITHUB_REPOSITORY"):
+        print(
+            f"    [heavy] {meeting_id[:8]}: long item(s) on the floor — to break "
+            f"it down, run the Heavy Item Breakdown workflow on this meeting",
+            flush=True,
+        )
+        return
+    payload = json.dumps({"meeting_id": meeting_id})
     try:
-        detail = source.load_detail(mid)
+        subprocess.run(
+            ["gh", "event", "repository_dispatch",
+             "--event-type", "break-down-long-item",
+             "--payload", payload],
+            check=False, timeout=60,
+        )
+        print(f"    [heavy] {meeting_id[:8]}: dispatched the heavy breakdown", flush=True)
     except Exception as exc:
-        print(f"  [{mid[:8]}] segment check failed: {exc}", flush=True)
-        return False
-    items = [it.to_dict() for it in detail.agenda_items]
-    mark_jointly_heard(items)
-    transcript_segs = transcript.to_dict()
-    for item in items:
-        summary = cached.get(str(item.get("item_id")))
-        # Pending: never had the pass (segments None), the last attempt
-        # failed, or the topics predate the chip pass (a segment whose
-        # chips key is absent). [] and fully-chipped lists = done.
-        if summary is not None and segments_fully_current(summary.segments):
-            continue
-        if not needs_topic_segments(item):
-            continue
-        if not has_segment_content(item, transcript_segs):
-            continue
-        return True
-    return False
+        print(
+            f"    [heavy] {meeting_id[:8]}: dispatch failed ({exc}); run the "
+            f"Heavy Item Breakdown workflow manually",
+            flush=True,
+        )
+
+
+def _maybe_fire_heavy_breakdown(
+    meeting_id: str, items: list[dict], summaries: dict[str, ItemSummary],
+) -> None:
+    """Fire the heavy job if this meeting held over two hours on any item.
+
+    Only items the walk ran over the two-hour floor and that have not yet
+    been broken down earn a dispatch.  One dispatch per meeting: the heavy
+    job re-derives the candidates itself and skips any it already has, so
+    the spend stays to the couple of genuinely long items, each once.
+    """
+    candidates = [
+        item_id for item_id in heavily_discussed_item_ids(items)
+        if summaries.get(str(item_id)) is None
+        or summaries.get(str(item_id)).segments is None
+    ]
+    if not candidates:
+        return
+    print(
+        f"    [heavy] {meeting_id[:8]}: item(s) {candidates} held the floor "
+        f"over two hours — dispatching the heavy breakdown",
+        flush=True,
+    )
+    _fire_heavy_breakdown(meeting_id)
 
 
 def summarize_meeting(
@@ -189,24 +201,6 @@ def summarize_meeting(
                 f"item {item.get('item_id')} "
                 f"({(item.get('title') or '')[:60]!r}): {exc}"
             ) from exc
-        # ADR 0029: an item the gate admits gets its topic breakdown, a
-        # third call beside the description and the speaker pass. It is
-        # adornment: a failure costs the topics, never the summary, so
-        # it does not propagate the way the description call's does.
-        if extractor.enabled and needs_topic_segments(item):
-            try:
-                payload["segments"] = extractor.extract_segments(
-                    item, transcript_segments, window=window,
-                )
-            except (ExtractionFailed, QuotaExhausted) as exc:
-                # Leave the key unset (loads back as None, "never")
-                # rather than recording "attempted, empty": a failed
-                # call is not a finding, and the next walk retries it.
-                print(
-                    f"    Item {item.get('item_id')}: segments skipped "
-                    f"({exc})",
-                    flush=True,
-                )
         return item, payload
 
     missing_description = 0
@@ -235,6 +229,11 @@ def summarize_meeting(
             f"answered but offered no description",
             flush=True,
         )
+    # Any item this meeting held for over two hours on earns the dedicated
+    # "break into smaller items" pass.  The light pass only *fires* it — an
+    # event, not a call, and forward-only (this meeting, not the archive) —
+    # so the heavy work stays out of this loop and is never repeated on it.
+    _maybe_fire_heavy_breakdown(meeting_id, items, summaries)
     return summaries
 
 
@@ -385,8 +384,7 @@ def summarize_recorded_meetings(
         mid = m.meeting_id
         cached = summaries_cache.load(mid)
         transcript = transcript_cache.load(mid)
-        if not force and is_current(cached) \
-                and not needs_segment_backfill(source, mid, cached, transcript):
+        if not force and is_current(cached):
             print(f"  [{m.date}] {mid[:8]}... already summarized")
             skipped += 1
             continue
@@ -536,10 +534,7 @@ def main() -> None:
                 mid = m.meeting_id
                 cached = summaries_cache.load(mid)
                 transcript = transcript_cache.load(mid)
-                if not args.force and is_current(cached) \
-                        and not needs_segment_backfill(
-                            source, mid, cached, transcript,
-                        ):
+                if not args.force and is_current(cached):
                     print(f"  [{m.date}] {mid[:8]}... already summarized")
                     skipped += 1
                     continue

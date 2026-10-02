@@ -1842,6 +1842,50 @@ SEGMENT_MIN_WORDS = 500
 SEGMENT_MAX_TOPICS = 12
 SEGMENT_MAX_TITLE = 80
 
+# The dedicated heavy-breakdown job's trigger, measured the way a resident
+# experiences length: how long an item held the floor, from its own start
+# to the next item's start (its own end if it is last).  Two hours keeps
+# the heavy spend on the genuinely long items only — a normal agenda slot
+# almost never reaches it — and it is forward-only: the summarize walk
+# fires it only when it is summarizing a meeting now, never against the
+# archive.  Kept beside the gate above and shared by the fire site and the
+# heavy job, so the two always agree on which item is worth a pass.
+HEAVY_SPAN_MS = 2 * 60 * 60 * 1000
+
+
+def heavily_discussed_item_ids(
+    items: list[dict], span_ms: int = HEAVY_SPAN_MS,
+) -> list[int]:
+    """The agenda items a meeting held the floor over ``span_ms" on.
+
+    An item qualifies when its span, its own start to the next item's start
+    (its own end if it is last), runs longer than ``span_ms``.  Recess and
+    procedural items, and the partner side of a jointly-heard item, never
+    qualify: they hold the floor for minutes that say nothing, and the
+    group's discussion is broken down on the primary's card (ADR ``0025``).
+    """
+    timed = [
+        i for i in items
+        if i.get("time_start_ms") is not None
+        and not i.get("is_recess")
+        and not is_procedural(i.get("title") or "")
+    ]
+    timed.sort(key=lambda i: i["time_start_ms"])
+    result: list[int] = []
+    for idx, item in enumerate(timed):
+        heard = item.get("heard_with")
+        if isinstance(heard, dict) and \
+                heard.get("primary_item_id") != item.get("item_id"):
+            continue
+        start = item.get("time_start_ms")
+        end = timed[idx + 1]["time_start_ms"] if idx + 1 < len(timed) \
+            else item.get("time_end_ms")
+        if start is None or end is None:
+            continue
+        if end - start > span_ms:
+            result.append(item.get("item_id"))
+    return result
+
 # Topics draw from the full chip vocabulary, not just the 13 semantic
 # categories: a topic that is a separate motion has its own outcome, and
 # the item-level determinism (Outcome taken from the vote metadata)
