@@ -1912,12 +1912,11 @@ def has_segment_content(
     """Whether the item's span carries enough transcript for topics.
 
     Shared by ``extract_segments`` (does the model call fire?) and the
-    skip rule's backfill check (ADR 0029, scripts/summarize_meetings.py
-    ``needs_segment_backfill``): a "long" item whose bookmark lies — a
-    five-hour recess span, a 235-minute placeholder of silence — has no
-    topics to split, and a meeting whose only long items are like that
-    must not be marked not-current forever, or the walk would re-do it
-    on every dispatch.
+    dedicated heavy breakdown, which checks the span before spending a
+    call on it (ADR ``0029``, ``scripts/heavy_breakdown.py``).  A
+    "long" item whose bookmark lies — a five-hour recess span, a 235-
+    minute placeholder of silence — has no topics to split, and a heavy
+    job that spent a call on it would have spent it on nothing.
     """
     target = item
     if window is not None:
