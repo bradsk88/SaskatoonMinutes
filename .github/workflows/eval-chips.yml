@@ -38,7 +38,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
-          pip install google-genai
+          pip install "google-genai<3"
 
       # Fast, free, and key-free: the deterministic extractors and the
       # chip-shape invariants.  Fails the job before we spend any tokens.
